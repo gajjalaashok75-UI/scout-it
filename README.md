@@ -74,16 +74,21 @@ There are 5 query/search modes available through `search.py`:
 ## Project Structure
 
 ```text
-web-search/
-  search.py                 # Main CLI entrypoint
-  quick_scrape.py           # Search engines + extraction engines
-  main_content_cleaner.py   # Content cleaning + structuring
-  test_search.py            # Pytest suite
-  results.json              # Example web-search output
-  image_search_results.json # Example image-search output
-  news_results.json         # Example news-search output
-  video_results.json        # Example video-search output
-  my_images/                # Downloaded images
+gakr-ddgs/
+  gakr_ddgs/
+    __init__.py               # Package initialization + public API
+    cli.py                    # CLI entry point (gakr-ddgs command)
+    extraction.py             # Search engines + extraction engines
+    cleaner.py                # Content cleaning + structuring
+  tests/
+    test_cli.py               # Pytest suite (38+ test cases)
+  docs/                       # User documentation
+  references/                 # Legacy code archive
+  pyproject.toml              # PEP 517/518 build config
+  setup.py                    # Legacy setup script
+  README.md                   # Main documentation
+  AGENTS.md                   # AI agent instructions
+  LICENSE                     # MIT License
 ```
 
 ## Architecture and Data Flow
@@ -139,16 +144,31 @@ Python packages used by the project:
 
 ## Installation
 
-From the project root:
+### Option 1: Install from Repository (Development Mode)
 
 ```bash
-pip install ddgs duckduckgo_search trafilatura requests beautifulsoup4 justext boilerpy3 rich pytest
+# Clone repository
+git clone https://github.com/Ashok-gakr/gakr-ddgs.git
+cd gakr-ddgs
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install in development mode
+pip install -e ".[dev]"
 ```
 
-On Windows, if you have multiple Python versions, prefer this style:
+### Option 2: Install from PyPI (When Published)
 
 ```bash
-C:/Users/<you>/AppData/Local/Programs/Python/Python313/python.exe -m pip install ddgs duckduckgo_search trafilatura requests beautifulsoup4 justext boilerpy3 rich pytest
+pip install gakr-ddgs
+```
+
+### Verify Installation
+
+```bash
+gakr-ddgs --help
 ```
 
 ## Quick Start
@@ -156,37 +176,37 @@ C:/Users/<you>/AppData/Local/Programs/Python/Python313/python.exe -m pip install
 ### 1) Web Search (3 results)
 
 ```bash
-python search.py web-search --query "dog" --max 3 --workers 2 --out results.json
+gakr-ddgs web-search --query "dog" --max-results 3
 ```
 
 ### 2) Image Search (3 results)
 
 ```bash
-python search.py image-search --query "dog" --max 3 --out image_search_results.json
+gakr-ddgs image-search --query "dog" --max-results 3
 ```
 
-### 3) Image Search + Download + Dimension Filter
+### 3) News Search
 
 ```bash
-python search.py image-search --query "dog" --max 10 --min-width 800 --min-height 600 --download --download-dir ./my_images --out image_filtered_results.json
+gakr-ddgs news-search --query "dog" --max-results 5
 ```
 
-### 4) News Search
+### 4) Video Search
 
 ```bash
-python search.py news-search --query "dog" --max 5 --out news_results.json
+gakr-ddgs video-search --query "dog" --max-results 5
 ```
 
-### 5) Video Search
+### 5) Fetch and Extract a Single URL
 
 ```bash
-python search.py video-search --query "dog" --max 5 --duration short --out video_results.json
+gakr-ddgs fetch-url --url "https://en.wikipedia.org/wiki/Dog"
 ```
 
-### 6) Fetch and Extract a Single URL
+### 6) Web Search with JSON Output
 
 ```bash
-python search.py fetch-url --url "https://en.wikipedia.org/wiki/Dog" --out url_fetch_result.json
+gakr-ddgs web-search --query "machine learning" --max-results 10 --json
 ```
 
 ## CLI Reference
@@ -194,141 +214,206 @@ python search.py fetch-url --url "https://en.wikipedia.org/wiki/Dog" --out url_f
 ### Global Help
 
 ```bash
-python search.py --help
+gakr-ddgs --help
 ```
 
 Subcommands:
 
-- `web-search`
-- `image-search`
-- `news-search`
-- `video-search`
-- `fetch-url`
+- `web-search` - Search the web with content extraction
+- `image-search` - Search for images
+- `news-search` - Search for news articles
+- `video-search` - Search for videos
+- `fetch-url` - Extract content from a single URL
 
 ### web-search
 
 ```bash
-python search.py web-search --query "<text>" [options]
+gakr-ddgs web-search --query "<text>" [options]
 ```
 
 Options:
 
 - `--query, -q` (required): search query
-- `--max, -m` (default: `100`): max candidate results
-- `--workers, -w` (default: `8`): parallel extraction workers
-- `--out, -o` (default: `struct_format_results.json`): output path
-- `--region` (example: `us-en`, `wt-wt`)
-- `--safesearch` (`on|moderate|off`, default: `moderate`)
-- `--timelimit` (`d|w|m|y`)
-- `--backend` (`auto|html|lite`, default: `auto`)
-- `--no-retry-on-zero`: disable retries when successful extraction count is 0
-- `--retry-attempts` (default: `2`)
-- `--retry-backoff` (default: `1.0` seconds)
+- `--max-results, -m` (default: `10`): number of results to fetch
+- `--json`: output as JSON to stdout
+- `--timeout` (default: `5`): extraction timeout in seconds
+
+**Example:**
+```bash
+gakr-ddgs web-search --query "machine learning" --max-results 5
+```
 
 ### image-search
 
 ```bash
-python search.py image-search --query "<text>" [options]
+gakr-ddgs image-search --query "<text>" [options]
 ```
 
 Options:
 
-- `--query, -q` (required)
-- `--max, -m` (default: `50`)
-- `--out, -o` (default: `image_search_results.json`)
-- `--download, -d`: download matched images
-- `--download-dir` (default: `downloaded_images`)
-- `--region` (default: `us-en`)
-- `--safesearch` (`on|moderate|off`, default: `moderate`)
-- `--timelimit` (`d|w|m|y`)
-- `--size` (for example: `Small`, `Medium`, `Large`, `Wallpaper`)
-- `--color`
-- `--type-image` (for example: `photo`, `clipart`, `gif`, `transparent`, `line`)
-- `--layout` (for example: `Square`, `Tall`, `Wide`)
-- `--license-image`
-- `--min-width`
-- `--max-width`
-- `--min-height`
-- `--max-height`
-- `--no-retry-on-zero`
-- `--retry-attempts`
-- `--retry-backoff`
+- `--query, -q` (required): search query
+- `--max-results, -m` (default: `10`): number of images
+- `--json`: output as JSON to stdout
+- `--min-width` (default: `0`): minimum image width
+- `--min-height` (default: `0`): minimum image height
 
-Validation rule:
-
-- `min-width <= max-width`
-- `min-height <= max-height`
+**Example:**
+```bash
+gakr-ddgs image-search --query "landscape" --max-results 10 --min-width 1024 --min-height 768
+```
 
 ### news-search
 
 ```bash
-python search.py news-search --query "<text>" [options]
+gakr-ddgs news-search --query "<text>" [options]
 ```
 
 Options:
 
-- `--query, -q` (required)
-- `--max, -m` (default: `50`)
-- `--out, -o` (default: `news_search_results.json`)
-- `--region` (default: `us-en`)
-- `--safesearch` (`on|moderate|off`)
-- `--timelimit` (`d|w|m|y`)
+- `--query, -q` (required): search query
+- `--max-results, -m` (default: `10`): number of articles
+- `--json`: output as JSON to stdout
+
+**Example:**
+```bash
+gakr-ddgs news-search --query "artificial intelligence" --max-results 5
+```
 
 ### video-search
 
 ```bash
-python search.py video-search --query "<text>" [options]
+gakr-ddgs video-search --query "<text>" [options]
 ```
 
 Options:
 
-- `--query, -q` (required)
-- `--max, -m` (default: `50`)
-- `--out, -o` (default: `video_search_results.json`)
-- `--region` (default: `us-en`)
-- `--safesearch` (`on|moderate|off`)
-- `--timelimit` (`d|w|m|y`)
-- `--resolution` (`high|standard` depending on backend support)
-- `--duration` (`short|medium|long`)
-- `--license-videos`
+- `--query, -q` (required): search query
+- `--max-results, -m` (default: `10`): number of videos
+- `--json`: output as JSON to stdout
+
+**Example:**
+```bash
+gakr-ddgs video-search --query "python tutorial" --max-results 5
+```
 
 ### fetch-url
 
 ```bash
-python search.py fetch-url --url "https://example.com" [options]
+gakr-ddgs fetch-url --url "https://example.com" [options]
 ```
 
 Options:
 
-- `--url, -u` (required)
-- `--out, -o` (default: `url_fetch_result.json`)
+- `--url, -u` (required): URL to fetch and extract
+- `--json`: output as JSON to stdout
+- `--timeout` (default: `5`): request timeout in seconds
+
+**Example:**
+```bash
+gakr-ddgs fetch-url --url "https://example.com/article"
+```
+
+## Detailed Search Documentation
+
+For comprehensive documentation on each search type with all available options, examples, and advanced usage, see the detailed guides in `docs/search/`:
+
+| Document | Coverage |
+|----------|----------|
+| **[Extended Options Reference](./docs/search/OPTIONS.md)** | ⭐ START HERE - Complete reference of ALL supported parameters for all search types |
+| [Web Search Guide](./docs/search/websearch.md) | Full web search documentation with extraction strategy, 6+ examples, Python API |
+| [Image Search Guide](./docs/search/imagesearch.md) | Complete image filtering (dimensions, colors, layouts, licenses), 7+ examples |
+| [News Search Guide](./docs/search/newssearch.md) | News aggregation with date filtering, monitoring, analysis examples |
+| [Video Search Guide](./docs/search/videosearch.md) | Video search with duration/resolution filtering, playlist creation |
+| [URL Fetch Guide](./docs/search/fetch.md) | Single URL extraction with content cleaning, batch processing |
+
+### All Supported Options by Search Type
+
+Quick reference of common options:
+- **Query** (`--query, -q`): Search term (required)
+- **Results** (`--max-results, -m`): Limit results (default: 10)
+- **Output** (`--out, -o`): Save to file (defaults provided per type)
+- **JSON** (`--json`): Output raw JSON to stdout
+- **Timeout** (`--timeout`): Extraction timeout in seconds (default: 5)
+- **Region** (`--region`): Geographic region (default: `us-en`)
+- **Safe Search** (`--safesearch`): Filter level: `on|moderate|off` (default: `moderate`)
+- **Time Filter** (`--timelimit`): Time range: `d|w|m|y`
+- **Image Dimensions** (`--min-width`, `--max-width`, `--min-height`, `--max-height`): Image search only
+- **Workers** (`--workers, -w`): Parallel extraction workers for web search
+- **Retry** (`--retry-attempts`, `--retry-backoff`): Automatic retry configuration
+
+See [Extended Options Reference](./docs/search/OPTIONS.md) for complete parameter listings with all enums and examples.
 
 ## Programmatic API
 
-You can import and use the functions directly from `search.py`.
+You can import and use the search engines and extraction functions directly from the package.
+
+### Web Search with Content Extraction
 
 ```python
-from search import web_search, image_search, news_search, video_search, fetch_url
+from gakr_ddgs.extraction import EnterpriseSearchEngine
+from gakr_ddgs.cleaner import process_results
 
-web_results, web_stats = web_search(
-    "dog",
+engine = EnterpriseSearchEngine()
+results = engine.search(
+    query="machine learning",
+    max_results=5,
+    extraction_timeout=10
+)
+
+# Clean and structure results
+cleaned_results = process_results(results)
+
+for result in cleaned_results:
+    print(f"Title: {result['title']}")
+    print(f"URL: {result['url']}")
+    print(f"Quality Score: {result['quality_score']}")
+    print()
+```
+
+### Image Search
+
+```python
+from gakr_ddgs.extraction import ImageSearchEngine
+
+engine = ImageSearchEngine()
+results = engine.search(
+    query="mountain landscape",
     max_results=10,
-    workers=4,
-    retry_attempts=2,
-    backend="auto",
+    min_width=1024,
+    min_height=768
 )
 
-img_results, img_stats = image_search(
-    "dog",
-    max_results=20,
-    min_width=800,
-    min_height=600,
-    retry_attempts=2,
+for result in results:
+    print(f"Title: {result.title}")
+    print(f"Size: {result.dimensions}")
+    print(f"Image URL: {result.image_url}")
+    print()
+```
+
+### Direct Content Extraction from URL
+
+```python
+from gakr_ddgs.extraction import ExtractionEngine
+
+engine = ExtractionEngine()
+content, method, confidence = engine.extract(
+    url="https://example.com/article",
+    timeout=5
 )
 
-news_results, news_stats = news_search("dog", max_results=10)
-video_results, video_stats = video_search("dog", max_results=10, duration="short")
-url_result = fetch_url("https://en.wikipedia.org/wiki/Dog")
+print(f"Extraction Method: {method}")
+print(f"Confidence Score: {confidence:.2%}")
+print(f"Content:\n{content[:500]}...")
+```
+
+### Text Cleaning and Processing
+
+```python
+from gakr_ddgs.cleaner import advanced_clean_text
+
+raw_text = "   Hello   world   with   extra    spaces   "
+cleaned = advanced_clean_text(raw_text)
+print(cleaned)  # Output: "Hello world with extra spaces"
 ```
 
 ## Output Files and JSON Shapes
@@ -426,40 +511,60 @@ If no dimension filters are enabled:
 
 ## Examples
 
-### Example A: Strict Safe Search Web Query
+### Example A: Web Search for Articles
 
 ```bash
-python search.py web-search --query "machine learning" --max 25 --safesearch on --timelimit m --backend auto --workers 6 --out ml_web.json
+gakr-ddgs web-search --query "artificial intelligence" --max-results 5
 ```
 
-### Example B: Global Region Image Query
-
-```bash
-python search.py image-search --query "sunset" --max 30 --region wt-wt --size Large --layout Wide --out sunset_images.json
+**Output:**
+```
+Title: AI Article 1
+URL: https://example.com/ai-1
+Confidence: 95%
+Content: [extracted article text...]
+📂 Results saved to: /path/to/results.json
 ```
 
-### Example C: Creative Commons-like Image Search + Download
+### Example B: High-Resolution Image Search
 
 ```bash
-python search.py image-search --query "city skyline" --max 20 --license-image "public" --download --download-dir ./my_images --out skyline_images.json
+gakr-ddgs image-search --query "mountain scenery" --max-results 10 --min-width 1920 --min-height 1080
 ```
 
-### Example D: News by Time Window
+### Example C: News Search
 
 ```bash
-python search.py news-search --query "AI regulation" --max 20 --timelimit w --out ai_news_week.json
+gakr-ddgs news-search --query "technology breakthroughs" --max-results 5
 ```
 
-### Example E: Short Videos Only
+### Example D: Video Search
 
 ```bash
-python search.py video-search --query "python tutorial" --max 10 --duration short --resolution high --out py_videos_short.json
+gakr-ddgs video-search --query "python programming tutorial" --max-results 5
 ```
 
-### Example F: Direct URL Content Extraction
+### Example E: Extract Content from Specific URL
 
 ```bash
-python search.py fetch-url --url "https://docs.python.org/3/tutorial/" --out python_tutorial_page.json
+gakr-ddgs fetch-url --url "https://en.wikipedia.org/wiki/Artificial_intelligence"
+```
+
+### Example F: Programmatic Web Search (Python)
+
+```python
+from gakr_ddgs.extraction import EnterpriseSearchEngine
+
+engine = EnterpriseSearchEngine()
+results = engine.search(
+    query="Python web frameworks",
+    max_results=5,
+    extraction_timeout=10
+)
+
+for result in results:
+    print(f"{result.title} ({result.confidence_score:.0%})")
+    print(f"{result.url}")
 ```
 
 ## Testing
@@ -467,56 +572,74 @@ python search.py fetch-url --url "https://docs.python.org/3/tutorial/" --out pyt
 Run all tests:
 
 ```bash
-python -m pytest -q
+pytest tests/ -v
 ```
 
-Current suite covers:
+Run with coverage:
 
-- Search function availability
-- Web/image function behavior
-- Retry and filtering logic
-- URL validation and fetch behavior
-- Backward compatibility for `fatchurl`
+```bash
+pytest tests/ --cov=gakr_ddgs --cov-report=html
+```
+
+Current test suite includes:
+
+- 38+ comprehensive test cases
+- Web search functionality
+- Image search with dimension filtering
+- News and video search
+- URL extraction and content cleaning
+- Confidence scoring
+- Error handling and timeouts
+- Mock API responses (no external API calls)
+
+**Minimum Coverage Requirement:** 80%
 
 ## Troubleshooting
 
-### 1) `pip3 show` and runtime versions do not match
+### 1) No search results returned
 
-On Windows, `pip3` can point to a different Python than your runtime.
+**Check:**
+- Verify internet connection
+- Try a different, simpler query
+- Check DuckDuckGo is accessible
 
-Check runtime interpreter:
+### 2) Low confidence scores
 
+**Possible causes:**
+- Website uses heavy JavaScript
+- Poor HTML structure
+- Extraction method not suitable for site
+
+**Solutions:**
+- Increase extraction timeout: `--timeout 15`
+- Check if content is accessible in browser
+
+### 3) Slow extraction times
+
+**Solutions:**
+- Reduce `--max-results` to fewer articles
+- Decrease `--timeout` for faster (but less complete) results
+- Check your internet speed
+
+### 4) Package installation issues
+
+**If getting import errors:**
 ```bash
-python -c "import sys; print(sys.executable)"
+# Reinstall in development mode
+pip install -e ".[dev]"
+
+# Or verify installation
+python -c "from gakr_ddgs import EnterpriseSearchEngine; print('OK')"
 ```
 
-Install dependencies into the exact interpreter you run:
+### 5) Python version mismatch
 
+**Check installed Python:**
 ```bash
-C:/Users/<you>/AppData/Local/Programs/Python/Python313/python.exe -m pip install ddgs duckduckgo_search
+python --version
 ```
 
-### 2) No search results returned
-
-Try:
-
-- Increase `--max`
-- Disable strict filters
-- Set `--safesearch off`
-- Remove `--timelimit`
-- Keep retries enabled
-
-### 3) Image download errors (403/404)
-
-This can happen due to remote host restrictions. The downloader continues with remaining images.
-
-### 4) Dependency import error in `quick_scrape.py`
-
-Install missing packages:
-
-```bash
-pip install ddgs duckduckgo_search rich trafilatura requests beautifulsoup4 justext boilerpy3
-```
+**Required:** Python 3.8+
 
 ## Performance Notes
 

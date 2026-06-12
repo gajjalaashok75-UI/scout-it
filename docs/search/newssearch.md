@@ -1,0 +1,397 @@
+# News Search Documentation
+
+## Overview
+
+News search retrieves recent news articles related to your query from DuckDuckGo's news index. Results include article headlines, snippets, and URLs to full articles.
+
+## Command Syntax
+
+```bash
+gakr-ddgs news-search [OPTIONS]
+```
+
+## Required Options
+
+| Option | Alias | Description | Type |
+|--------|-------|-------------|------|
+| `--query` | `-q` | News search query string | `STRING` |
+
+## Optional Options
+
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--max-results` | `-m` | `10` | `INT` | Maximum number of articles to return |
+| `--json` | - | `false` | `BOOL` | Output raw JSON to stdout instead of saving to file |
+
+## Output File
+
+By default, results are saved to:
+
+```
+news_search_results.json
+```
+
+Location: Full path is displayed in console with 📂 emoji
+
+### Output Format
+
+```json
+{
+  "query": "artificial intelligence",
+  "search_type": "news",
+  "timestamp": "2026-06-12T10:30:00Z",
+  "total_results": 5,
+  "results": [
+    {
+      "position": 1,
+      "title": "New AI Model Achieves Breakthrough",
+      "url": "https://technews.com/ai-breakthrough",
+      "source": "Tech News Daily",
+      "date": "2026-06-12T08:15:00Z",
+      "snippet": "Researchers announce a new AI model that outperforms previous benchmarks...",
+      "image": "https://technews.com/images/ai-breakthrough.jpg"
+    }
+  ],
+  "metadata": {
+    "search_datetime": "2026-06-12T10:30:00Z",
+    "total_found": 5
+  }
+}
+```
+
+## Field Descriptions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `position` | INT | Result position (1-indexed) |
+| `title` | STRING | Article headline |
+| `url` | STRING | Full URL to the article |
+| `source` | STRING | News organization/publication name |
+| `date` | STRING | Publication date (ISO 8601 format) |
+| `snippet` | STRING | Article preview/summary |
+| `image` | STRING | Thumbnail image URL (if available) |
+
+## Usage Examples
+
+### Breaking News
+
+Get the latest news on a topic:
+
+```bash
+gakr-ddgs news-search --query "AI breakthrough"
+```
+
+**Output:**
+```
+1. New AI Model Achieves Record Accuracy - Tech Daily
+   Date: 2026-06-12
+   https://technews.com/ai-record
+   
+2. Machine Learning Advances in Healthcare - Med News
+   Date: 2026-06-12
+   ...
+
+📂 Results saved to: C:\path\to\news_search_results.json
+```
+
+### Technology News
+
+Search for latest technology developments:
+
+```bash
+gakr-ddgs news-search --query "quantum computing"
+```
+
+### Business News
+
+Search business and market news:
+
+```bash
+gakr-ddgs news-search --query "cryptocurrency market"
+```
+
+### Limited Results
+
+Get top 5 news articles only:
+
+```bash
+gakr-ddgs news-search --query "space exploration" --max-results 5
+```
+
+### Science News
+
+Search for science discoveries:
+
+```bash
+gakr-ddgs news-search --query "climate change research"
+```
+
+### JSON Output
+
+Get raw JSON for processing:
+
+```bash
+gakr-ddgs news-search --query "COVID-19" --json > covid_news.json
+```
+
+### More Results
+
+Get 30 articles:
+
+```bash
+gakr-ddgs news-search --query "renewable energy" --max-results 30
+```
+
+## Programmatic API
+
+### Python Example - Basic Search
+
+```python
+from gakr_ddgs.extraction import DDGS
+
+ddgs = DDGS()
+results = ddgs.news(query="artificial intelligence", max_results=10)
+
+for result in results:
+    print(f"Title: {result['title']}")
+    print(f"Source: {result['source']}")
+    print(f"Date: {result['date']}")
+    print(f"URL: {result['url']}")
+    print()
+```
+
+### Python Example - Recent News Only
+
+```python
+from gakr_ddgs.extraction import DDGS
+from datetime import datetime, timedelta
+
+ddgs = DDGS()
+results = ddgs.news(query="technology", max_results=20)
+
+# Filter for today's news only
+today = datetime.now().date()
+today_news = [
+    r for r in results 
+    if datetime.fromisoformat(r['date']).date() == today
+]
+
+print(f"Found {len(today_news)} articles from today")
+for article in today_news:
+    print(f"  {article['title']}")
+```
+
+### Python Example - News by Source
+
+```python
+from gakr_ddgs.extraction import DDGS
+
+ddgs = DDGS()
+results = ddgs.news(query="finance", max_results=30)
+
+# Group by source
+by_source = {}
+for article in results:
+    source = article['source']
+    if source not in by_source:
+        by_source[source] = []
+    by_source[source].append(article)
+
+for source, articles in by_source.items():
+    print(f"\n{source} ({len(articles)} articles):")
+    for article in articles[:3]:  # Show first 3
+        print(f"  - {article['title']}")
+```
+
+## Common Use Cases
+
+### News Aggregation
+
+Get latest news on a specific topic:
+
+```bash
+gakr-ddgs news-search \
+  --query "electric vehicles" \
+  --max-results 20 \
+  --json > ev_news.json
+```
+
+### Monitoring Breaking News
+
+Check for updates on an ongoing story:
+
+```bash
+# Run periodically (e.g., in a cron job)
+gakr-ddgs news-search \
+  --query "natural disaster" \
+  --max-results 10 \
+  --json > breaking_news.json
+```
+
+### Industry Intelligence
+
+Track news in your industry:
+
+```bash
+gakr-ddgs news-search \
+  --query "software development trends" \
+  --max-results 15
+```
+
+### Competitive Analysis
+
+Monitor competitor news:
+
+```bash
+gakr-ddgs news-search \
+  --query "major_competitor_name" \
+  --max-results 25
+```
+
+### News by Category
+
+Search different news categories:
+
+```bash
+# Technology
+gakr-ddgs news-search --query "technology innovation" --max-results 10
+
+# Health
+gakr-ddgs news-search --query "medical breakthrough" --max-results 10
+
+# Finance
+gakr-ddgs news-search --query "stock market" --max-results 10
+
+# Politics
+gakr-ddgs news-search --query "government policy" --max-results 10
+```
+
+## Performance Considerations
+
+| Factor | Impact | Notes |
+|--------|--------|-------|
+| `--max-results` | Low | News search is fast (no content extraction) |
+| Query specificity | High | More specific queries = better results |
+| Network Speed | Low | News search uses lightweight requests |
+
+**Typical Execution Times:**
+- Any number of results: 2-5 seconds (very fast)
+
+## Date Handling
+
+News results are ordered by relevance and recency. The `date` field indicates publication time:
+
+```json
+"date": "2026-06-12T14:30:00Z"  // ISO 8601 format
+```
+
+To parse in Python:
+
+```python
+from datetime import datetime
+
+date_str = "2026-06-12T14:30:00Z"
+date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+print(date_obj.strftime("%B %d, %Y"))  # June 12, 2026
+```
+
+## Troubleshooting
+
+### No News Results
+
+**Problem:** Search returns empty results
+
+**Solutions:**
+- Try a simpler, more specific query
+- Use different keywords
+- Topic may not have recent coverage
+- Check if DuckDuckGo news is available in your region
+
+### Too Many Irrelevant Results
+
+**Problem:** Results don't match your query well
+
+**Solutions:**
+- Try more specific search terms
+- Use quotes for exact phrases: `"AI safety"`
+- Add context terms: `"AI safety regulations" vs "AI safety"`
+- Reduce `--max-results` to see top matches only
+
+### Missing Specific Publication
+
+**Problem:** Don't see articles from your preferred news source
+
+**Solutions:**
+- DuckDuckGo indexes many but not all sources
+- Try including the publication name in query
+- Check if publication has different article name
+- RSS feeds may be an alternative
+
+### Slow Results
+
+**Problem:** News search seems slow
+
+**Solutions:**
+- News search is normally very fast (2-5 seconds)
+- If slow, check your internet connection
+- DuckDuckGo may be rate-limiting; try again later
+
+## Advanced Usage
+
+### Batch News Monitoring
+
+Monitor multiple topics:
+
+```bash
+topics=("AI" "Climate" "Space" "Medicine")
+
+for topic in "${topics[@]}"; do
+  gakr-ddgs news-search \
+    --query "$topic" \
+    --max-results 10 \
+    --json > "news_${topic}.json"
+  echo "Collected news for: $topic"
+done
+```
+
+### Parsing News with JQ
+
+Extract headlines and sources:
+
+```bash
+gakr-ddgs news-search --query "technology" --json | \
+  jq '.results[] | {title, source, date}'
+```
+
+### Filtering by Date Range
+
+Find news from the last 24 hours:
+
+```bash
+gakr-ddgs news-search --query "urgent" --json | \
+  jq '.results[] | 
+      select(
+        (now - (.date | fromdateiso8601)) < 86400
+      ) | 
+      {title, date}'
+```
+
+### News Analysis Pipeline
+
+```bash
+# Collect news
+gakr-ddgs news-search --query "AI" --max-results 30 --json > ai_news.json
+
+# Extract unique sources
+jq '.results[] | .source' ai_news.json | sort -u
+
+# Count articles per source
+jq '.results[] | .source' ai_news.json | sort | uniq -c | sort -rn
+```
+
+## Related Documentation
+
+- [Web Search](./websearch.md)
+- [Video Search](./videosearch.md)
+- [README.md](../../README.md)
+- [AGENTS.md](../../AGENTS.md)
