@@ -18,11 +18,33 @@ gakr-ddgs web-search [OPTIONS]
 
 ## Optional Options
 
+### Extraction & Performance
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
-| `--max-results` | `-m` | `10` | `INT` | Maximum number of search results to fetch and extract |
-| `--timeout` | - | `5` | `INT` | Extraction timeout in seconds per URL |
+| `--max-results` | `-m` | `10` | `INT` | Maximum results to fetch and extract (1-100) |
+| `--timeout` | - | `5` | `INT` | Extraction timeout in seconds per URL (1-60) |
+| `--workers` | `-w` | `4` | `INT` | Parallel extraction workers (1-16) |
+
+### Output
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--out` | `-o` | `web_search_results.json` | `PATH` | Output file path |
 | `--json` | - | `false` | `BOOL` | Output raw JSON to stdout instead of saving to file |
+
+### Retry & Fallback (Optional)
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--no-retry-on-zero` | - | `false` | `BOOL` | Disable retry on zero successful extractions |
+| `--retry-attempts` | - | `2` | `INT` | Number of retry attempts (1-5) |
+| `--retry-backoff` | - | `1.0` | `FLOAT` | Backoff multiplier between retries |
+
+### Search Parameters (DuckDuckGo)
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--region` | - | `us-en` | `STRING` | Region/locale (e.g., `us-en`, `uk-en`, `wt-wt` for worldwide) |
+| `--safesearch` | - | `moderate` | `ENUM` | Safe search level: `on`, `moderate`, `off` |
+| `--timelimit` | - | - | `ENUM` | Time filter: `d` (day), `w` (week), `m` (month), `y` (year) |
+| `--backend` | - | `auto` | `ENUM` | Search backend: `auto`, `html`, `lite` |
 
 ## Output File
 
@@ -101,29 +123,44 @@ Search for articles about Python:
 gakr-ddgs web-search --query "Python programming"
 ```
 
-**Output:**
-```
-Title: Python Programming Guide
-URL: https://example.com/python-guide
-Confidence: 95%
-Content: [extracted article text...]
-📂 Results saved to: C:\path\to\web_search_results.json
-```
+### With Custom Workers & Timeout
 
-### Search with Custom Timeout
-
-For pages that load slowly, increase timeout:
+Increase extraction parallelism:
 
 ```bash
-gakr-ddgs web-search --query "climate change research" --timeout 15
+gakr-ddgs web-search --query "Python" --max-results 20 --workers 8 --timeout 10
 ```
 
-### Limit Results
+### UK Region, Safe Search Off
 
-Search but only extract from top 5 results:
+Search in UK region without filtering:
 
 ```bash
-gakr-ddgs web-search --query "artificial intelligence" --max-results 5
+gakr-ddgs web-search --query "technology" --region uk-en --safesearch off
+```
+
+### Last Week's Articles
+
+Get recent articles:
+
+```bash
+gakr-ddgs web-search --query "news" --timelimit w --max-results 20
+```
+
+### With Retry Configuration
+
+Retry on failures:
+
+```bash
+gakr-ddgs web-search --query "research" --retry-attempts 3 --retry-backoff 1.5
+```
+
+### Custom Output Location
+
+Save to specific file:
+
+```bash
+gakr-ddgs web-search --query "data" --out ./results/my_results.json
 ```
 
 ### JSON Output to Console
@@ -136,11 +173,16 @@ gakr-ddgs web-search --query "machine learning" --json > results.json
 
 ### Combined Options
 
+Comprehensive search with multiple parameters:
+
 ```bash
 gakr-ddgs web-search \
   --query "renewable energy" \
   --max-results 20 \
-  --timeout 10 \
+  --workers 8 \
+  --timeout 15 \
+  --region "us-en" \
+  --safesearch "on" \
   --json
 ```
 
@@ -191,6 +233,43 @@ for result in results:
         print(f"  Content (first 200 chars): {result.main_content[:200]}...")
     print()
 ```
+
+## Region Codes
+
+Common region codes for `--region` parameter:
+
+| Code | Region |
+|------|--------|
+| `us-en` | United States (English) |
+| `uk-en` | United Kingdom (English) |
+| `ca-en` | Canada (English) |
+| `au-en` | Australia (English) |
+| `de-de` | Germany (German) |
+| `fr-fr` | France (French) |
+| `it-it` | Italy (Italian) |
+| `es-es` | Spain (Spanish) |
+| `jp-ja` | Japan (Japanese) |
+| `cn-zh` | China (Chinese) |
+| `br-pt` | Brazil (Portuguese) |
+| `in-en` | India (English) |
+| `wt-wt` | Worldwide |
+
+## Safe Search Levels
+
+| Level | Description |
+|-------|-------------|
+| `on` | Strict filtering - excludes adult content |
+| `moderate` | Balanced filtering - default |
+| `off` | No filtering - all results shown |
+
+## Time Filters
+
+| Code | Description |
+|------|-------------|
+| `d` | Last 24 hours (Day) |
+| `w` | Last 7 days (Week) |
+| `m` | Last 30 days (Month) |
+| `y` | Last 365 days (Year) |
 
 ## Performance Considerations
 

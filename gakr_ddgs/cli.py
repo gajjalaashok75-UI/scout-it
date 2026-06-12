@@ -279,7 +279,44 @@ def _extract_html_title(html_text: str) -> str:
     return unescape(re.sub(r"\s+", " ", title)).strip()
 
 
-def fetch_url(url: str, timeout: int = 25):
+def _parse_size_string(size_str: Optional[str]) -> Optional[int]:
+    """Parse size string like '100kb', '1mb' to bytes. Returns None if invalid."""
+    if not size_str:
+        return None
+    
+    size_str = size_str.strip().lower()
+    
+    # Mapping of units to bytes
+    units = {
+        'b': 1,
+        'kb': 1024,
+        'mb': 1024 ** 2,
+        'gb': 1024 ** 3,
+    }
+    
+    # Try to parse the string
+    match = re.match(r'^([0-9.]+)\s*([a-z]+)$', size_str)
+    if not match:
+        return None
+    
+    try:
+        value = float(match.group(1))
+        unit = match.group(2)
+        
+        if unit not in units:
+            return None
+        
+        return int(value * units[unit])
+    except (ValueError, TypeError):
+        return None
+
+
+def fetch_url(
+    url: str,
+    timeout: int = 25,
+    max_chars: Optional[int] = None,
+    max_size: Optional[str] = None,
+):
     """
     Fetch a single URL and extract/clean its content.
     
@@ -287,6 +324,15 @@ def fetch_url(url: str, timeout: int = 25):
 
     Returns a dict containing a single structured result.
     """
+    # Validation: Only one of max_chars or max_size is allowed
+    if max_chars is not None and max_size is not None:
+        return {
+            "error": "Cannot use both --max-chars and --max-size together. Use only ONE parameter:\n"
+                    "   • --max-chars 10000 (to limit extracted content by character count)\n"
+                    "   • --max-size 5mb (to limit response size by file size)\n"
+                    "   Use either one, not both."
+        }
+    
     parsed = urlparse(str(url or "").strip())
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return {"error": "Invalid URL. Provide a working http/https URL."}
@@ -308,14 +354,26 @@ def fetch_url(url: str, timeout: int = 25):
         response.raise_for_status()
         final_url = str(response.url)
 
+        # Truncate HTML response if max_size is specified
+        response_text = response.text
+        max_size_bytes = _parse_size_string(max_size)
+        if max_size_bytes and len(response.content) > max_size_bytes:
+            # Truncate HTML content to max_size bytes
+            response_text = response.content[:max_size_bytes].decode('utf-8', errors='ignore')
+
         extractor = ExtractionEngine()
         main_content, method, confidence = extractor.extract_content(
             final_url,
-            response.text,
+            response_text,
             timeout=timeout,
         )
+        
+        # Apply max_chars constraint if specified
+        if max_chars and main_content and len(main_content) > max_chars:
+            main_content = main_content[:max_chars]
+        
         elapsed = time.time() - start_time
-        title = _extract_html_title(response.text) or final_url
+        title = _extract_html_title(response_text) or final_url
 
         raw_record = {
             "position": 1,
@@ -437,7 +495,10 @@ def main():
     url_parser = subparsers.add_parser('fetch-url', help='Fetch and extract single URL')
     url_parser.add_argument('--url', '-u', required=True, help='URL to fetch')
     url_parser.add_argument('--timeout', type=int, default=5, help='Extraction timeout in seconds')
+    url_parser.add_argument('--max-chars', type=int, default=None, help='Maximum characters to extract (e.g., 10000)')
+    url_parser.add_argument('--max-size', type=str, default=None, help='Maximum response size (e.g., 100kb, 1mb, 500mb)')
     url_parser.add_argument('--out', '-o', default='url_fetch_result.json', help='Output file')
+    url_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
     
     args = parser.parse_args()
     
@@ -647,13 +708,29 @@ def main():
     
     # Fetch URL
     elif args.command == 'fetch-url':
+        # Validate: Only one of --max-chars or --max-size is allowed
+        if args.max_chars is not None and args.max_size is not None:
+            parser.error('❌ ERROR: Cannot use both --max-chars and --max-size together. Use only ONE parameter at a time:\n'
+                        '   • --max-chars 10000 (to limit extracted content by character count)\n'
+                        '   • --max-size 5mb (to limit response size by file size)\n'
+                        '   Use either one, not both.')
+        
         print(f"\n📥 Fetching: {args.url}\n")
-        result = fetch_url(args.url, timeout=args.timeout)
+        result = fetch_url(
+            args.url,
+            timeout=args.timeout,
+            max_chars=args.max_chars,
+            max_size=args.max_size,
+        )
         
         output = {
             'url': args.url,
             'search_type': 'fetch',
-            'timeout': args.timeout,
+            'parameters': {
+                'timeout': args.timeout,
+                'max_chars': args.max_chars,
+                'max_size': args.max_size,
+            },
             'result': result
         }
         

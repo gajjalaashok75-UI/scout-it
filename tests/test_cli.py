@@ -143,6 +143,7 @@ class TestFetchUrl:
             mock_response.status_code = 200
             mock_response.text = "<html><title>Test Page</title><body>Content</body></html>"
             mock_response.url = "https://example.com"
+            mock_response.content = b"<html><title>Test Page</title><body>Content</body></html>"
             mock_get.return_value = mock_response
             
             with mock.patch('gakr_ddgs.extraction.ExtractionEngine') as mock_extractor:
@@ -175,6 +176,147 @@ class TestFetchUrl:
             # Should fail gracefully without raising
             assert isinstance(result, dict)
             assert "error" in result
+    
+    def test_fetch_url_with_max_chars(self):
+        """Test fetch_url with max_chars parameter - verifies truncation"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 200
+            mock_response.text = "<html><title>Test</title><body>Long content here</body></html>"
+            mock_response.url = "https://example.com"
+            mock_response.content = b"<html><title>Test</title><body>Long content here</body></html>"
+            mock_get.return_value = mock_response
+            
+            with mock.patch('gakr_ddgs.extraction.ExtractionEngine') as mock_extractor:
+                mock_extractor.USER_AGENTS = ['test-agent']
+                mock_extract_instance = mock.Mock()
+                # Return long content that should be truncated
+                long_content = "This is a very long content that should be truncated to verify the truncation works"
+                mock_extract_instance.extract_content.return_value = (long_content, "trafilatura", 0.9)
+                mock_extractor.return_value = mock_extract_instance
+                
+                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                    mock_process.return_value = ([], {})
+                    
+                    result = fetch_url("https://example.com", max_chars=20)
+                    
+                    # Content should be truncated to 20 chars
+                    assert len(result["result"]["main_content"]) == 20
+    
+    def test_fetch_url_with_max_size(self):
+        """Test fetch_url with max_size parameter - truncates response"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 200
+            # Large HTML response (2000 bytes)
+            large_html = "<html>" + ("x" * 1950) + "</html>"
+            mock_response.text = large_html
+            mock_response.url = "https://example.com"
+            mock_response.content = large_html.encode('utf-8')
+            mock_get.return_value = mock_response
+            
+            with mock.patch('gakr_ddgs.extraction.ExtractionEngine') as mock_extractor:
+                mock_extractor.USER_AGENTS = ['test-agent']
+                mock_extract_instance = mock.Mock()
+                mock_extract_instance.extract_content.return_value = ("Content", "trafilatura", 0.9)
+                mock_extractor.return_value = mock_extract_instance
+                
+                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                    mock_process.return_value = ([], {})
+                    
+                    # Request with max_size of 1kb (1024 bytes) - should truncate
+                    result = fetch_url("https://example.com", max_size="1kb")
+                    
+                    # Should successfully process even though content was truncated
+                    assert isinstance(result, dict)
+                    assert "result" in result
+    
+    def test_fetch_url_with_max_size_small_content(self):
+        """Test fetch_url with max_size parameter when content is smaller than limit"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 200
+            mock_response.text = "<html><title>Test</title><body>Small</body></html>"
+            mock_response.url = "https://example.com"
+            mock_response.content = b"x" * 500  # 500 bytes
+            mock_get.return_value = mock_response
+            
+            with mock.patch('gakr_ddgs.extraction.ExtractionEngine') as mock_extractor:
+                mock_extractor.USER_AGENTS = ['test-agent']
+                mock_extract_instance = mock.Mock()
+                mock_extract_instance.extract_content.return_value = ("Content", "trafilatura", 0.9)
+                mock_extractor.return_value = mock_extract_instance
+                
+                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                    mock_process.return_value = ([], {})
+                    
+                    result = fetch_url("https://example.com", max_size="1mb")  # 1mb should allow 500 bytes
+                    
+                    assert "result" in result
+                    assert "error" not in result
+
+    def test_fetch_url_with_both_max_chars_and_max_size_error(self):
+        """Test fetch_url rejects when both max_chars and max_size are provided"""
+        # This should return an error immediately without making any requests
+        result = fetch_url(
+            "https://example.com",
+            max_chars=10000,
+            max_size="500kb"
+        )
+        
+        # Should have error key and no result key
+        assert "error" in result
+        assert "Cannot use both --max-chars and --max-size together" in result["error"]
+        assert "--max-chars" in result["error"]
+        assert "--max-size" in result["error"]
+
+
+class TestSizeParsingUtility:
+    """Test _parse_size_string utility function"""
+    
+    def test_parse_size_string_bytes(self):
+        """Test parsing size in bytes"""
+        from gakr_ddgs.cli import _parse_size_string
+        
+        assert _parse_size_string("1024b") == 1024
+        assert _parse_size_string("100B") == 100
+        assert _parse_size_string("512 b") == 512
+    
+    def test_parse_size_string_kilobytes(self):
+        """Test parsing size in kilobytes"""
+        from gakr_ddgs.cli import _parse_size_string
+        
+        assert _parse_size_string("1kb") == 1024
+        assert _parse_size_string("100kb") == 102400
+        assert _parse_size_string("1 kb") == 1024
+        assert _parse_size_string("1.5KB") == 1536
+    
+    def test_parse_size_string_megabytes(self):
+        """Test parsing size in megabytes"""
+        from gakr_ddgs.cli import _parse_size_string
+        
+        assert _parse_size_string("1mb") == 1024 ** 2
+        assert _parse_size_string("5mb") == 5 * (1024 ** 2)
+        assert _parse_size_string("1 mb") == 1024 ** 2
+        assert _parse_size_string("2.5MB") == int(2.5 * (1024 ** 2))
+    
+    def test_parse_size_string_gigabytes(self):
+        """Test parsing size in gigabytes"""
+        from gakr_ddgs.cli import _parse_size_string
+        
+        assert _parse_size_string("1gb") == 1024 ** 3
+        assert _parse_size_string("2gb") == 2 * (1024 ** 3)
+        assert _parse_size_string("1 gb") == 1024 ** 3
+    
+    def test_parse_size_string_invalid(self):
+        """Test parsing invalid size strings"""
+        from gakr_ddgs.cli import _parse_size_string
+        
+        assert _parse_size_string(None) is None
+        assert _parse_size_string("") is None
+        assert _parse_size_string("invalid") is None
+        assert _parse_size_string("100tb") is None  # Unsupported unit
+        assert _parse_size_string("abc mb") is None
 
 
 class TestBackwardCompatibility:

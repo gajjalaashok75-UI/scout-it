@@ -18,12 +18,45 @@ gakr-ddgs image-search [OPTIONS]
 
 ## Optional Options
 
+### Filtering - Dimensions
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
-| `--max-results` | `-m` | `10` | `INT` | Maximum number of images to return |
-| `--min-width` | - | `0` | `INT` | Minimum image width in pixels (0 = no limit) |
-| `--min-height` | - | `0` | `INT` | Minimum image height in pixels (0 = no limit) |
-| `--json` | - | `false` | `BOOL` | Output raw JSON to stdout instead of saving to file |
+| `--min-width` | - | `0` | `INT` | Minimum image width in pixels |
+| `--max-width` | - | `0` | `INT` | Maximum image width in pixels |
+| `--min-height` | - | `0` | `INT` | Minimum image height in pixels |
+| `--max-height` | - | `0` | `INT` | Maximum image height in pixels |
+
+### Filtering - Visual Characteristics
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--size` | - | - | `ENUM` | Image size: `Small`, `Medium`, `Large`, `Wallpaper`, `Custom` |
+| `--color` | - | - | `ENUM` | Color type: `Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Purple`, `Pink`, `Brown`, `Black`, `Gray`, `White`, `Transparent` |
+| `--type-image` | - | - | `ENUM` | Image type: `photo`, `clipart`, `gif`, `transparent`, `line`, `other` |
+| `--layout` | - | - | `ENUM` | Image layout: `Square`, `Tall`, `Wide`, `Panoramic` |
+| `--license-image` | - | - | `ENUM` | License type: `public`, `commercial`, `creative_commons`, `any` |
+
+### Search Parameters
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--region` | - | `us-en` | `STRING` | Region/locale (e.g., `us-en`, `uk-en`, `wt-wt`) |
+| `--safesearch` | - | `moderate` | `ENUM` | Safe search: `on`, `moderate`, `off` |
+| `--timelimit` | - | - | `ENUM` | Time filter: `d` (day), `w` (week), `m` (month), `y` (year) |
+
+### Download Options
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--download` | `-d` | `false` | `BOOL` | Download matched images |
+| `--download-dir` | - | `downloaded_images` | `PATH` | Directory for downloads |
+
+### Output & Retry
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--max-results` | `-m` | `10` | `INT` | Maximum images to return |
+| `--out` | `-o` | `image_search_results.json` | `PATH` | Output file path |
+| `--json` | - | `false` | `BOOL` | Output to stdout as JSON |
+| `--no-retry-on-zero` | - | `false` | `BOOL` | Disable retry on zero results |
+| `--retry-attempts` | - | `2` | `INT` | Number of retry attempts |
+| `--retry-backoff` | - | `1.0` | `FLOAT` | Backoff multiplier |
 
 ## Output File
 
@@ -131,36 +164,65 @@ Search for dog images:
 gakr-ddgs image-search --query "dog"
 ```
 
-### High-Resolution Images
+### HD Images Only (1920×1080+)
 
-Find images suitable for wallpaper (2560×1440+):
+Find high-resolution wallpapers:
 
 ```bash
-gakr-ddgs image-search --query "nature landscape" --min-width 2560 --min-height 1440
+gakr-ddgs image-search --query "wallpaper" --min-width 1920 --min-height 1080 --max-results 20
 ```
 
-### HD Ready
+### Specific Visual Characteristics
 
-Find images that work on 1080p displays:
+Find blue clipart logos:
 
 ```bash
-gakr-ddgs image-search --query "architecture" --min-width 1920 --min-height 1080
+gakr-ddgs image-search --query "logo" --type-image "clipart" --color "Blue" --layout "Square"
 ```
 
-### Limited Results
+### Size + Layout
 
-Get only 5 high-quality images:
+Find panoramic landscape images:
 
 ```bash
-gakr-ddgs image-search --query "sunset" --max-results 5 --min-width 1280 --min-height 720
+gakr-ddgs image-search --query "landscape" --size "Wallpaper" --layout "Wide" --max-results 10
 ```
 
-### Mobile-Friendly
+### License Filtered
 
-Get portrait-oriented images:
+Find Creative Commons images:
 
 ```bash
-gakr-ddgs image-search --query "phone wallpaper" --min-width 540 --min-height 960
+gakr-ddgs image-search --query "photo" --license-image "creative_commons" --max-results 15
+```
+
+### Download Images
+
+Download matching images:
+
+```bash
+gakr-ddgs image-search \
+  --query "nature" \
+  --max-results 20 \
+  --min-width 1024 \
+  --download \
+  --download-dir "./my_images"
+```
+
+### Aspect Ratio (Panoramic)
+
+Find ultra-wide images:
+
+```bash
+gakr-ddgs image-search --query "mountain" --layout "Panoramic" --size "Wallpaper"
+```
+
+### Last Week's Images
+
+Find recently added images:
+
+```bash
+gakr-ddgs image-search --query "news" --timelimit w --max-results 30
 ```
 
 ### JSON Output
@@ -171,16 +233,87 @@ Output raw JSON for processing:
 gakr-ddgs image-search --query "city" --json > city_images.json
 ```
 
-### Combined Options
+### Professional Photo Database
+
+Find high-quality commercial images:
 
 ```bash
 gakr-ddgs image-search \
-  --query "mountain" \
-  --max-results 20 \
-  --min-width 1920 \
-  --min-height 1080 \
-  --json
+  --query "business professional" \
+  --type-image "photo" \
+  --license-image "commercial" \
+  --min-width 1280 \
+  --max-results 50 \
+  --safesearch on
 ```
+
+### High-Res Wallpaper Collection
+
+Create a wallpaper collection:
+
+```bash
+gakr-ddgs image-search \
+  --query "nature landscape" \
+  --size "Wallpaper" \
+  --layout "Wide" \
+  --min-width 2560 \
+  --min-height 1440 \
+  --max-results 20 \
+  --download \
+  --download-dir "./wallpapers"
+```
+
+## Image Size Options
+
+| Size | Typical Resolution |
+|------|-------------------|
+| `Small` | < 800px width |
+| `Medium` | 800-1200px width |
+| `Large` | 1200-1920px width |
+| `Wallpaper` | > 1920px width |
+| `Custom` | User-defined (use min/max width/height) |
+
+## Image Colors
+
+Available colors for `--color` filter:
+- `Red`
+- `Orange`
+- `Yellow`
+- `Green`
+- `Blue`
+- `Purple`
+- `Pink`
+- `Brown`
+- `Black`
+- `Gray`
+- `White`
+- `Transparent`
+
+## Image Types
+
+Available types for `--type-image` filter:
+- `photo` - Photographs
+- `clipart` - Vector graphics
+- `gif` - Animated GIFs
+- `transparent` - PNG with transparency
+- `line` - Line drawings
+- `other` - Other types
+
+## Image Layouts
+
+Available layouts for `--layout` filter:
+- `Square` - 1:1 aspect ratio
+- `Tall` - Portrait orientation (height > width)
+- `Wide` - Landscape orientation (width > height)
+- `Panoramic` - Ultra-wide (width >> height)
+
+## Image Licenses
+
+Available licenses for `--license-image` filter:
+- `public` - Public domain
+- `commercial` - Commercial use allowed
+- `creative_commons` - Creative Commons licensed
+- `any` - Any license
 
 ## Programmatic API
 

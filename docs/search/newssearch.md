@@ -18,10 +18,26 @@ gakr-ddgs news-search [OPTIONS]
 
 ## Optional Options
 
+### Results & Output
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
-| `--max-results` | `-m` | `10` | `INT` | Maximum number of articles to return |
-| `--json` | - | `false` | `BOOL` | Output raw JSON to stdout instead of saving to file |
+| `--max-results` | `-m` | `10` | `INT` | Maximum articles to return |
+| `--out` | `-o` | `news_search_results.json` | `PATH` | Output file path |
+| `--json` | - | `false` | `BOOL` | Output to stdout as JSON |
+
+### Search Parameters
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--region` | - | `us-en` | `STRING` | Region/locale for news sources |
+| `--safesearch` | - | `moderate` | `ENUM` | Safe search: `on`, `moderate`, `off` |
+| `--timelimit` | - | - | `ENUM` | Time filter: `d` (today), `w` (week), `m` (month), `y` (year) |
+
+### Retry Options
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--no-retry-on-zero` | - | `false` | `BOOL` | Disable retry on zero results |
+| `--retry-attempts` | - | `2` | `INT` | Number of retry attempts |
+| `--retry-backoff` | - | `1.0` | `FLOAT` | Backoff multiplier |
 
 ## Output File
 
@@ -81,65 +97,60 @@ Get the latest news on a topic:
 gakr-ddgs news-search --query "AI breakthrough"
 ```
 
-**Output:**
-```
-1. New AI Model Achieves Record Accuracy - Tech Daily
-   Date: 2026-06-12
-   https://technews.com/ai-record
-   
-2. Machine Learning Advances in Healthcare - Med News
-   Date: 2026-06-12
-   ...
+### Regional News (UK)
 
-📂 Results saved to: C:\path\to\news_search_results.json
-```
-
-### Technology News
-
-Search for latest technology developments:
+Search for news from UK region:
 
 ```bash
-gakr-ddgs news-search --query "quantum computing"
+gakr-ddgs news-search --query "technology" --region uk-en
 ```
 
-### Business News
+### Last 24 Hours
 
-Search business and market news:
+Get today's news:
 
 ```bash
-gakr-ddgs news-search --query "cryptocurrency market"
+gakr-ddgs news-search --query "politics" --timelimit d --max-results 20
 ```
 
-### Limited Results
+### Last Week's News
 
-Get top 5 news articles only:
+Get news from the past week:
 
 ```bash
-gakr-ddgs news-search --query "space exploration" --max-results 5
+gakr-ddgs news-search --query "finance" --timelimit w --max-results 30
 ```
 
-### Science News
+### Safe Search Enabled
 
-Search for science discoveries:
+Filter adult content:
 
 ```bash
-gakr-ddgs news-search --query "climate change research"
+gakr-ddgs news-search --query "general interest" --safesearch on
+```
+
+### Custom Output
+
+Save to specific file:
+
+```bash
+gakr-ddgs news-search --query "technology" --out ./news/tech_news.json --max-results 50
 ```
 
 ### JSON Output
 
-Get raw JSON for processing:
+Output to stdout:
 
 ```bash
-gakr-ddgs news-search --query "COVID-19" --json > covid_news.json
+gakr-ddgs news-search --query "AI breakthrough" --json
 ```
 
-### More Results
+### With Retry Configuration
 
-Get 30 articles:
+Retry on failures:
 
 ```bash
-gakr-ddgs news-search --query "renewable energy" --max-results 30
+gakr-ddgs news-search --query "research" --retry-attempts 3 --retry-backoff 1.5
 ```
 
 ## Programmatic API

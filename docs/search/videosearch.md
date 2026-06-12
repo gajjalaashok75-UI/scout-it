@@ -18,10 +18,28 @@ gakr-ddgs video-search [OPTIONS]
 
 ## Optional Options
 
+### Results & Output
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
-| `--max-results` | `-m` | `10` | `INT` | Maximum number of videos to return |
-| `--json` | - | `false` | `BOOL` | Output raw JSON to stdout instead of saving to file |
+| `--max-results` | `-m` | `10` | `INT` | Maximum videos to return |
+| `--out` | `-o` | `video_search_results.json` | `PATH` | Output file path |
+| `--json` | - | `false` | `BOOL` | Output to stdout as JSON |
+
+### Search Parameters
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--region` | - | `us-en` | `STRING` | Region/locale |
+| `--safesearch` | - | `moderate` | `ENUM` | Safe search: `on`, `moderate`, `off` |
+| `--timelimit` | - | - | `ENUM` | Time filter: `d` (day), `w` (week), `m` (month), `y` (year) |
+| `--duration` | - | - | `ENUM` | Video duration: `short` (< 5 min), `medium` (5-30 min), `long` (> 30 min) |
+| `--resolution` | - | - | `ENUM` | Resolution: `high`, `standard`, `any` |
+
+### Retry Options
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--no-retry-on-zero` | - | `false` | `BOOL` | Disable retry on zero results |
+| `--retry-attempts` | - | `2` | `INT` | Number of retry attempts |
+| `--retry-backoff` | - | `1.0` | `FLOAT` | Backoff multiplier |
 
 ## Output File
 
@@ -75,61 +93,99 @@ Location: Full path is displayed in console with 📂 emoji
 
 ## Usage Examples
 
-### Programming Tutorial
+### Basic Video Search
 
-Search for coding tutorials:
+Search for Python tutorials:
 
 ```bash
 gakr-ddgs video-search --query "Python tutorial"
 ```
 
-**Output:**
-```
-1. Python For Beginners - Corey Schafer
-   Duration: 4:26:25
-   Views: 2.3M views
-   https://www.youtube.com/watch?v=...
-   
-2. Complete Python Course - Udemy
-   Duration: 22:15:00
-   ...
+### Short Videos Only
 
-📂 Results saved to: C:\path\to\video_search_results.json
-```
-
-### How-To Video
-
-Search for instructional videos:
+Find short-form content (< 5 minutes):
 
 ```bash
-gakr-ddgs video-search --query "how to make sourdough bread"
+gakr-ddgs video-search --query "motivation" --duration short --max-results 20
 ```
 
-### Music Video
+### Long-form Content (Courses)
 
-Search for music:
+Find full courses and lectures:
 
 ```bash
-gakr-ddgs video-search --query "Imagine John Lennon"
+gakr-ddgs video-search --query "web development" --duration long --max-results 10
 ```
 
-### Lecture/Educational
+### High Resolution Videos
 
-Search for lectures:
+Find HD videos:
 
 ```bash
-gakr-ddgs video-search --query "MIT OpenCourseWare machine learning"
+gakr-ddgs video-search --query "music" --resolution high --max-results 15
 ```
 
-### Limited Results
+### Recent Videos
 
-Get top 5 videos only:
+Get videos from the past day:
 
 ```bash
-gakr-ddgs video-search --query "JavaScript basics" --max-results 5
+gakr-ddgs video-search --query "breaking news" --timelimit d --max-results 10
 ```
 
-### More Results
+### Weekly Videos
+
+Get trending videos:
+
+```bash
+gakr-ddgs video-search --query "trending" --timelimit w --max-results 30
+```
+
+### Custom Output
+
+Save to specific file:
+
+```bash
+gakr-ddgs video-search --query "Python" --out ./results/python_videos.json
+```
+
+### JSON Output
+
+Output to stdout:
+
+```bash
+gakr-ddgs video-search --query "tutorial" --json
+```
+
+### Comprehensive Video Research
+
+Get detailed video results:
+
+```bash
+gakr-ddgs video-search \
+  --query "machine learning course" \
+  --duration "long" \
+  --resolution "high" \
+  --max-results 30 \
+  --safesearch on \
+  --json > ml_courses.json
+```
+
+## Video Duration Options
+
+| Duration | Description |
+|----------|-------------|
+| `short` | Less than 5 minutes |
+| `medium` | 5 to 30 minutes |
+| `long` | More than 30 minutes |
+
+## Video Resolution Options
+
+| Resolution | Description |
+|-----------|-------------|
+| `high` | 720p or higher |
+| `standard` | 480p to 720p |
+| `any` | Any resolution |
 
 Get 30 videos:
 

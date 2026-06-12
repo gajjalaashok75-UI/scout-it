@@ -20,8 +20,15 @@ gakr-ddgs fetch-url [OPTIONS]
 
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
-| `--timeout` | - | `5` | `INT` | Request timeout in seconds |
+| `--timeout` | - | `5` | `INT` | Request timeout in seconds (e.g., 10, 30) |
+| `--max-chars` | - | - | `INT` | Maximum characters to extract (e.g., 10000, 50000) - truncates content if exceeded |
+| `--max-size` | - | - | `STRING` | Maximum response size to accept (e.g., `100kb`, `1mb`, `500mb`) - truncates if exceeded |
 | `--json` | - | `false` | `BOOL` | Output raw JSON to stdout instead of saving to file |
+| `--out` | `-o` | `url_fetch_result.json` | `PATH` | Custom output file path |
+
+**⚠️ Important:** Only one of `--max-chars` OR `--max-size` can be used at a time. Using both together will return an error. Choose one parameter based on your constraint type:
+- Use `--max-chars` to limit by character count in extracted content
+- Use `--max-size` to limit by response file size (total HTML downloaded)
 
 ## Output File
 
@@ -153,6 +160,54 @@ Extract from a blog:
 
 ```bash
 gakr-ddgs fetch-url --url "https://medium.com/@author/how-to-learn-python"
+```
+
+### With Max Characters Limit
+
+Extract but limit to first 5000 characters:
+
+```bash
+gakr-ddgs fetch-url --url "https://example.com/article" --max-chars 5000
+```
+
+### With Max Size Constraint
+
+Fetch only if response is under 2 MB:
+
+```bash
+gakr-ddgs fetch-url --url "https://example.com/document" --max-size 2mb
+```
+
+### With Custom Timeout
+
+Increase timeout for slow-loading pages:
+
+```bash
+gakr-ddgs fetch-url --url "https://example.com" --timeout 30
+```
+
+### With Custom Output Location
+
+Save to custom file:
+
+```bash
+gakr-ddgs fetch-url --url "https://example.com" --out ./results/my_fetch.json
+```
+
+### With JSON Output to Console
+
+Output JSON to stdout instead of file:
+
+```bash
+gakr-ddgs fetch-url --url "https://example.com" --json
+```
+
+### ❌ INVALID: Both constraints together
+
+```bash
+# This will ERROR - only use ONE constraint parameter
+gakr-ddgs fetch-url --url "https://example.com" --max-chars 10000 --max-size 5mb
+# ERROR: Cannot use both --max-chars and --max-size together. Use only ONE parameter at a time
 ```
 
 ### Technical Documentation
