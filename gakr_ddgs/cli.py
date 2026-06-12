@@ -220,11 +220,14 @@ def image_search(
 def news_search(
     query: str,
     max_results: int = 50,
+    retry_on_zero_success: bool = True,
+    retry_attempts: int = 2,
+    retry_backoff: float = 1.0,
     region: str = 'us-en',
     safesearch: str = 'moderate',
     timelimit: Optional[str] = None,
 ):
-    """DuckDuckGo news search wrapper."""
+    """DuckDuckGo news search wrapper with retry support."""
     results, stats = _ddgs_list_search(
         'news',
         query=query,
@@ -413,6 +416,10 @@ def main():
     news_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
     news_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     news_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
+    news_parser.set_defaults(retry_on_zero=True)
+    news_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries on zero results')
+    news_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts on zero results')
+    news_parser.add_argument('--retry-backoff', type=float, default=1.0, help='Backoff seconds between retries')
 
     # Video search subcommand
     video_parser = subparsers.add_parser('video-search', help='DuckDuckGo video search')
@@ -429,6 +436,7 @@ def main():
     # URL fetch subcommand
     url_parser = subparsers.add_parser('fetch-url', help='Fetch and extract single URL')
     url_parser.add_argument('--url', '-u', required=True, help='URL to fetch')
+    url_parser.add_argument('--timeout', type=int, default=5, help='Extraction timeout in seconds')
     url_parser.add_argument('--out', '-o', default='url_fetch_result.json', help='Output file')
     
     args = parser.parse_args()
@@ -563,6 +571,9 @@ def main():
         news_results, stats = news_search(
             args.query,
             max_results=args.max,
+            retry_on_zero_success=args.retry_on_zero,
+            retry_attempts=args.retry_attempts,
+            retry_backoff=args.retry_backoff,
             region=args.region,
             safesearch=args.safesearch,
             timelimit=args.timelimit,
@@ -576,6 +587,9 @@ def main():
                 'region': args.region,
                 'safesearch': args.safesearch,
                 'timelimit': args.timelimit,
+                'retry_on_zero_success': args.retry_on_zero,
+                'retry_attempts': args.retry_attempts,
+                'retry_backoff': args.retry_backoff,
             },
             'stats': stats,
             'news_results': news_results,
@@ -634,11 +648,12 @@ def main():
     # Fetch URL
     elif args.command == 'fetch-url':
         print(f"\n📥 Fetching: {args.url}\n")
-        result = fetch_url(args.url)
+        result = fetch_url(args.url, timeout=args.timeout)
         
         output = {
             'url': args.url,
             'search_type': 'fetch',
+            'timeout': args.timeout,
             'result': result
         }
         
