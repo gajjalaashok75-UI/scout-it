@@ -21,7 +21,7 @@ gakr-ddgs web-search [OPTIONS]
 ### Extraction & Performance
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
-| `--max-results` | `-m` | `10` | `INT` | Maximum results to fetch and extract (1-100) |
+| `--max` | `-m` | `100` | `INT` | Maximum results to fetch and extract (1-100) |
 | `--timeout` | - | `5` | `INT` | Extraction timeout in seconds per URL (1-60) |
 | `--workers` | `-w` | `4` | `INT` | Parallel extraction workers (1-16) |
 
@@ -128,7 +128,7 @@ gakr-ddgs web-search --query "Python programming"
 Increase extraction parallelism:
 
 ```bash
-gakr-ddgs web-search --query "Python" --max-results 20 --workers 8 --timeout 10
+gakr-ddgs web-search --query "Python" --max 20 --workers 8 --timeout 10
 ```
 
 ### UK Region, Safe Search Off
@@ -144,7 +144,7 @@ gakr-ddgs web-search --query "technology" --region uk-en --safesearch off
 Get recent articles:
 
 ```bash
-gakr-ddgs web-search --query "news" --timelimit w --max-results 20
+gakr-ddgs web-search --query "news" --timelimit w --max 20
 ```
 
 ### With Retry Configuration
@@ -178,7 +178,7 @@ Comprehensive search with multiple parameters:
 ```bash
 gakr-ddgs web-search \
   --query "renewable energy" \
-  --max-results 20 \
+  --max 20 \
   --workers 8 \
   --timeout 15 \
   --region "us-en" \
@@ -275,7 +275,7 @@ Common region codes for `--region` parameter:
 
 | Factor | Impact | Notes |
 |--------|--------|-------|
-| `--max-results` | High | More results = longer execution time. Start with 5-10. |
+| `--max` | High | More results = longer execution time. Start with 5-10. |
 | `--timeout` | Medium | Higher timeout allows complex pages but slows search. Default 5s is good for most sites. |
 | Network Speed | High | Slow internet significantly increases total time |
 | Target Websites | High | Some sites extract faster than others |
@@ -294,7 +294,7 @@ Common region codes for `--region` parameter:
 **Solutions:**
 - Verify internet connection
 - Try a different, simpler query
-- Increase `--max-results` to 20
+- Increase `--max` to 20
 - Check if DuckDuckGo is accessible in your region
 
 ### Low Confidence Scores
@@ -316,7 +316,7 @@ Common region codes for `--region` parameter:
 **Problem:** Search takes too long
 
 **Solutions:**
-- Reduce `--max-results` to 5
+- Reduce `--max` to 5
 - Decrease `--timeout` to 3 (faster but potentially incomplete)
 - Check your internet speed
 - Try during off-peak hours
@@ -341,7 +341,7 @@ Common region codes for `--region` parameter:
 
 ```bash
 for query in "Python" "JavaScript" "Go programming"; do
-  gakr-ddgs web-search --query "$query" --max-results 5
+  gakr-ddgs web-search --query "$query" --max 5
 done
 ```
 

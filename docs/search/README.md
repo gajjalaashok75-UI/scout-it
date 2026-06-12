@@ -25,22 +25,22 @@ Comprehensive guides for all gakr-ddgs search types.
 
 ### Web Search
 ```bash
-gakr-ddgs web-search --query "your query" --max-results 10 --timeout 5
+gakr-ddgs web-search --query "your query" --max 10 --timeout 5
 ```
 
 ### Image Search
 ```bash
-gakr-ddgs image-search --query "your query" --max-results 10 --min-width 800 --min-height 600
+gakr-ddgs image-search --query "your query" --max 10 --min-width 800 --min-height 600
 ```
 
 ### News Search
 ```bash
-gakr-ddgs news-search --query "your query" --max-results 10
+gakr-ddgs news-search --query "your query" --max 10
 ```
 
 ### Video Search
 ```bash
-gakr-ddgs video-search --query "your query" --max-results 10
+gakr-ddgs video-search --query "your query" --max 10
 ```
 
 ### URL Fetch
@@ -54,7 +54,7 @@ All search commands support:
 
 - **JSON Output**: Add `--json` flag to output raw JSON instead of formatted results
 - **Timeout**: Control request timeout with `--timeout SECONDS` (default: 5)
-- **Max Results**: Limit results with `--max-results N` (default: 10)
+- **Max Results**: Limit results with `--max N` (default: 10)
 
 ## Output Format
 
@@ -101,7 +101,7 @@ results = engine.search(
 ## Performance Tips
 
 1. **Use appropriate timeout**: Increase for complex pages, decrease for speed
-2. **Limit results**: Start with small `--max-results` for testing
+2. **Limit results**: Start with small `--max` for testing
 3. **Parallel extraction**: Uses ThreadPoolExecutor with optimal worker count
 4. **Content extraction**: Multi-strategy fallback ensures best extraction quality
 

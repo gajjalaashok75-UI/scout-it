@@ -21,7 +21,7 @@ gakr-ddgs news-search [OPTIONS]
 ### Results & Output
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
-| `--max-results` | `-m` | `10` | `INT` | Maximum articles to return |
+| `--max` | `-m` | `50` | `INT` | Maximum articles to return |
 | `--out` | `-o` | `news_search_results.json` | `PATH` | Output file path |
 | `--json` | - | `false` | `BOOL` | Output to stdout as JSON |
 
@@ -110,7 +110,7 @@ gakr-ddgs news-search --query "technology" --region uk-en
 Get today's news:
 
 ```bash
-gakr-ddgs news-search --query "politics" --timelimit d --max-results 20
+gakr-ddgs news-search --query "politics" --timelimit d --max 20
 ```
 
 ### Last Week's News
@@ -118,7 +118,7 @@ gakr-ddgs news-search --query "politics" --timelimit d --max-results 20
 Get news from the past week:
 
 ```bash
-gakr-ddgs news-search --query "finance" --timelimit w --max-results 30
+gakr-ddgs news-search --query "finance" --timelimit w --max 30
 ```
 
 ### Safe Search Enabled
@@ -134,7 +134,7 @@ gakr-ddgs news-search --query "general interest" --safesearch on
 Save to specific file:
 
 ```bash
-gakr-ddgs news-search --query "technology" --out ./news/tech_news.json --max-results 50
+gakr-ddgs news-search --query "technology" --out ./news/tech_news.json --max 50
 ```
 
 ### JSON Output
@@ -223,7 +223,7 @@ Get latest news on a specific topic:
 ```bash
 gakr-ddgs news-search \
   --query "electric vehicles" \
-  --max-results 20 \
+  --max 20 \
   --json > ev_news.json
 ```
 
@@ -235,7 +235,7 @@ Check for updates on an ongoing story:
 # Run periodically (e.g., in a cron job)
 gakr-ddgs news-search \
   --query "natural disaster" \
-  --max-results 10 \
+  --max 10 \
   --json > breaking_news.json
 ```
 
@@ -246,7 +246,7 @@ Track news in your industry:
 ```bash
 gakr-ddgs news-search \
   --query "software development trends" \
-  --max-results 15
+  --max 15
 ```
 
 ### Competitive Analysis
@@ -256,7 +256,7 @@ Monitor competitor news:
 ```bash
 gakr-ddgs news-search \
   --query "major_competitor_name" \
-  --max-results 25
+  --max 25
 ```
 
 ### News by Category
@@ -265,23 +265,23 @@ Search different news categories:
 
 ```bash
 # Technology
-gakr-ddgs news-search --query "technology innovation" --max-results 10
+gakr-ddgs news-search --query "technology innovation" --max 10
 
 # Health
-gakr-ddgs news-search --query "medical breakthrough" --max-results 10
+gakr-ddgs news-search --query "medical breakthrough" --max 10
 
 # Finance
-gakr-ddgs news-search --query "stock market" --max-results 10
+gakr-ddgs news-search --query "stock market" --max 10
 
 # Politics
-gakr-ddgs news-search --query "government policy" --max-results 10
+gakr-ddgs news-search --query "government policy" --max 10
 ```
 
 ## Performance Considerations
 
 | Factor | Impact | Notes |
 |--------|--------|-------|
-| `--max-results` | Low | News search is fast (no content extraction) |
+| `--max` | Low | News search is fast (no content extraction) |
 | Query specificity | High | More specific queries = better results |
 | Network Speed | Low | News search uses lightweight requests |
 
@@ -326,7 +326,7 @@ print(date_obj.strftime("%B %d, %Y"))  # June 12, 2026
 - Try more specific search terms
 - Use quotes for exact phrases: `"AI safety"`
 - Add context terms: `"AI safety regulations" vs "AI safety"`
-- Reduce `--max-results` to see top matches only
+- Reduce `--max` to see top matches only
 
 ### Missing Specific Publication
 
@@ -359,7 +359,7 @@ topics=("AI" "Climate" "Space" "Medicine")
 for topic in "${topics[@]}"; do
   gakr-ddgs news-search \
     --query "$topic" \
-    --max-results 10 \
+    --max 10 \
     --json > "news_${topic}.json"
   echo "Collected news for: $topic"
 done
@@ -391,7 +391,7 @@ gakr-ddgs news-search --query "urgent" --json | \
 
 ```bash
 # Collect news
-gakr-ddgs news-search --query "AI" --max-results 30 --json > ai_news.json
+gakr-ddgs news-search --query "AI" --max 30 --json > ai_news.json
 
 # Extract unique sources
 jq '.results[] | .source' ai_news.json | sort -u

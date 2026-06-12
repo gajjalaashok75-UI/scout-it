@@ -54,6 +54,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Response truncation: `response.content[:max_size_bytes]` preserves partial content
 - Content truncation: `main_content[:max_chars]` preserves partial extraction
 
+#### Documentation Parameter Correction
+- **CRITICAL**: Fixed all documentation to show correct CLI argument name `--max` instead of `--max-results`
+  - Web Search: Changed `--max-results` to `--max` in all examples and parameter references
+  - Image Search: Changed `--max-results` to `--max` in all 20+ occurrences
+  - News Search: Changed `--max-results` to `--max` in all 15+ occurrences
+  - Video Search: Changed `--max-results` to `--max` in all 10+ occurrences
+  - README.md: Updated all quick-start examples
+- Updated all parameter tables, usage examples, use case examples, and batch scripts
+- All documentation now accurately reflects actual working CLI arguments
+- Users can now follow documentation examples without parameter errors
+
 #### Parameter Passing
 - Fixed all search functions to pass parameters to underlying engines
 - Fixed mock patch imports to use correct `gakr_ddgs` submodule paths

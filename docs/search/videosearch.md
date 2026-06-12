@@ -21,7 +21,7 @@ gakr-ddgs video-search [OPTIONS]
 ### Results & Output
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
-| `--max-results` | `-m` | `10` | `INT` | Maximum videos to return |
+| `--max` | `-m` | `50` | `INT` | Maximum videos to return |
 | `--out` | `-o` | `video_search_results.json` | `PATH` | Output file path |
 | `--json` | - | `false` | `BOOL` | Output to stdout as JSON |
 
@@ -106,7 +106,7 @@ gakr-ddgs video-search --query "Python tutorial"
 Find short-form content (< 5 minutes):
 
 ```bash
-gakr-ddgs video-search --query "motivation" --duration short --max-results 20
+gakr-ddgs video-search --query "motivation" --duration short --max 20
 ```
 
 ### Long-form Content (Courses)
@@ -114,7 +114,7 @@ gakr-ddgs video-search --query "motivation" --duration short --max-results 20
 Find full courses and lectures:
 
 ```bash
-gakr-ddgs video-search --query "web development" --duration long --max-results 10
+gakr-ddgs video-search --query "web development" --duration long --max 10
 ```
 
 ### High Resolution Videos
@@ -122,7 +122,7 @@ gakr-ddgs video-search --query "web development" --duration long --max-results 1
 Find HD videos:
 
 ```bash
-gakr-ddgs video-search --query "music" --resolution high --max-results 15
+gakr-ddgs video-search --query "music" --resolution high --max 15
 ```
 
 ### Recent Videos
@@ -130,7 +130,7 @@ gakr-ddgs video-search --query "music" --resolution high --max-results 15
 Get videos from the past day:
 
 ```bash
-gakr-ddgs video-search --query "breaking news" --timelimit d --max-results 10
+gakr-ddgs video-search --query "breaking news" --timelimit d --max 10
 ```
 
 ### Weekly Videos
@@ -138,7 +138,7 @@ gakr-ddgs video-search --query "breaking news" --timelimit d --max-results 10
 Get trending videos:
 
 ```bash
-gakr-ddgs video-search --query "trending" --timelimit w --max-results 30
+gakr-ddgs video-search --query "trending" --timelimit w --max 30
 ```
 
 ### Custom Output
@@ -166,7 +166,7 @@ gakr-ddgs video-search \
   --query "machine learning course" \
   --duration "long" \
   --resolution "high" \
-  --max-results 30 \
+  --max 30 \
   --safesearch on \
   --json > ml_courses.json
 ```
@@ -190,7 +190,7 @@ gakr-ddgs video-search \
 Get 30 videos:
 
 ```bash
-gakr-ddgs video-search --query "yoga exercises" --max-results 30
+gakr-ddgs video-search --query "yoga exercises" --max 30
 ```
 
 ### JSON Output
@@ -313,7 +313,7 @@ Search for tutorial series:
 ```bash
 gakr-ddgs video-search \
   --query "web development bootcamp" \
-  --max-results 15
+  --max 15
 ```
 
 ### Research
@@ -323,7 +323,7 @@ Find educational videos:
 ```bash
 gakr-ddgs video-search \
   --query "climate change science" \
-  --max-results 10
+  --max 10
 ```
 
 ### Entertainment
@@ -333,7 +333,7 @@ Find music or movies:
 ```bash
 gakr-ddgs video-search \
   --query "trailer science fiction movie 2026" \
-  --max-results 5
+  --max 5
 ```
 
 ### Software Development
@@ -343,7 +343,7 @@ Find code walkthroughs:
 ```bash
 gakr-ddgs video-search \
   --query "React hooks tutorial" \
-  --max-results 20 \
+  --max 20 \
   --json > react_videos.json
 ```
 
@@ -354,7 +354,7 @@ Create a list of videos for later:
 ```bash
 gakr-ddgs video-search \
   --query "stand-up comedy special" \
-  --max-results 30 \
+  --max 30 \
   --json > comedy_videos.json
 ```
 
@@ -374,7 +374,7 @@ Videos often fall into these categories:
 
 | Factor | Impact | Notes |
 |--------|--------|-------|
-| `--max-results` | Low | Video search is fast (no extraction) |
+| `--max` | Low | Video search is fast (no extraction) |
 | Query specificity | High | More specific = better results |
 | Network Speed | Low | Lightweight requests |
 
@@ -398,7 +398,7 @@ Videos often fall into these categories:
 **Problem:** Getting fewer videos than requested
 
 **Solutions:**
-- Increase `--max-results` to allow for more results
+- Increase `--max` to allow for more results
 - Try different search terms
 - Some queries have limited video coverage
 - Use broader search terms
@@ -438,7 +438,7 @@ topics=("Python" "JavaScript" "Go" "Rust" "Kotlin")
 for lang in "${topics[@]}"; do
   gakr-ddgs video-search \
     --query "${lang} tutorial" \
-    --max-results 10 \
+    --max 10 \
     --json > "videos_${lang}.json"
 done
 ```
@@ -469,7 +469,7 @@ gakr-ddgs video-search --query "music" --json | \
 Find which platforms have most content:
 
 ```bash
-gakr-ddgs video-search --query "tutorial" --max-results 50 --json | \
+gakr-ddgs video-search --query "tutorial" --max 50 --json | \
   jq '.results[] | .source' | sort | uniq -c | sort -rn
 ```
 
@@ -480,7 +480,7 @@ gakr-ddgs video-search --query "tutorial" --max-results 50 --json | \
 for query in "machine learning" "deep learning" "neural networks"; do
   gakr-ddgs video-search \
     --query "$query" \
-    --max-results 20 \
+    --max 20 \
     --json > "research_${query// /_}.json"
 done
 ```

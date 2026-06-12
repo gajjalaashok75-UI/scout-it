@@ -51,7 +51,7 @@ gakr-ddgs image-search [OPTIONS]
 ### Output & Retry
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
-| `--max-results` | `-m` | `10` | `INT` | Maximum images to return |
+| `--max` | `-m` | `50` | `INT` | Maximum images to return |
 | `--out` | `-o` | `image_search_results.json` | `PATH` | Output file path |
 | `--json` | - | `false` | `BOOL` | Output to stdout as JSON |
 | `--no-retry-on-zero` | - | `false` | `BOOL` | Disable retry on zero results |
@@ -169,7 +169,7 @@ gakr-ddgs image-search --query "dog"
 Find high-resolution wallpapers:
 
 ```bash
-gakr-ddgs image-search --query "wallpaper" --min-width 1920 --min-height 1080 --max-results 20
+gakr-ddgs image-search --query "wallpaper" --min-width 1920 --min-height 1080 --max 20
 ```
 
 ### Specific Visual Characteristics
@@ -185,7 +185,7 @@ gakr-ddgs image-search --query "logo" --type-image "clipart" --color "Blue" --la
 Find panoramic landscape images:
 
 ```bash
-gakr-ddgs image-search --query "landscape" --size "Wallpaper" --layout "Wide" --max-results 10
+gakr-ddgs image-search --query "landscape" --size "Wallpaper" --layout "Wide" --max 10
 ```
 
 ### License Filtered
@@ -193,7 +193,7 @@ gakr-ddgs image-search --query "landscape" --size "Wallpaper" --layout "Wide" --
 Find Creative Commons images:
 
 ```bash
-gakr-ddgs image-search --query "photo" --license-image "creative_commons" --max-results 15
+gakr-ddgs image-search --query "photo" --license-image "creative_commons" --max 15
 ```
 
 ### Download Images
@@ -203,7 +203,7 @@ Download matching images:
 ```bash
 gakr-ddgs image-search \
   --query "nature" \
-  --max-results 20 \
+  --max 20 \
   --min-width 1024 \
   --download \
   --download-dir "./my_images"
@@ -222,7 +222,7 @@ gakr-ddgs image-search --query "mountain" --layout "Panoramic" --size "Wallpaper
 Find recently added images:
 
 ```bash
-gakr-ddgs image-search --query "news" --timelimit w --max-results 30
+gakr-ddgs image-search --query "news" --timelimit w --max 30
 ```
 
 ### JSON Output
@@ -243,7 +243,7 @@ gakr-ddgs image-search \
   --type-image "photo" \
   --license-image "commercial" \
   --min-width 1280 \
-  --max-results 50 \
+  --max 50 \
   --safesearch on
 ```
 
@@ -258,7 +258,7 @@ gakr-ddgs image-search \
   --layout "Wide" \
   --min-width 2560 \
   --min-height 1440 \
-  --max-results 20 \
+  --max 20 \
   --download \
   --download-dir "./wallpapers"
 ```
@@ -382,7 +382,7 @@ for img in landscape_images:
 # Collect 50 high-quality cat images
 gakr-ddgs image-search \
   --query "cat" \
-  --max-results 50 \
+  --max 50 \
   --min-width 800 \
   --min-height 600 \
   --json > cat_dataset.json
@@ -394,7 +394,7 @@ gakr-ddgs image-search \
 # Find professional design images
 gakr-ddgs image-search \
   --query "modern interior design" \
-  --max-results 20 \
+  --max 20 \
   --min-width 1280 \
   --min-height 720
 ```
@@ -405,7 +405,7 @@ gakr-ddgs image-search \
 # Find 4K wallpapers
 gakr-ddgs image-search \
   --query "space universe" \
-  --max-results 10 \
+  --max 10 \
   --min-width 3840 \
   --min-height 2160
 ```
@@ -416,7 +416,7 @@ gakr-ddgs image-search \
 # Get images that will work as thumbnails
 gakr-ddgs image-search \
   --query "logo" \
-  --max-results 30 \
+  --max 30 \
   --min-width 128 \
   --min-height 128
 ```
@@ -425,7 +425,7 @@ gakr-ddgs image-search \
 
 | Factor | Impact | Notes |
 |--------|--------|-------|
-| `--max-results` | Medium | More results = longer search. Start with 10-20. |
+| `--max` | Medium | More results = longer search. Start with 10-20. |
 | `--min-width` / `--min-height` | Low | Filtering is fast (done locally after fetching) |
 | Network Speed | High | Each image URL needs to be fetched |
 
@@ -443,7 +443,7 @@ gakr-ddgs image-search \
 **Solutions:**
 - Try a simpler query term
 - Remove or loosen dimension filters
-- Try increasing `--max-results` to 30
+- Try increasing `--max` to 30
 - Different search terms may have better coverage
 
 ### Not Enough High-Resolution Images
@@ -452,7 +452,7 @@ gakr-ddgs image-search \
 
 **Solutions:**
 - Lower the `--min-width` or `--min-height`
-- Increase `--max-results` to search more
+- Increase `--max` to search more
 - Try more specific search terms (e.g., "4K wallpaper" vs "image")
 - Some image types naturally have low resolution
 
@@ -474,7 +474,7 @@ gakr-ddgs image-search \
 **Problem:** Image search takes too long
 
 **Solutions:**
-- Reduce `--max-results`
+- Reduce `--max`
 - Try simpler search terms
 - Check your internet speed
 - DuckDuckGo may be rate-limiting; try again later
@@ -488,7 +488,7 @@ gakr-ddgs image-search \
 for topic in "dog" "cat" "bird"; do
   gakr-ddgs image-search \
     --query "$topic" \
-    --max-results 20 \
+    --max 20 \
     --min-width 1280 \
     --min-height 720 \
     --json > "${topic}_images.json"
