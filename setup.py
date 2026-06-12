@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Setup configuration for gakr-ddgs package."""
 
 from setuptools import setup
@@ -8,7 +9,7 @@ setup(
     version="1.0.0",
     author="Ashok-gakr",
     description="Enterprise-grade DuckDuckGo search toolkit with content extraction, cleaning, and structured JSON output",
-    long_description=open("README.md").read(),
+    long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     url="https://github.com/Ashok-gakr/gakr-ddgs",
     packages=["gakr_ddgs"],
