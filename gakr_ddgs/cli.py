@@ -1,0 +1,661 @@
+#!/usr/bin/env python3
+"""
+Complete search pipeline wrapper.
+Runs extraction.py → cleaner.py
+Outputs: structured JSON with filtered results
+
+Usage (CLI):
+  gakr-ddgs web-search --query "today hot news" --max 50 --workers 6 --out results.json
+  gakr-ddgs image-search --query "sunset" --max 20 --out images.json
+
+This imports `EnterpriseSearchEngine`, `ImageSearchEngine` from `extraction.py` 
+and `process_results` from `cleaner.py`
+"""
+import argparse
+import json
+import random
+import re
+import time
+from dataclasses import asdict
+from html import unescape
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
+
+import requests
+
+try:
+    from .cleaner import process_results
+    from .extraction import DDGS, EnterpriseSearchEngine, ExtractionEngine, ImageSearchEngine
+except Exception as e:
+    raise ImportError("Could not import from gakr_ddgs modules: " + str(e))
+
+
+def _compact_options(options: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        key: value
+        for key, value in options.items()
+        if value is not None and not (isinstance(value, str) and not value.strip())
+    }
+
+
+def _ddgs_list_search(
+    method_name: str,
+    query: str,
+    max_results: int,
+    options: Optional[Dict[str, Any]] = None,
+    timeout: int = 25,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Run DDGS method with compatibility fallbacks across package versions."""
+    start_time = time.time()
+    params = _compact_options(options or {})
+    params['max_results'] = max_results
+
+    try:
+        with DDGS(timeout=timeout) as ddgs:
+            method = getattr(ddgs, method_name, None)
+            if not callable(method):
+                return [], {
+                    'total': 0,
+                    'success': 0,
+                    'execution_time': time.time() - start_time,
+                    'error': f"DDGS method '{method_name}' is unavailable in this installed version",
+                }
+
+            call_patterns = [
+                lambda: list(method(keywords=query, **params)),
+                lambda: list(method(query, **params)),
+                lambda: list(method(query, max_results=max_results)),
+                lambda: list(method(keywords=query, max_results=max_results)),
+                lambda: list(method(query, max_results)),
+                lambda: list(method(query))[:max_results],
+            ]
+
+            for call in call_patterns:
+                try:
+                    results = call()
+                    return results, {
+                        'total': len(results),
+                        'success': len(results),
+                        'execution_time': time.time() - start_time,
+                    }
+                except TypeError:
+                    continue
+
+            return [], {
+                'total': 0,
+                'success': 0,
+                'execution_time': time.time() - start_time,
+                'error': f"No compatible DDGS call signature worked for '{method_name}'",
+            }
+    except Exception as exc:
+        return [], {
+            'total': 0,
+            'success': 0,
+            'execution_time': time.time() - start_time,
+            'error': 'DuckDuckGo request failed',
+        }
+
+
+def web_search(
+    query: str,
+    max_results: int = 100,
+    workers: int = 8,
+    retry_on_zero_success: bool = True,
+    retry_attempts: int = 2,
+    retry_backoff: float = 1.0,
+    region: Optional[str] = None,
+    safesearch: str = 'moderate',
+    timelimit: Optional[str] = None,
+    backend: str = 'auto',
+):
+    """
+    Execute web search pipeline: search → extract → clean → filter.
+    
+    Args:
+        query: Search query string
+        max_results: Max results to fetch
+        workers: Parallel workers
+    
+    Returns:
+        (structured_results, stats) tuple with cleaned and structured content
+    """
+    # Phase 1: Search and extract
+    engine = EnterpriseSearchEngine(max_workers=workers)
+    search_options = _compact_options({
+        'region': region,
+        'safesearch': safesearch,
+        'timelimit': timelimit,
+        'backend': backend,
+    })
+
+    raw_results = engine.execute_search(
+        query,
+        max_results,
+        search_options=search_options,
+        retry_on_zero_success=retry_on_zero_success,
+        max_zero_success_retries=retry_attempts,
+        retry_backoff_seconds=retry_backoff,
+    )
+    
+    # Convert dataclass results to plain dicts
+    results_dicts = [asdict(r) for r in raw_results]
+    
+    # Phase 2: Clean and filter by extraction_status == "success"
+    structured_results, cleaner_stats = process_results(results_dicts)
+    
+    # Combine stats
+    combined_stats = {
+        'search_engine': engine.stats,
+        'cleaner': cleaner_stats
+    }
+    return structured_results, combined_stats
+
+
+def image_search(
+    query: str,
+    max_results: int = 50,
+    retry_on_zero_success: bool = True,
+    retry_attempts: int = 2,
+    retry_backoff: float = 1.0,
+    region: str = 'us-en',
+    safesearch: str = 'moderate',
+    timelimit: Optional[str] = None,
+    size: Optional[str] = None,
+    color: Optional[str] = None,
+    type_image: Optional[str] = None,
+    layout: Optional[str] = None,
+    license_image: Optional[str] = None,
+    min_width: Optional[int] = None,
+    max_width: Optional[int] = None,
+    min_height: Optional[int] = None,
+    max_height: Optional[int] = None,
+): 
+    """
+    Execute image search pipeline: search → extract metadata.
+
+    Args:
+        query: Search query string
+        max_results: Max images to fetch
+
+    Returns:
+        (image_results, stats) tuple with image metadata
+    """
+    engine = ImageSearchEngine()
+    image_options = _compact_options({
+        'region': region,
+        'safesearch': safesearch,
+        'timelimit': timelimit,
+        'size': size,
+        'color': color,
+        'type_image': type_image,
+        'layout': layout,
+        'license_image': license_image,
+    })
+
+    raw_results = engine.execute_image_search(
+        query,
+        max_results,
+        search_options=image_options,
+        retry_on_zero_success=retry_on_zero_success,
+        max_zero_success_retries=retry_attempts,
+        retry_backoff_seconds=retry_backoff,
+        min_width=min_width,
+        max_width=max_width,
+        min_height=min_height,
+        max_height=max_height,
+    ) 
+    
+    # Convert to dicts for JSON serialization
+    results_dicts = [asdict(r) for r in raw_results]
+    
+    stats = {
+        'search_engine': engine.stats
+    }
+    
+    print(f"📈 Found {len(raw_results)} images for query: {query}")
+    return results_dicts, stats
+
+
+def news_search(
+    query: str,
+    max_results: int = 50,
+    region: str = 'us-en',
+    safesearch: str = 'moderate',
+    timelimit: Optional[str] = None,
+):
+    """DuckDuckGo news search wrapper."""
+    results, stats = _ddgs_list_search(
+        'news',
+        query=query,
+        max_results=max_results,
+        options={
+            'region': region,
+            'safesearch': safesearch,
+            'timelimit': timelimit,
+        },
+    )
+    return results, {'search_engine': stats}
+
+
+def video_search(
+    query: str,
+    max_results: int = 50,
+    region: str = 'us-en',
+    safesearch: str = 'moderate',
+    timelimit: Optional[str] = None,
+    resolution: Optional[str] = None,
+    duration: Optional[str] = None,
+    license_videos: Optional[str] = None,
+):
+    """DuckDuckGo video search wrapper."""
+    results, stats = _ddgs_list_search(
+        'videos',
+        query=query,
+        max_results=max_results,
+        options={
+            'region': region,
+            'safesearch': safesearch,
+            'timelimit': timelimit,
+            'resolution': resolution,
+            'duration': duration,
+            'license_videos': license_videos,
+        },
+    )
+    return results, {'search_engine': stats}
+
+
+def _extract_html_title(html_text: str) -> str:
+    """Extract page title from HTML text."""
+    if not html_text:
+        return ""
+    match = re.search(r"<title[^>]*>(.*?)</title>", html_text, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return ""
+    title = re.sub(r"<[^>]+>", " ", match.group(1))
+    return unescape(re.sub(r"\s+", " ", title)).strip()
+
+
+def fetch_url(url: str, timeout: int = 25):
+    """
+    Fetch a single URL and extract/clean its content.
+    
+    Enhanced version of fatchurl with better naming.
+
+    Returns a dict containing a single structured result.
+    """
+    parsed = urlparse(str(url or "").strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return {"error": "Invalid URL. Provide a working http/https URL."}
+
+    start_time = time.time()
+    try:
+        headers = {
+            "User-Agent": random.choice(ExtractionEngine.USER_AGENTS),
+            "Accept": "text/html,application/xhtml+xml,*/*;q=0.9",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        response = requests.get(
+            url,
+            headers=headers,
+            timeout=timeout,
+            allow_redirects=True,
+            stream=True,
+        )
+        response.raise_for_status()
+        final_url = str(response.url)
+
+        extractor = ExtractionEngine()
+        main_content, method, confidence = extractor.extract_content(
+            final_url,
+            response.text,
+            timeout=timeout,
+        )
+        elapsed = time.time() - start_time
+        title = _extract_html_title(response.text) or final_url
+
+        raw_record = {
+            "position": 1,
+            "title": title,
+            "url": str(url),
+            "final_url": final_url,
+            "publish_date": None,
+            "author": None,
+            "fetch_time": elapsed,
+            "extraction_status": "success" if str(main_content).strip() else "failed",
+            "confidence_score": float(confidence or 0.0),
+            "content_word_count": len(str(main_content or "").split()),
+            "content_type": "unknown",
+            "main_content": main_content or "",
+            "snippet": "",
+            "extraction_method": method or "unknown",
+        }
+
+        structured_results, cleaner_stats = process_results([raw_record])
+        if structured_results:
+            structured = structured_results[0]
+        else:
+            structured = raw_record
+            structured["cleaned_content"] = str(main_content or "").strip()
+            structured["content_sections"] = {}
+
+        return {
+            "result": structured,
+            "stats": {
+                "fetch_time_seconds": round(elapsed, 3),
+                "cleaner": cleaner_stats,
+                "extraction_method": method,
+                "confidence_score": confidence,
+            },
+        }
+    except Exception as exc:
+        return {"error": "fetch_url failed"}
+
+
+# Legacy function name for backward compatibility
+def fatchurl(url: str, timeout: int = 25):
+    """Deprecated: Use fetch_url() instead"""
+    return fetch_url(url, timeout)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Complete search pipeline: web, image, news, video search + URL fetch'
+    )
+    
+    # Subcommands for different search types
+    subparsers = parser.add_subparsers(dest='command', help='Search commands')
+    
+    # Web search subcommand
+    web_parser = subparsers.add_parser('web-search', help='Web search')
+    web_parser.add_argument('--query', '-q', required=True, help='Search query')
+    web_parser.add_argument('--max', '-m', type=int, default=100, help='Max results')
+    web_parser.add_argument('--workers', '-w', type=int, default=8, help='Parallel workers')
+    web_parser.add_argument('--out', '-o', default='struct_format_results.json', help='Output file')
+    web_parser.add_argument('--region', default=None, help='DuckDuckGo region (example: us-en, wt-wt)')
+    web_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
+    web_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
+    web_parser.add_argument('--backend', default='auto', choices=['auto', 'html', 'lite'], help='DDGS backend')
+    web_parser.set_defaults(retry_on_zero=True)
+    web_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries when 0 successful extractions')
+    web_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts when 0 successful extractions')
+    web_parser.add_argument('--retry-backoff', type=float, default=1.0, help='Backoff seconds between retries')
+    
+    # Image search subcommand
+    img_parser = subparsers.add_parser('image-search', help='Image search')
+    img_parser.add_argument('--query', '-q', required=True, help='Search query')
+    img_parser.add_argument('--max', '-m', type=int, default=50, help='Max images')
+    img_parser.add_argument('--out', '-o', default='image_search_results.json', help='Output file')
+    img_parser.add_argument('--download', '-d', action='store_true', help='Download images')
+    img_parser.add_argument('--download-dir', default='downloaded_images', help='Download directory')
+    img_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
+    img_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
+    img_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
+    img_parser.add_argument('--size', default=None, help='Image size filter (Small, Medium, Large, Wallpaper)')
+    img_parser.add_argument('--color', default=None, help='Image color filter')
+    img_parser.add_argument('--type-image', default=None, help='Image type filter (photo, clipart, gif, transparent, line)')
+    img_parser.add_argument('--layout', default=None, help='Image layout filter (Square, Tall, Wide)')
+    img_parser.add_argument('--license-image', default=None, help='Image license filter')
+    img_parser.add_argument('--min-width', type=int, default=None, help='Minimum image width in pixels')
+    img_parser.add_argument('--max-width', type=int, default=None, help='Maximum image width in pixels')
+    img_parser.add_argument('--min-height', type=int, default=None, help='Minimum image height in pixels')
+    img_parser.add_argument('--max-height', type=int, default=None, help='Maximum image height in pixels')
+    img_parser.set_defaults(retry_on_zero=True)
+    img_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries when 0 valid images are found')
+    img_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts when 0 valid images are found')
+    img_parser.add_argument('--retry-backoff', type=float, default=1.0, help='Backoff seconds between retries')
+
+    # News search subcommand
+    news_parser = subparsers.add_parser('news-search', help='DuckDuckGo news search')
+    news_parser.add_argument('--query', '-q', required=True, help='Search query')
+    news_parser.add_argument('--max', '-m', type=int, default=50, help='Max news items')
+    news_parser.add_argument('--out', '-o', default='news_search_results.json', help='Output file')
+    news_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
+    news_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
+    news_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
+
+    # Video search subcommand
+    video_parser = subparsers.add_parser('video-search', help='DuckDuckGo video search')
+    video_parser.add_argument('--query', '-q', required=True, help='Search query')
+    video_parser.add_argument('--max', '-m', type=int, default=50, help='Max videos')
+    video_parser.add_argument('--out', '-o', default='video_search_results.json', help='Output file')
+    video_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
+    video_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
+    video_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
+    video_parser.add_argument('--resolution', default=None, help='Video resolution filter (high, standard)')
+    video_parser.add_argument('--duration', default=None, help='Video duration filter (short, medium, long)')
+    video_parser.add_argument('--license-videos', default=None, help='Video license filter')
+    
+    # URL fetch subcommand
+    url_parser = subparsers.add_parser('fetch-url', help='Fetch and extract single URL')
+    url_parser.add_argument('--url', '-u', required=True, help='URL to fetch')
+    url_parser.add_argument('--out', '-o', default='url_fetch_result.json', help='Output file')
+    
+    args = parser.parse_args()
+    
+    if not args.command:
+        parser.print_help()
+        return
+
+    if args.command == 'image-search':
+        if args.min_width is not None and args.max_width is not None and args.min_width > args.max_width:
+            parser.error('--min-width cannot be greater than --max-width')
+        if args.min_height is not None and args.max_height is not None and args.min_height > args.max_height:
+            parser.error('--min-height cannot be greater than --max-height')
+    
+    # Web search
+    if args.command == 'web-search':
+        print(f"\n🔍 Starting web search: '{args.query}'\n")
+        structured_results, stats = web_search(
+            args.query,
+            max_results=args.max,
+            workers=args.workers,
+            retry_on_zero_success=args.retry_on_zero,
+            retry_attempts=args.retry_attempts,
+            retry_backoff=args.retry_backoff,
+            region=args.region,
+            safesearch=args.safesearch,
+            timelimit=args.timelimit,
+            backend=args.backend,
+        )
+        
+        output = {
+            'query': args.query,
+            'search_type': 'web',
+            'parameters': {
+                'max_results': args.max,
+                'workers': args.workers,
+                'region': args.region,
+                'safesearch': args.safesearch,
+                'timelimit': args.timelimit,
+                'backend': args.backend,
+                'retry_on_zero_success': args.retry_on_zero,
+                'retry_attempts': args.retry_attempts,
+                'retry_backoff': args.retry_backoff,
+            },
+            'stats': stats,
+            'structured_results': structured_results
+        }
+        
+        out_path = Path(args.out)
+        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+        
+        print(f'\n✅ WEB SEARCH COMPLETE!')
+        print(f'   🔍 Query: {args.query}')
+        print(f'   📊 Total results from search: {stats["search_engine"]["total"]}')
+        print(f'   ✅ Successfully extracted: {stats["cleaner"]["successful"]}')
+        print(f'   ❌ Failed (ignored): {stats["cleaner"]["failed"]}')
+        print(f'   📄 Structured JSON: {out_path}')
+        print(f'   📂 Results saved to: {out_path.resolve()}')
+        print(f'   ⏱️  Execution time: {stats["search_engine"]["execution_time"]:.1f}s\n')
+    
+    # Image search
+    elif args.command == 'image-search':
+        print(f"\n🖼️  Starting image search: '{args.query}'\n")
+        image_results, stats = image_search(
+            args.query,
+            max_results=args.max,
+            retry_on_zero_success=args.retry_on_zero,
+            retry_attempts=args.retry_attempts,
+            retry_backoff=args.retry_backoff,
+            region=args.region,
+            safesearch=args.safesearch,
+            timelimit=args.timelimit,
+            size=args.size,
+            color=args.color,
+            type_image=args.type_image,
+            layout=args.layout,
+            license_image=args.license_image,
+            min_width=args.min_width,
+            max_width=args.max_width,
+            min_height=args.min_height,
+            max_height=args.max_height,
+        )
+        
+        output = {
+            'query': args.query,
+            'search_type': 'image',
+            'parameters': {
+                'max_results': args.max,
+                'region': args.region,
+                'safesearch': args.safesearch,
+                'timelimit': args.timelimit,
+                'size': args.size,
+                'color': args.color,
+                'type_image': args.type_image,
+                'layout': args.layout,
+                'license_image': args.license_image,
+                'min_width': args.min_width,
+                'max_width': args.max_width,
+                'min_height': args.min_height,
+                'max_height': args.max_height,
+                'retry_on_zero_success': args.retry_on_zero,
+                'retry_attempts': args.retry_attempts,
+                'retry_backoff': args.retry_backoff,
+            },
+            'stats': stats,
+            'image_results': image_results
+        }
+        
+        out_path = Path(args.out)
+        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+        
+        print(f'\n✅ IMAGE SEARCH COMPLETE!')
+        print(f'   🖼️  Query: {args.query}')
+        print(f'   📊 Total images found: {stats["search_engine"]["total"]}')
+        print(f'   ✅ Valid URLs: {stats["search_engine"]["success"]}')
+        print(f'   📄 Results JSON: {out_path}')
+        print(f'   📂 Results saved to: {out_path.resolve()}')
+        print(f'   ⏱️  Execution time: {stats["search_engine"]["execution_time"]:.2f}s')
+        
+        # Download images if requested
+        if args.download and image_results:
+            from references.quick_scrape import ImageSearchEngine
+            engine = ImageSearchEngine()
+            engine.results = [type('obj', (object,), r)() for r in image_results]
+            engine.download_images(args.download_dir, min(10, len(image_results)))
+        
+        print()
+
+    # News search
+    elif args.command == 'news-search':
+        print(f"\n📰 Starting news search: '{args.query}'\n")
+        news_results, stats = news_search(
+            args.query,
+            max_results=args.max,
+            region=args.region,
+            safesearch=args.safesearch,
+            timelimit=args.timelimit,
+        )
+
+        output = {
+            'query': args.query,
+            'search_type': 'news',
+            'parameters': {
+                'max_results': args.max,
+                'region': args.region,
+                'safesearch': args.safesearch,
+                'timelimit': args.timelimit,
+            },
+            'stats': stats,
+            'news_results': news_results,
+        }
+
+        out_path = Path(args.out)
+        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+
+        print(f'\n✅ NEWS SEARCH COMPLETE!')
+        print(f'   📰 Query: {args.query}')
+        print(f'   📊 Total news found: {stats["search_engine"].get("total", 0)}')
+        print(f'   📄 Results JSON: {out_path}')
+        print(f'   📂 Results saved to: {out_path.resolve()}')
+        print(f'   ⏱️  Execution time: {stats["search_engine"].get("execution_time", 0.0):.2f}s\n')
+
+    # Video search
+    elif args.command == 'video-search':
+        print(f"\n🎬 Starting video search: '{args.query}'\n")
+        video_results, stats = video_search(
+            args.query,
+            max_results=args.max,
+            region=args.region,
+            safesearch=args.safesearch,
+            timelimit=args.timelimit,
+            resolution=args.resolution,
+            duration=args.duration,
+            license_videos=args.license_videos,
+        )
+
+        output = {
+            'query': args.query,
+            'search_type': 'video',
+            'parameters': {
+                'max_results': args.max,
+                'region': args.region,
+                'safesearch': args.safesearch,
+                'timelimit': args.timelimit,
+                'resolution': args.resolution,
+                'duration': args.duration,
+                'license_videos': args.license_videos,
+            },
+            'stats': stats,
+            'video_results': video_results,
+        }
+
+        out_path = Path(args.out)
+        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+
+        print(f'\n✅ VIDEO SEARCH COMPLETE!')
+        print(f'   🎬 Query: {args.query}')
+        print(f'   📊 Total videos found: {stats["search_engine"].get("total", 0)}')
+        print(f'   📄 Results JSON: {out_path}')
+        print(f'   📂 Results saved to: {out_path.resolve()}')
+        print(f'   ⏱️  Execution time: {stats["search_engine"].get("execution_time", 0.0):.2f}s\n')
+    
+    # Fetch URL
+    elif args.command == 'fetch-url':
+        print(f"\n📥 Fetching: {args.url}\n")
+        result = fetch_url(args.url)
+        
+        output = {
+            'url': args.url,
+            'search_type': 'fetch',
+            'result': result
+        }
+        
+        out_path = Path(args.out)
+        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+        
+        if "error" in result:
+            print(f"❌ Error: {result['error']}\n")
+        else:
+            print(f'✅ FETCH COMPLETE!')
+            print(f'   📝 Title: {result["result"]["title"]}')
+            print(f'   📊 Words: {result["result"]["content_word_count"]}')
+            print(f'   ✅ Status: {result["stats"]["extraction_method"]}')
+            print(f'   ⏱️  Fetch time: {result["stats"]["fetch_time_seconds"]}s')
+            print(f'   📄 Result JSON: {out_path}')
+            print(f'   📂 Results saved to: {out_path.resolve()}\n')
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gakr-ddgs"
+version = "1.0.0"
+description = "Enterprise-grade DuckDuckGo search toolkit with content extraction, cleaning, and structured JSON output"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Ashok-gakr"}
+]
+keywords = ["search", "duckduckgo", "web-scraping", "content-extraction", "data-collection"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "duckduckgo-search>=3.9.0",
+    "requests>=2.28.0",
+    "beautifulsoup4>=4.11.0",
+    "trafilatura>=1.6.0",
+    "justext>=3.0.0",
+    "boilerpy3>=1.0.0",
+    "rich>=13.0.0",
+    "urllib3>=1.26.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "flake8>=5.0.0",
+    "mypy>=0.990",
+    "isort>=5.11.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Ashok-gakr/gakr-ddgs"
+Documentation = "https://github.com/Ashok-gakr/gakr-ddgs#readme"
+Repository = "https://github.com/Ashok-gakr/gakr-ddgs.git"
+"Bug Tracker" = "https://github.com/Ashok-gakr/gakr-ddgs/issues"
+
+[project.scripts]
+gakr-ddgs = "gakr_ddgs.cli:main"
+
+[tool.setuptools]
+packages = ["gakr_ddgs"]
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

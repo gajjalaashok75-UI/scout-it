@@ -1,0 +1,33 @@
+# Include package documentation
+include README.md
+include INSTALL.md
+include PACKAGE_CONVERSION_SUMMARY.md
+include LICENSE
+include requirements.txt
+
+# Include build configuration
+include pyproject.toml
+include setup.py
+include setup.cfg
+include tox.ini
+include .gitignore
+
+# Include package source code
+recursive-include gakr_ddgs *.py
+recursive-include tests *.py
+
+# Exclude unwanted files
+exclude quick_scrape.py
+exclude main_content_cleaner.py
+exclude search.py
+exclude test_search.py
+exclude struct_format_results.json
+exclude *.json
+
+global-exclude __pycache__
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude .DS_Store
+global-exclude .coverage
+global-exclude .pytest_cache
+global-exclude htmlcov
