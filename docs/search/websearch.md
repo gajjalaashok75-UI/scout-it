@@ -358,6 +358,50 @@ gakr-ddgs web-search --query "news" --json | \
   jq '.results[] | select(.confidence_score > 0.8)'
 ```
 
+## ⚠️ Rate Limiting & Troubleshooting
+
+### DuckDuckGo Rate Limiting
+
+DuckDuckGo search is **rate-limited**. If you encounter zero results after multiple retry attempts:
+
+**Solutions:**
+1. **Try different query** - Use more specific or different keywords
+2. **Adjust retry parameters:**
+   - Increase `--retry-attempts` (default: 2)
+   - Increase `--retry-backoff` (default: 1.0 seconds)
+3. **Reduce results** - Lower `--max` parameter to reduce load
+4. **Change parameters** - Try different `--region`, `--timelimit`, or `--backend`
+5. **Wait and retry** - Wait several minutes before trying again
+6. **Check connection** - Verify internet connectivity
+
+### Zero Results After Retries
+
+If the search still returns zero results:
+
+```bash
+# Before retrying - wait a few minutes
+sleep 300
+
+# Try with simplified query
+gakr-ddgs web-search --query "simplified query" --max 5
+
+# Try different region
+gakr-ddgs web-search --query "original query" --region "wt-wt" --max 5
+
+# Try with fewer retries but more backoff
+gakr-ddgs web-search --query "original query" \
+  --retry-attempts 3 \
+  --retry-backoff 2.0
+```
+
+### Best Practices for Reliability
+
+- **Small batches** - Search for 5-10 results at a time
+- **Specific queries** - More specific = faster, fewer retries
+- **Reasonable timeouts** - Default 5s extraction timeout is good
+- **Rate yourself** - Don't hammer with repeated requests
+- **Monitor output** - Watch for consistent zero results (rate limit signal)
+
 ## Related Documentation
 
 - [Image Search](./imagesearch.md)

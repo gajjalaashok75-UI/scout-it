@@ -485,6 +485,47 @@ for query in "machine learning" "deep learning" "neural networks"; do
 done
 ```
 
+## ⚠️ Rate Limiting & Troubleshooting
+
+### DuckDuckGo Rate Limiting
+
+Video search is **rate-limited** by DuckDuckGo. If you encounter zero results:
+
+**Solutions:**
+1. **Simplify query** - Use basic keywords without special characters
+2. **Remove filters** - Try without `--duration` or `--resolution`
+3. **Reduce results** - Lower `--max` parameter (start with 5-10)
+4. **Change region** - Try different `--region` setting
+5. **Broader terms** - Use more general search words
+6. **Wait and retry** - Wait several minutes before trying again
+
+### Zero Results Recovery Steps
+
+```bash
+# Wait before retrying
+sleep 300
+
+# Try basic search without filters
+gakr-ddgs video-search --query "simple keywords" --max 5
+
+# Try without duration filter
+gakr-ddgs video-search --query "original query" --max 10
+
+# Try different region
+gakr-ddgs video-search --query "original query" --region "us-en" --max 10
+
+# Try with broader query
+gakr-ddgs video-search --query "broad search term" --max 20
+```
+
+### Best Practices
+
+- **General terms** - Use common video search keywords
+- **No filters initially** - Start without `--duration` or `--resolution`
+- **Small batches** - Begin with `--max 5-10` results
+- **Avoid rapid requests** - Space out repeated searches
+- **Monitor for limits** - Watch for persistent zero results
+
 ## Related Documentation
 
 - [Web Search](./websearch.md)

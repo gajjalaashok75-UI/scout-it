@@ -517,6 +517,47 @@ gakr-ddgs image-search --query "landscape" --json | \
              (.dimensions.width / .dimensions.height) < 1.8)'
 ```
 
+## ⚠️ Rate Limiting & Troubleshooting
+
+### DuckDuckGo Rate Limiting
+
+DuckDuckGo image search is **rate-limited**. If you encounter zero results:
+
+**Solutions:**
+1. **Simplify query** - Use more general keywords without special characters
+2. **Remove filters** - Try without `--min-width`, `--min-height`, or other filters
+3. **Reduce results** - Lower `--max` parameter (try starting with 5-10)
+4. **Try without download** - Searching without `--download` is faster
+5. **Change parameters:**
+   - Try different `--region`
+   - Try different `--size` or `--layout`
+   - Clear `--type-image` or `--license-image` filters
+6. **Wait and retry** - Wait several minutes before trying again
+
+### Zero Results - Recovery Steps
+
+```bash
+# Step 1: Wait
+sleep 300
+
+# Step 2: Try with minimal filters
+gakr-ddgs image-search --query "simple keywords" --max 5
+
+# Step 3: Try different region
+gakr-ddgs image-search --query "original query" --region "us-en" --max 5
+
+# Step 4: No filters at all
+gakr-ddgs image-search --query "broad query" --max 10
+```
+
+### Best Practices
+
+- **Specific keywords** - More specific = better results
+- **Avoid filters** - Start without filters, add gradually
+- **Small batches** - Search for 5-10 images first
+- **No downloads** - Skip `--download` for faster search
+- **Monitor for patterns** - Consistent zero results = rate limited
+
 ## Related Documentation
 
 - [Web Search](./websearch.md)

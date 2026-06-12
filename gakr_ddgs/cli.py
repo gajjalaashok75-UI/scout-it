@@ -428,9 +428,16 @@ def main():
     subparsers = parser.add_subparsers(dest='command', help='Search commands')
     
     # Web search subcommand
-    web_parser = subparsers.add_parser('web-search', help='Web search')
+    web_parser = subparsers.add_parser(
+        'web-search',
+        help='Web search',
+        description='Web search with content extraction.\n\n'
+                    '⚠️  RATE LIMITING: DuckDuckGo is rate-limited. If you get zero results after retries,\n'
+                    'try: (1) Using a different search query, (2) Adjusting --retry-attempts and --retry-backoff,\n'
+                    '(3) Waiting and trying again later, or (4) Checking your internet connection.'
+    )
     web_parser.add_argument('--query', '-q', required=True, help='Search query')
-    web_parser.add_argument('--max', '-m', type=int, default=100, help='Max results')
+    web_parser.add_argument('--max', '-m', type=int, default=5, help='Max results (1-100)')
     web_parser.add_argument('--workers', '-w', type=int, default=8, help='Parallel workers')
     web_parser.add_argument('--out', '-o', default='struct_format_results.json', help='Output file')
     web_parser.add_argument('--region', default=None, help='DuckDuckGo region (example: us-en, wt-wt)')
@@ -443,9 +450,16 @@ def main():
     web_parser.add_argument('--retry-backoff', type=float, default=1.0, help='Backoff seconds between retries')
     
     # Image search subcommand
-    img_parser = subparsers.add_parser('image-search', help='Image search')
+    img_parser = subparsers.add_parser(
+        'image-search',
+        help='Image search',
+        description='Image search with dimension and property filtering.\n\n'
+                    '⚠️  RATE LIMITING: DuckDuckGo is rate-limited. If you get zero results after searches,\n'
+                    'try: (1) Using different query keywords, (2) Removing dimension filters temporarily,\n'
+                    '(3) Reducing --max parameter, or (4) Trying again later.'
+    )
     img_parser.add_argument('--query', '-q', required=True, help='Search query')
-    img_parser.add_argument('--max', '-m', type=int, default=50, help='Max images')
+    img_parser.add_argument('--max', '-m', type=int, default=5, help='Max images (1-50)')
     img_parser.add_argument('--out', '-o', default='image_search_results.json', help='Output file')
     img_parser.add_argument('--download', '-d', action='store_true', help='Download images')
     img_parser.add_argument('--download-dir', default='downloaded_images', help='Download directory')
@@ -467,9 +481,16 @@ def main():
     img_parser.add_argument('--retry-backoff', type=float, default=1.0, help='Backoff seconds between retries')
 
     # News search subcommand
-    news_parser = subparsers.add_parser('news-search', help='DuckDuckGo news search')
+    news_parser = subparsers.add_parser(
+        'news-search',
+        help='DuckDuckGo news search',
+        description='News search with regional and temporal filtering.\n\n'
+                    '⚠️  RATE LIMITING: DuckDuckGo is rate-limited. If you get zero results after searches,\n'
+                    'try: (1) Broadening your query, (2) Removing --timelimit filter,\n'
+                    '(3) Changing --region, or (4) Waiting and retrying.'
+    )
     news_parser.add_argument('--query', '-q', required=True, help='Search query')
-    news_parser.add_argument('--max', '-m', type=int, default=50, help='Max news items')
+    news_parser.add_argument('--max', '-m', type=int, default=5, help='Max news items (1-50)')
     news_parser.add_argument('--out', '-o', default='news_search_results.json', help='Output file')
     news_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
     news_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
@@ -480,9 +501,16 @@ def main():
     news_parser.add_argument('--retry-backoff', type=float, default=1.0, help='Backoff seconds between retries')
 
     # Video search subcommand
-    video_parser = subparsers.add_parser('video-search', help='DuckDuckGo video search')
+    video_parser = subparsers.add_parser(
+        'video-search',
+        help='DuckDuckGo video search',
+        description='Video search with duration and resolution filtering.\n\n'
+                    '⚠️  RATE LIMITING: DuckDuckGo is rate-limited. If you get zero results after searches,\n'
+                    'try: (1) Using broader search terms, (2) Removing --duration filter,\n'
+                    '(3) Changing --region, or (4) Trying again later.'
+    )
     video_parser.add_argument('--query', '-q', required=True, help='Search query')
-    video_parser.add_argument('--max', '-m', type=int, default=50, help='Max videos')
+    video_parser.add_argument('--max', '-m', type=int, default=5, help='Max videos (1-50)')
     video_parser.add_argument('--out', '-o', default='video_search_results.json', help='Output file')
     video_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
     video_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
@@ -492,7 +520,14 @@ def main():
     video_parser.add_argument('--license-videos', default=None, help='Video license filter')
     
     # URL fetch subcommand
-    url_parser = subparsers.add_parser('fetch-url', help='Fetch and extract single URL')
+    url_parser = subparsers.add_parser(
+        'fetch-url',
+        help='Fetch and extract single URL',
+        description='Fetch a URL and extract main content.\n\n'
+                    '⚠️  NOTE: Content extraction depends on website structure. If extraction fails,\n'
+                    'try: (1) Checking if the URL is valid, (2) Using --max-chars or --max-size to adjust output,\n'
+                    '(3) Verifying the website is accessible, or (4) Using --timeout to increase wait time.'
+    )
     url_parser.add_argument('--url', '-u', required=True, help='URL to fetch')
     url_parser.add_argument('--timeout', type=int, default=5, help='Extraction timeout in seconds')
     url_parser.add_argument('--max-chars', type=int, default=None, help='Maximum characters to extract (e.g., 10000)')

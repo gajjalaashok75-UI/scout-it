@@ -400,6 +400,44 @@ jq '.results[] | .source' ai_news.json | sort -u
 jq '.results[] | .source' ai_news.json | sort | uniq -c | sort -rn
 ```
 
+## ⚠️ Rate Limiting & Troubleshooting
+
+### DuckDuckGo Rate Limiting
+
+News search is **rate-limited** by DuckDuckGo. If you get zero results:
+
+**Solutions:**
+1. **Broaden query** - Use more general terms ("AI" instead of "artificial intelligence machine learning deep learning")
+2. **Remove time filter** - Drop `--timelimit` to search all news
+3. **Change region** - Try different `--region` (default: us-en)
+4. **Reduce results** - Lower `--max` parameter (try 5-10 first)
+5. **Different keywords** - Try alternative search terms
+6. **Wait and retry** - Wait several minutes before trying again
+
+### Zero Results Recovery
+
+```bash
+# Wait before retrying
+sleep 300
+
+# Try with basic query
+gakr-ddgs news-search --query "simple keywords" --max 5
+
+# Try without time filter
+gakr-ddgs news-search --query "original query" --max 5
+
+# Try different region
+gakr-ddgs news-search --query "original query" --region "wt-wt" --max 10
+```
+
+### Best Practices
+
+- **Specific topics** - News search works better with specific topics
+- **Recent news** - Use `--timelimit d` or `w` for better results
+- **Small batches** - Start with `--max 5` or `--max 10`
+- **Avoid duplication** - Don't run same query repeatedly
+- **Rate yourself** - Space out requests by a few minutes
+
 ## Related Documentation
 
 - [Web Search](./websearch.md)

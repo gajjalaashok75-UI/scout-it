@@ -530,6 +530,49 @@ gakr-ddgs fetch-url --url "https://example.com" --json | \
   jq '.result.cleaned_content.sentiment'
 ```
 
+## ⚠️ Extraction & Rate Limiting Notes
+
+### Content Extraction Challenges
+
+Extraction may fail or return limited content for:
+
+1. **JavaScript-heavy sites** - Content loaded dynamically after page load
+   - Solution: Try with `--max-chars` to get partial content
+
+2. **Paywalled content** - Articles behind login or subscription walls
+   - Solution: These typically won't be extractable; check access first
+
+3. **Dynamic content** - Content that changes after JavaScript execution
+   - Solution: May get limited content; use `--timeout` parameter if needed
+
+4. **Rate limiting** - Target website may rate-limit your requests
+   - Solution: Space out requests, respect robots.txt, add delays
+
+5. **Authentication required** - Protected pages needing login
+   - Solution: Not available via fetch-url; requires browser-based access
+
+### Extraction Success Tips
+
+```bash
+# For pages with strict size limits
+gakr-ddgs fetch-url --url "https://example.com" --max-chars 5000
+
+# For problematic sites, increase timeout
+gakr-ddgs fetch-url --url "https://example.com" --timeout 30
+
+# Check extraction result metadata
+gakr-ddgs fetch-url --url "https://example.com" --json | \
+  jq '.result.extraction_metadata'
+```
+
+### Best Practices
+
+- **Verify URL works** - Test URL in browser first
+- **Check robots.txt** - Respect the site's robots.txt
+- **Space requests** - Don't hammer sites with rapid requests
+- **Reasonable timeouts** - 5-30 seconds is typical
+- **Monitor success rate** - Track which sites extract well
+
 ## Related Documentation
 
 - [Web Search](./websearch.md)

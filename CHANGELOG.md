@@ -112,6 +112,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each guide includes parameters, examples, reference tables, programmatic API
 - Clear documentation of parameter constraints and restrictions
 
+#### Default Result Limits
+- **Changed `--max` default values to 5 for all search commands** (previously higher values):
+  - `web-search`: Default changed from 100 to 5 (supports 1-100 range)
+  - `image-search`: Default changed from 50 to 5 (supports 1-50 range)
+  - `news-search`: Default changed from 50 to 5 (supports 1-50 range)
+  - `video-search`: Default changed from 50 to 5 (supports 1-50 range)
+- **Rationale**: Lower defaults improve user experience by:
+  - Reducing rate-limiting issues on first run
+  - Providing faster results for quick testing
+  - Encouraging users to use reasonable result counts
+  - Teaching users to specify desired `--max` explicitly
+  - Example: `gakr-ddgs web-search --query "example" --max 50`
+- Help text now shows supported range: `--max 50 (1-100 for web, 1-50 for others)`
+
+#### Rate Limiting & User Experience Enhancements
+- Added **proactive rate-limiting warnings** to all 5 CLI subcommand help text:
+  - `web-search`: Explains DuckDuckGo rate limits and recovery strategies
+  - `image-search`: Explains rate limits with filter adjustment guidance
+  - `news-search`: Explains rate limits with query/filter adjustment options
+  - `video-search`: Explains rate limits with filter adjustment strategies
+  - `fetch-url`: Explains extraction challenges (JS-heavy sites, paywalls, dynamic content, website rate limiting)
+- Added comprehensive **"⚠️ Rate Limiting & Troubleshooting"** sections to all documentation:
+  - `docs/search/websearch.md`: Rate limiting explanation, 5+ solutions, recovery steps with bash examples, best practices
+  - `docs/search/imagesearch.md`: Rate limiting with filter simplification guidance, 6+ solutions, recovery code
+  - `docs/search/newssearch.md`: Rate limiting with query broadening and time filter removal, 6+ solutions, recovery steps
+  - `docs/search/videosearch.md`: Rate limiting with filter adjustment strategies, best practices for video search
+  - `docs/search/fetch.md`: Extraction challenges section covering JS-heavy sites, paywalls, dynamic content, website rate limiting
+- **Recovery strategies** include:
+  - Try different search query with more/fewer keywords
+  - Adjust retry parameters (`--retry-attempts`, `--retry-backoff`)
+  - Reduce result count (`--max`)
+  - Change parameters (`--region`, `--timelimit`, filters)
+  - Wait and retry (sleep 300 seconds before retry)
+  - Check internet connectivity
+- **Best practices** documented:
+  - Use small batches (5-10 results initially)
+  - Specific queries perform better and retry less
+  - Space requests appropriately
+  - Self-rate-limiting to avoid hammering servers
+  - Monitor output for consistent zero results (rate limit signal)
+- All documentation includes working bash code examples for recovery scenarios
+
 ### ⚙️ Technical Details
 
 #### Version: 1.0.0
