@@ -17,15 +17,24 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
+import requests
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import gakr_ddgs
-from gakr_ddgs.cleaner import advanced_clean_text, process_results
+from gakr_ddgs.cleaner import (
+    _is_content_section,
+    _is_nav_paragraph,
+    advanced_clean_text,
+    extract_content_sections,
+    paragraphs,
+    process_results,
+)
 
 # Import modules to test
 from gakr_ddgs.cli import (
+    _check_max_size_warning,
     _extract_html_title,
     fatchurl,
     fetch_url,
@@ -270,6 +279,82 @@ class TestFetchUrl:
         assert "--max-chars" in result["error"]
         assert "--max-size" in result["error"]
 
+    def test_fetch_url_error_http_404(self):
+        """Test fetch_url with HTTP 404 error"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 404
+            mock_response.url = "https://example.com/404"
+            http_error = requests.HTTPError("404 Client Error")
+            http_error.response = mock_response
+            mock_get.side_effect = http_error
+
+            result = fetch_url("https://example.com/404")
+            assert "error" in result
+            assert "HTTP 404" in result["error"]
+            assert "404" in result["error"]
+
+    def test_fetch_url_error_connection_refused(self):
+        """Test fetch_url with connection refused"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_get.side_effect = requests.ConnectionError("Connection refused")
+
+            result = fetch_url("https://example.com:9999")
+            assert "error" in result
+            assert "Connection refused" in result["error"]
+
+    def test_fetch_url_error_timeout(self):
+        """Test fetch_url with timeout"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_get.side_effect = requests.Timeout("Request timed out")
+
+            result = fetch_url("https://example.com", timeout=3)
+            assert "error" in result
+            assert "timed out" in result["error"].lower()
+
+    def test_fetch_url_max_size_warning(self):
+        """Test max-size generates content warning"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 200
+            mock_response.text = "<html><body><p>" + "word " * 30 + "</p></body></html>"
+            mock_response.url = "https://example.com"
+            mock_response.content = b"<html><body><p>" + b"word " * 30 + b"</p></body></html>"
+            mock_get.return_value = mock_response
+
+            with mock.patch('gakr_ddgs.extraction.ExtractionEngine') as mock_extractor:
+                mock_extractor.USER_AGENTS = ['test-agent']
+                mock_extract_instance = mock.Mock()
+                mock_extract_instance.extract_content.return_value = ("word " * 25, "trafilatura", 0.9)
+                mock_extractor.return_value = mock_extract_instance
+
+                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                    mock_process.return_value = ([], {})
+                    result = fetch_url("https://example.com", max_size="50kb")
+
+                    assert "result" in result
+                    assert "stats" in result
+                    warning = result["stats"].get("extraction_max_size_warning")
+                    assert warning is not None
+                    assert "max-size" in warning
+
+    def test_check_max_size_warning_no_size(self):
+        """Test _check_max_size_warning returns None without max_size"""
+        assert _check_max_size_warning(None, "some content") is None
+
+    def test_check_max_size_warning_sufficient_content(self):
+        """Test _check_max_size_warning returns None with enough content"""
+        content = "word " * 100  # 100 words
+        assert _check_max_size_warning("500kb", content) is None
+
+    def test_check_max_size_warning_too_short(self):
+        """Test _check_max_size_warning warns on short content"""
+        content = "word " * 25  # 25 words
+        warning = _check_max_size_warning("50kb", content)
+        assert warning is not None
+        assert "max-size" in warning
+        assert "25" in warning
+
 
 class TestSizeParsingUtility:
     """Test _parse_size_string utility function"""
@@ -457,6 +542,130 @@ class TestProcessResults:
         processed, stats = process_results(results)
         assert stats['successful'] == 1
         assert stats['failed'] == 1
+
+
+class TestNavFiltering:
+    """Test navigation/boilerplate filtering in cleaner"""
+
+    def test_is_nav_paragraph_language_links(self):
+        """Detect Wikipedia language-link bars"""
+        text = "Afrikaans | Alemannisch | Amharic | Arabic | Armenian | Azerbaijani | Basque | Belarusian | Bengali | Bosnian"
+        assert _is_nav_paragraph(text) is True
+
+    def test_is_nav_paragraph_pipe_separated(self):
+        """Detect pipe-separated nav menus"""
+        text = "Home | About | Products | Services | Contact | Blog | Careers"
+        assert _is_nav_paragraph(text) is True
+
+    def test_is_nav_paragraph_real_content(self):
+        """Do NOT flag real article text"""
+        text = "Python is a high-level, general-purpose programming language. Its design philosophy emphasizes code readability with the use of significant indentation. Python is dynamically typed and garbage-collected."
+        assert _is_nav_paragraph(text) is False
+
+    def test_is_nav_paragraph_short_empty(self):
+        """Reject empty or very short paragraphs"""
+        assert _is_nav_paragraph("") is True
+        assert _is_nav_paragraph("Hi") is True
+
+    def test_is_nav_paragraph_cookie_banner(self):
+        """Detect cookie/consent banners"""
+        text = "This website uses cookies to improve your experience. Accept all cookies?"
+        assert _is_nav_paragraph(text) is True
+
+    def test_is_nav_paragraph_breadcrumbs(self):
+        """Detect breadcrumb navigation"""
+        text = "Home > Products > Electronics > Laptops"
+        assert _is_nav_paragraph(text) is True
+
+    def test_is_nav_paragraph_symbol_lines(self):
+        """Detect pure symbol separator lines"""
+        text = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        assert _is_nav_paragraph(text) is True
+
+    def test_is_content_section_real(self):
+        """Content sections with real sentences are identified"""
+        assert _is_content_section("History", [
+            "Python was created in the late 1980s by Guido van Rossum."
+        ]) is True  # Single item > 150 chars
+        assert _is_content_section("Features", [
+            "Python is dynamically typed.",
+            "It has automatic memory management."
+        ]) is True  # 2 items with sentence punctuation
+        assert _is_content_section("Design Philosophy", [
+            "The Zen of Python guides its design.",
+            "It emphasizes readability and simplicity.",
+            "There should be one obvious way to do something."
+        ]) is True  # 3 real items
+
+    def test_is_content_section_nav(self):
+        """Nav sections without real content are filtered"""
+        assert _is_content_section("General", [
+            "Home", "About", "Contact", "Privacy"
+        ]) is False  # All short, no sentences
+        assert _is_content_section("Languages", [
+            "English | Spanish | French | German | Italian"
+        ]) is False  # Single short line, no sentence
+        assert _is_content_section("Navigation", [
+            "Main page", "Contents", "Current events",
+            "Random article", "About Wikipedia"
+        ]) is False  # Link items, no sentence structure
+
+    def test_is_content_section_edge_cases(self):
+        """Edge cases for content section detection"""
+        # Empty
+        assert _is_content_section("Empty", []) is False
+        # Mixed lengths (varied = likely content)
+        assert _is_content_section("Resources", [
+            "Short link",
+            "Python is a programming language used for web development.",
+            "Another short link",
+            "It supports multiple paradigms including OOP and functional."
+        ]) is True  # Varied lengths with some long items
+        # Single short item
+        assert _is_content_section("Reference", [
+            "Just a quick ref."
+        ]) is False  # Single short item, no real paragraph
+
+    def test_paragraphs_filters_nav(self):
+        """paragraphs() filters out nav paragraphs"""
+        content = (
+            "Afrikaans | Alemannisch | Amharic | Arabic | Armenian | Azerbaijani\n\n"
+            "Python is a high-level, general-purpose programming language. "
+            "Its design philosophy emphasizes code readability with the use "
+            "of significant indentation.\n\n"
+            "Python features dynamic typing and garbage collection. "
+            "It supports multiple programming paradigms."
+        )
+        result = paragraphs(content)
+        assert len(result) >= 2
+        assert all("Afrikaans" not in p for p in result)
+        assert all("Python is a high-level" in p or "Python features" in p for p in result)
+
+    def test_extract_content_sections_filters_nav(self):
+        """extract_content_sections filters nav sections by content quality"""
+        content = (
+            "Toggle the table of contents\n\n"
+            "Some intro text.\n\n"
+            "History\n\n"
+            "Python was created in the late 1980s by Guido van Rossum. "
+            "It was designed as a successor to the ABC language.\n\n"
+            "Features\n\n"
+            "Python is dynamically typed. It has automatic memory management."
+        )
+        sections = extract_content_sections(content)
+        # Real content sections should be preserved
+        found_real = any("History" in k or "Features" in k for k in sections)
+        assert found_real, "Real content sections should be preserved"
+        # Nav-header sections should be merged into Main Content
+        nav_keys = [k for k in sections if k.lower() in (
+            'toggle the table of contents', 'appearance', 'tools'
+        )]
+        assert len(nav_keys) == 0, f"Nav sections should be filtered: {nav_keys}"
+        # Real section items should still be present (merged into Main if needed)
+        all_items = []
+        for items in sections.values():
+            all_items.extend(items)
+        assert any("Python was created" in i for i in all_items), "Content should not be lost"
 
 
 class TestFunctionAvailable:

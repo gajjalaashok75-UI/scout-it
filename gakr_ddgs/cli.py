@@ -34,17 +34,15 @@ import requests
 
 try:
     from .cleaner import process_results
-    from .extraction import DDGS, EnterpriseSearchEngine, ExtractionEngine, ImageSearchEngine
+    from .extraction import (
+        DDGS,
+        EnterpriseSearchEngine,
+        ExtractionEngine,
+        ImageSearchEngine,
+        _compact_options,
+    )
 except Exception as e:
     raise ImportError("Could not import from gakr_ddgs modules: " + str(e))
-
-
-def _compact_options(options: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        key: value
-        for key, value in options.items()
-        if value is not None and not (isinstance(value, str) and not value.strip())
-    }
 
 
 def _ddgs_list_search(
@@ -319,6 +317,15 @@ def _parse_size_string(size_str: Optional[str]) -> Optional[int]:
         return None
 
 
+def _check_max_size_warning(max_size: Optional[str], main_content: Any) -> Optional[str]:
+    """Check if max_size truncation produced suspiciously short content."""
+    if max_size and main_content:
+        words = len(str(main_content).split())
+        if words < 50:
+            return f"Content very short ({words} words) after --max-size {max_size} truncation. Consider a larger limit."
+    return None
+
+
 def fetch_url(
     url: str,
     timeout: int = 25,
@@ -407,6 +414,10 @@ def fetch_url(
             structured = raw_record
             structured["cleaned_content"] = str(main_content or "").strip()
             structured["content_sections"] = {}
+            structured["top_keywords"] = []
+            structured["paragraphs"] = []
+            structured["sentences_count"] = 0
+            structured["sample_sentences"] = []
 
         return {
             "result": structured,
@@ -415,10 +426,37 @@ def fetch_url(
                 "cleaner": cleaner_stats,
                 "extraction_method": method,
                 "confidence_score": confidence,
+                "extraction_max_size_warning": _check_max_size_warning(max_size, main_content),
             },
         }
+    except requests.HTTPError as exc:
+        status_code = exc.response.status_code if exc.response is not None else "unknown"
+        status_hints = {
+            301: "The page has permanently moved. Try the updated URL.",
+            302: "The page has temporarily moved. The final destination may be blocked.",
+            403: "Access forbidden. The site may be blocking automated requests.",
+            404: "Page not found. The URL may be incorrect or the page was removed.",
+            410: "The page has been permanently removed from the server.",
+            429: "Rate-limited by the server. Try again later with a lower request rate.",
+            500: "Internal server error on the target site. Try again later.",
+            502: "Bad gateway from the target server. Temporarily unavailable.",
+            503: "Service unavailable. The target site may be temporarily overloaded.",
+        }
+        hint = status_hints.get(status_code,
+                                "The server returned an unexpected status code.")
+        return {
+            "error": (
+                f"fetch_url failed: HTTP {status_code} — {hint}\n"
+                f"       URL: {url}"
+            )
+        }
+    except requests.ConnectionError:
+        return {"error": f"fetch_url failed: Connection refused — the server at {url} may be unreachable or blocking requests"}
+    except requests.Timeout:
+        return {"error": f"fetch_url failed: Request timed out after {timeout}s — {url} may be too slow or unresponsive"}
     except Exception as exc:
-        return {"error": "fetch_url failed"}
+        exc_name = type(exc).__name__
+        return {"error": f"fetch_url failed: [{exc_name}] {exc}"}
 
 
 # Legacy function name for backward compatibility

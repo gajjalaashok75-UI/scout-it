@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### ✅ Fixed
+
+#### Code Quality & Performance
+- **O(n²) → O(n) in `_looks_like_heading`**: Replaced `all_lines.count(stripped)` O(n²) scan with pre-computed `Counter` lookup via optional `line_counts` parameter
+- **Regex redundancy eliminated in `_is_nav_paragraph`**: `any(c in stripped for c in '.!?')` computed once instead of 5×; camel case regex pre-compiled at module level as `_CAMEL_CASE_RE`
+- **`_compact_options` deduplicated**: 3 byte-identical copies consolidated to one module-level function in `extraction.py` with backward-compatible static method delegation
+
+#### Infrastructure
+- **Suppressed boilerpy3 SAX warnings**: `warnings.filterwarnings` at import time for SAX/nested A/degraded mode noise
+
+### 🚀 Improved
+
+#### Content Cleaning Pipeline
+- **Domain-agnostic nav/boilerplate detection**: New heuristics — `_looks_like_heading` (caps ratio ≥0.5, length, density), `_best_first_paragraph`, `_score_paragraph_quality`, `_group_single_newline_paragraphs`, Q&A nav detection, pipe-separated line detection
+- **Pre-compiled regex patterns**: `_CAMEL_CASE_RE`, `_LANG_LINK_RE`, `_PIPE_SEPARATED_LINE_RE` at module level
+
+### 🎉 Added
+
+#### Test Coverage
+- **79 new cleaner tests** (`tests/test_cleaner.py`): Nav detection, heading identification, paragraph scoring, edge cases (empty, Unicode, emoji, short, Q&A, pipe-separated, single-line, single-char, whitespace)
+- **61 new CLI tests** (`tests/test_cli.py`): HTTP error codes (403, 500, 502, 503), connection refused, timeouts, max_size parsing, nav filtering edge cases
+
+---
+
 ## [1.0.0] - 2026-06-12 19:15:00 UTC
 
 ### 🎉 Added

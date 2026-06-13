@@ -29,6 +29,8 @@ try:
     import justext  # Fallback 1
     import requests
     import trafilatura
+    # Suppress boilerpy3 SAX warnings at import time
+    warnings.filterwarnings("ignore", message=".*SAX.*|.*nested A.*|.*degraded mode.*", category=UserWarning)
     from boilerpy3 import extractors  # Fallback 2
     from bs4 import BeautifulSoup
     from requests.adapters import HTTPAdapter
@@ -261,9 +263,21 @@ class ExtractionEngine:
         return main_para
 
 
+def _compact_options(options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Filter a dict to remove None-valued and blank-string entries."""
+    compacted: Dict[str, Any] = {}
+    for key, value in (options or {}).items():
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        compacted[key] = value
+    return compacted
+
+
 class EnterpriseSearchEngine:
     """Complete enterprise search + extraction pipeline"""
-    
+
     def __init__(self, max_workers: int = 8, timeout: int = 25):
         self.max_workers = min(max_workers, 12)  # CPU-aware
         self.timeout = timeout
@@ -278,14 +292,7 @@ class EnterpriseSearchEngine:
 
     @staticmethod
     def _compact_options(options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        compacted: Dict[str, Any] = {}
-        for key, value in (options or {}).items():
-            if value is None:
-                continue
-            if isinstance(value, str) and not value.strip():
-                continue
-            compacted[key] = value
-        return compacted
+        return _compact_options(options)
 
     def _build_text_attempt_options(self, base_options: Optional[Dict[str, Any]], attempt: int) -> Dict[str, Any]:
         options = self._compact_options(base_options)
@@ -625,14 +632,7 @@ class ImageSearchEngine:
 
     @staticmethod
     def _compact_options(options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        compacted: Dict[str, Any] = {}
-        for key, value in (options or {}).items():
-            if value is None:
-                continue
-            if isinstance(value, str) and not value.strip():
-                continue
-            compacted[key] = value
-        return compacted
+        return _compact_options(options)
 
     @staticmethod
     def _coerce_int(value: Any) -> Optional[int]:
