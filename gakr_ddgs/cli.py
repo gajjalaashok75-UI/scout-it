@@ -383,13 +383,38 @@ def fetch_url(
             response_text,
             timeout=timeout,
         )
-        
+
         # Apply max_chars constraint if specified
         if max_chars and main_content and len(main_content) > max_chars:
             main_content = main_content[:max_chars]
-        
+
         elapsed = time.time() - start_time
         title = _extract_html_title(response_text) or final_url
+
+        if raw_html:
+            # Return raw HTML — skip extraction and cleaner pipeline entirely
+            raw_html_text = response_text
+            if max_chars and len(raw_html_text) > max_chars:
+                raw_html_text = raw_html_text[:max_chars]
+            structured = {
+                "position": 1,
+                "title": title,
+                "url": str(url),
+                "final_url": final_url,
+                "extraction_status": "success" if raw_html_text.strip() else "failed",
+                "content_word_count": len(raw_html_text.split()),
+                "extraction_method": "raw-html",
+                "raw_html": raw_html_text,
+            }
+            return {
+                "result": structured,
+                "stats": {
+                    "fetch_time_seconds": round(elapsed, 3),
+                    "raw_html_mode": True,
+                    "extraction_method": "raw-html",
+                    "extraction_max_size_warning": _check_max_size_warning(max_size, raw_html_text),
+                },
+            }
 
         raw_record = {
             "position": 1,
@@ -408,38 +433,21 @@ def fetch_url(
             "extraction_method": method or "unknown",
         }
 
-        if raw_html:
-            # Skip the cleaner pipeline — return raw extracted content
-            structured = {
-                "position": 1,
-                "title": title,
-                "url": str(url),
-                "final_url": final_url,
-                "extraction_status": "success" if str(main_content).strip() else "failed",
-                "confidence_score": float(confidence or 0.0),
-                "content_word_count": len(str(main_content or "").split()),
-                "extraction_method": method or "unknown",
-                "raw_content": str(main_content or "").strip(),
-            }
-            cleaner_stats = {"mode": "raw-html", "cleaning_skipped": True}
+        structured_results, cleaner_stats = process_results([raw_record])
+        if structured_results:
+            structured = structured_results[0]
         else:
-            structured_results, cleaner_stats = process_results([raw_record])
-            if structured_results:
-                structured = structured_results[0]
-            else:
-                structured = raw_record
-                structured["cleaned_content"] = str(main_content or "").strip()
-                structured["content_sections"] = {}
-                structured["top_keywords"] = []
-                structured["paragraphs"] = []
-                structured["sentences_count"] = 0
-                structured["sample_sentences"] = []
+            structured = raw_record
+            structured["cleaned_content"] = str(main_content or "").strip()
+            structured["content_sections"] = {}
+            structured["top_keywords"] = []
+            structured["sentences_count"] = 0
+            structured["sample_sentences"] = []
 
         return {
             "result": structured,
             "stats": {
                 "fetch_time_seconds": round(elapsed, 3),
-                "raw_html_mode": raw_html,
                 "cleaner": cleaner_stats,
                 "extraction_method": method,
                 "confidence_score": confidence,

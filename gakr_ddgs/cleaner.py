@@ -1080,7 +1080,6 @@ def process_record(rec: dict) -> dict:
         'content_type': content_type,
         'cleaned_content': cleaned,  # ✅ Full natural language preserved
         'first_paragraph': first_para,
-        'paragraphs': paras,  # ✅ Natural paragraphs with all words
         'content_sections': sections,
         'sentences_count': len(sens),
         'sample_sentences': sens[:5],  # ✅ Natural sentences with proper syntax

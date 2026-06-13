@@ -181,3 +181,4 @@ test_search.py
 build_and_test.py
 references/
 .gakrcli/
+url_raw_result.json

@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **79 new cleaner tests** (`tests/test_cleaner.py`): Nav detection, heading identification, paragraph scoring, edge cases (empty, Unicode, emoji, short, Q&A, pipe-separated, single-line, single-char, whitespace)
 - **61 new CLI tests** (`tests/test_cli.py`): HTTP error codes (403, 500, 502, 503), connection refused, timeouts, max_size parsing, nav filtering edge cases
 
+### 🔧 Fixed
+
+- **Removed duplicate `paragraphs` field from cleaner output**: `paragraphs` was redundant with `cleaned_content` + `content_sections` — all same text in 3 representations. Now only 2 clean representations remain.
+- **`--raw-html` now returns actual raw HTML**: Previously skipped only the final cleaner step, producing near-identical output. Now bypasses the entire 5-layer extraction pipeline and returns the raw HTTP response body as `raw_html`. Word count jumps from ~2.4K (cleaned) to ~6K (raw HTML) for a typical doc page.
+
 #### CLI
 - **`--raw-html` flag for `fetch-url`**: Skips the cleaner pipeline (nav/boilerplate removal, keyword/section/readability extraction) and returns raw extracted content from the 5-layer engine as `raw_content` field. Displayed with "RAW" mode tag in output. Includes `raw_html: true` in saved JSON parameters.
 
