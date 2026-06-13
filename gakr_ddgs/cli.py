@@ -12,6 +12,14 @@ This imports `EnterpriseSearchEngine`, `ImageSearchEngine` from `extraction.py`
 and `process_results` from `cleaner.py`
 """
 import argparse
+import sys
+
+# Ensure Unicode output works on Windows terminals
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass  # Fallback: ignore if not supported
 import json
 import random
 import re
