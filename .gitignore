@@ -180,3 +180,4 @@ search.py
 test_search.py
 build_and_test.py
 references/
+.gakrcli/
