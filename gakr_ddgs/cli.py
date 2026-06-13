@@ -331,6 +331,7 @@ def fetch_url(
     timeout: int = 25,
     max_chars: Optional[int] = None,
     max_size: Optional[str] = None,
+    raw_html: bool = False,
 ):
     """
     Fetch a single URL and extract/clean its content.
@@ -407,22 +408,38 @@ def fetch_url(
             "extraction_method": method or "unknown",
         }
 
-        structured_results, cleaner_stats = process_results([raw_record])
-        if structured_results:
-            structured = structured_results[0]
+        if raw_html:
+            # Skip the cleaner pipeline — return raw extracted content
+            structured = {
+                "position": 1,
+                "title": title,
+                "url": str(url),
+                "final_url": final_url,
+                "extraction_status": "success" if str(main_content).strip() else "failed",
+                "confidence_score": float(confidence or 0.0),
+                "content_word_count": len(str(main_content or "").split()),
+                "extraction_method": method or "unknown",
+                "raw_content": str(main_content or "").strip(),
+            }
+            cleaner_stats = {"mode": "raw-html", "cleaning_skipped": True}
         else:
-            structured = raw_record
-            structured["cleaned_content"] = str(main_content or "").strip()
-            structured["content_sections"] = {}
-            structured["top_keywords"] = []
-            structured["paragraphs"] = []
-            structured["sentences_count"] = 0
-            structured["sample_sentences"] = []
+            structured_results, cleaner_stats = process_results([raw_record])
+            if structured_results:
+                structured = structured_results[0]
+            else:
+                structured = raw_record
+                structured["cleaned_content"] = str(main_content or "").strip()
+                structured["content_sections"] = {}
+                structured["top_keywords"] = []
+                structured["paragraphs"] = []
+                structured["sentences_count"] = 0
+                structured["sample_sentences"] = []
 
         return {
             "result": structured,
             "stats": {
                 "fetch_time_seconds": round(elapsed, 3),
+                "raw_html_mode": raw_html,
                 "cleaner": cleaner_stats,
                 "extraction_method": method,
                 "confidence_score": confidence,
@@ -580,6 +597,7 @@ def main():
     url_parser.add_argument('--max-size', type=str, default=None, help='Maximum response size (e.g., 100kb, 1mb, 500mb)')
     url_parser.add_argument('--out', '-o', default='url_fetch_result.json', help='Output file')
     url_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+    url_parser.add_argument('--raw-html', action='store_true', help='Skip cleaner pipeline, return raw extracted content')
     
     args = parser.parse_args()
     
@@ -802,8 +820,9 @@ def main():
             timeout=args.timeout,
             max_chars=args.max_chars,
             max_size=args.max_size,
+            raw_html=args.raw_html,
         )
-        
+
         output = {
             'url': args.url,
             'search_type': 'fetch',
@@ -811,22 +830,26 @@ def main():
                 'timeout': args.timeout,
                 'max_chars': args.max_chars,
                 'max_size': args.max_size,
+                'raw_html': args.raw_html,
             },
             'result': result
         }
-        
+
         out_path = Path(args.out)
         out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
-        
+
         if "error" in result:
             print(f"❌ Error: {result['error']}\n")
         else:
-            print(f'✅ FETCH COMPLETE!')
+            mode_tag = " RAW" if args.raw_html else ""
+            print(f'✅ FETCH COMPLETE{mode_tag}!')
             print(f'   📝 Title: {result["result"]["title"]}')
             print(f'   📊 Words: {result["result"]["content_word_count"]}')
             print(f'   ✅ Status: {result["stats"]["extraction_method"]}')
             print(f'   ⏱️  Fetch time: {result["stats"]["fetch_time_seconds"]}s')
             print(f'   📄 Result JSON: {out_path}')
+            if args.raw_html:
+                print(f'   🔧 Mode: raw-html (cleaner pipeline skipped)')
             print(f'   📂 Results saved to: {out_path.resolve()}\n')
 
 
