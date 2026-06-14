@@ -1172,7 +1172,7 @@ def main():
         print(f'Input not found: {in_path}')
         return
 
-    data = json.loads(in_path.read_text(encoding='utf-8'))
+    data = json.loads(in_path.read_text(encoding='utf-8'), strict=False)
     results = data.get('results', [])
 
     # Process results: filter, clean

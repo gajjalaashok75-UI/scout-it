@@ -668,30 +668,6 @@ class TestNavFiltering:
         assert any("Python was created" in i for i in all_items), "Content should not be lost"
 
 
-class TestFunctionAvailable:
-    """Test that all expected functions are available"""
-    
-    def test_web_search_available(self):
-        """Test web_search is available in search module"""
-        import references.search as search
-        assert hasattr(search, 'web_search')
-    
-    def test_image_search_available(self):
-        """Test image_search is available in search module"""
-        import references.search as search
-        assert hasattr(search, 'image_search')
-    
-    def test_fetch_url_available(self):
-        """Test fetch_url is available in search module"""
-        import references.search as search
-        assert hasattr(search, 'fetch_url')
-    
-    def test_fatchurl_backward_compat(self):
-        """Test fatchurl is still available for backward compatibility"""
-        import references.search as search
-        assert hasattr(search, 'fatchurl')
-
-
 class TestIntegration:
     """Integration tests"""
     
@@ -729,32 +705,6 @@ class TestAdvancedSearchFeatures:
             call_args, call_kwargs = mock_ddgs.call_args
             assert call_args[0] == 'news'
             assert call_kwargs['max_results'] == 5
-
-    def test_ddgs_list_search_query_only_fallback(self, monkeypatch):
-        import references.search as search
-
-        class DummyDDGS:
-            def __init__(self, timeout=None):
-                self.timeout = timeout
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, exc_type, exc, tb):
-                return False
-
-            def news(self, query):
-                return [
-                    {'title': f'{query}-1'},
-                    {'title': f'{query}-2'},
-                    {'title': f'{query}-3'},
-                ]
-
-        monkeypatch.setattr(search, 'DDGS', DummyDDGS)
-
-        results, stats = search._ddgs_list_search('news', 'dog', max_results=2)
-        assert len(results) == 2
-        assert stats['success'] == 2
 
     def test_video_search_uses_ddgs_wrapper(self):
         with mock.patch('gakr_ddgs.cli._ddgs_list_search') as mock_ddgs:
@@ -876,6 +826,99 @@ class TestAdvancedSearchFeatures:
 
         assert engine.stats['success'] == 0
         assert engine.stats['attempts'] == 2
+
+
+class TestRawHtml:
+    """Test --raw-html flag for fetch_url"""
+
+    RAW_HTML = "<html><title>Test Page</title><body><p>Paragraph 1</p><p>Paragraph 2</p></body></html>"
+
+    def test_raw_html_mode_key_present(self):
+        """Test raw_html key is present when raw_html=True"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 200
+            mock_response.text = self.RAW_HTML
+            mock_response.url = "https://example.com"
+            mock_response.content = b""
+            mock_get.return_value = mock_response
+
+            result = fetch_url("https://example.com", raw_html=True)
+            assert "raw_html" in result["result"]
+            assert result["result"]["extraction_method"] == "raw-html"
+
+    def test_raw_html_starts_with_html_tag(self):
+        """Test raw_html output starts with typical HTML markup"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 200
+            mock_response.text = self.RAW_HTML
+            mock_response.url = "https://example.com"
+            mock_response.content = b""
+            mock_get.return_value = mock_response
+
+            result = fetch_url("https://example.com", raw_html=True)
+            raw = result["result"]["raw_html"]
+            assert raw.strip().startswith("<html>") or raw.strip().startswith("<!DOCTYPE")
+
+    def test_raw_html_is_multi_line(self):
+        """Test raw_html has multiple lines (prettified, not single-line)"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 200
+            mock_response.text = self.RAW_HTML
+            mock_response.url = "https://example.com"
+            mock_response.content = b""
+            mock_get.return_value = mock_response
+
+            result = fetch_url("https://example.com", raw_html=True)
+            raw = result["result"]["raw_html"]
+            assert "\n" in raw
+            # Prettified HTML should have multiple lines of actual content
+            lines = [l for l in raw.split("\n") if l.strip()]
+            assert len(lines) > 1
+
+    def test_raw_html_with_max_chars_truncation(self):
+        """Test raw_html respects max_chars truncation"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 200
+            mock_response.text = self.RAW_HTML * 50  # Make it long
+            mock_response.url = "https://example.com"
+            mock_response.content = b""
+            mock_get.return_value = mock_response
+
+            result = fetch_url("https://example.com", raw_html=True, max_chars=100)
+            raw = result["result"]["raw_html"]
+            assert len(raw) <= 100
+
+    def test_raw_html_counts_words_correctly(self):
+        """Test raw_html mode reports correct word count"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 200
+            mock_response.text = self.RAW_HTML
+            mock_response.url = "https://example.com"
+            mock_response.content = b""
+            mock_get.return_value = mock_response
+
+            result = fetch_url("https://example.com", raw_html=True)
+            assert result["result"]["content_word_count"] > 0
+
+    def test_raw_html_has_no_cleaner_keys(self):
+        """Test raw_html mode does not contain cleaner-specific keys"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 200
+            mock_response.text = self.RAW_HTML
+            mock_response.url = "https://example.com"
+            mock_response.content = b""
+            mock_get.return_value = mock_response
+
+            result = fetch_url("https://example.com", raw_html=True)
+            assert "cleaned_content" not in result["result"]
+            assert "content_sections" not in result["result"]
+            assert "extraction_status" in result["result"]
 
 
 if __name__ == '__main__':

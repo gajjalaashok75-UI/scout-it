@@ -393,9 +393,11 @@ def fetch_url(
 
         if raw_html:
             # Return raw HTML — skip extraction and cleaner pipeline entirely
-            raw_html_text = response_text
-            if max_chars and len(raw_html_text) > max_chars:
-                raw_html_text = raw_html_text[:max_chars]
+            from bs4 import BeautifulSoup
+            raw_html_text = BeautifulSoup(response_text, 'html.parser').prettify()
+            if max_chars:
+                if len(raw_html_text) > max_chars:
+                    raw_html_text = raw_html_text[:max_chars]
             structured = {
                 "position": 1,
                 "title": title,
@@ -654,7 +656,7 @@ def main():
         }
         
         out_path = Path(args.out)
-        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False).replace('\\n', '\n'), encoding='utf-8')
         
         print(f'\n✅ WEB SEARCH COMPLETE!')
         print(f'   🔍 Query: {args.query}')
@@ -714,7 +716,7 @@ def main():
         }
         
         out_path = Path(args.out)
-        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False).replace('\\n', '\n'), encoding='utf-8')
         
         print(f'\n✅ IMAGE SEARCH COMPLETE!')
         print(f'   🖼️  Query: {args.query}')
@@ -764,7 +766,7 @@ def main():
         }
 
         out_path = Path(args.out)
-        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False).replace('\\n', '\n'), encoding='utf-8')
 
         print(f'\n✅ NEWS SEARCH COMPLETE!')
         print(f'   📰 Query: {args.query}')
@@ -804,7 +806,7 @@ def main():
         }
 
         out_path = Path(args.out)
-        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False).replace('\\n', '\n'), encoding='utf-8')
 
         print(f'\n✅ VIDEO SEARCH COMPLETE!')
         print(f'   🎬 Query: {args.query}')
@@ -844,7 +846,7 @@ def main():
         }
 
         out_path = Path(args.out)
-        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False).replace('\\n', '\n'), encoding='utf-8')
 
         if "error" in result:
             print(f"❌ Error: {result['error']}\n")
