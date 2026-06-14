@@ -621,15 +621,28 @@ def test_video_extract_youtube_success():
     mock_html = """<html>
     <meta name="title" content="Test Video Title">
     <meta name="description" content="A test video description.">
-    <script>var ytInitialData = {"ownerChannelName":"TestChannel","ownerChannelUrl":"/channel/UC123"};</script>
-    <script>{"viewCount":"42000","lengthSeconds":"600"}</script>
+    <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"Test Video Title","author":"TestChannel","viewCount":"42000","lengthSeconds":"600","shortDescription":"Full test description."}};</script>
     </html>"""
 
-    mock_transcript = [
-        {"text": "Hello world", "start": 0.0, "duration": 2.5},
-        {"text": "This is a test", "start": 2.5, "duration": 3.0},
-        {"text": "Goodbye", "start": 5.5, "duration": 1.5},
-    ]
+    # Build mock snippets
+    snippet1 = mock.Mock()
+    snippet1.text = "Hello world"
+    snippet1.start = 0.0
+    snippet1.duration = 2.5
+    snippet2 = mock.Mock()
+    snippet2.text = "This is a test"
+    snippet2.start = 2.5
+    snippet2.duration = 3.0
+    snippet3 = mock.Mock()
+    snippet3.text = "Goodbye"
+    snippet3.start = 5.5
+    snippet3.duration = 1.5
+
+    mock_transcript_obj = mock.Mock()
+    mock_transcript_obj.snippets = [snippet1, snippet2, snippet3]
+    mock_transcript_obj.language = "English"
+    mock_transcript_obj.language_code = "en"
+    mock_transcript_obj.is_generated = True
 
     with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
         mock_response = mock.Mock()
@@ -638,8 +651,10 @@ def test_video_extract_youtube_success():
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
-        with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api:
-            mock_api.get_transcript.return_value = mock_transcript
+        with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api_cls:
+            mock_api_instance = mock.Mock()
+            mock_api_instance.fetch.return_value = mock_transcript_obj
+            mock_api_cls.return_value = mock_api_instance
 
             result = video_extract("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
 
@@ -678,8 +693,10 @@ def test_video_extract_youtube_short_url():
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
-        with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api:
-            mock_api.get_transcript.return_value = []
+        with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api_cls:
+            mock_api_instance = mock.Mock()
+            mock_api_instance.fetch.return_value = None
+            mock_api_cls.return_value = mock_api_instance
 
             result = video_extract("https://youtu.be/dQw4w9WgXcQ")
 

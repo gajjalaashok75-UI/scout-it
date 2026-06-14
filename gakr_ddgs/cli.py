@@ -24,10 +24,8 @@ import json
 import random
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from html import unescape
-from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -298,32 +296,88 @@ def _fetch_youtube_metadata(video_id: str) -> Dict[str, Any]:
 
         metadata: Dict[str, Any] = {}
 
-        # Title
-        title_match = re.search(r'<meta\s+name="title"\s+content="([^"]+)"', html)
-        if not title_match:
-            title_match = re.search(r'<title>([^<]+)</title>', html)
-        raw_title = unescape(title_match.group(1).strip()).replace(' - YouTube', '') if title_match else ""
-        metadata['title'] = raw_title
+        # Try to parse embedded JSON for richer data
+        player_match = re.search(r'ytInitialPlayerResponse\s*=\s*({.*?});', html, re.DOTALL)
+        player_data = json.loads(player_match.group(1)) if player_match else {}
 
-        # Description
-        desc_match = re.search(r'<meta\s+name="description"\s+content="([^"]+)"', html)
-        metadata['description'] = unescape(desc_match.group(1)) if desc_match else ""
+        # Title — prefer JSON source (more reliable)
+        json_title = None
+        if player_data:
+            try:
+                json_title = player_data['videoDetails']['title']
+            except (KeyError, TypeError):
+                pass
+        if json_title:
+            metadata['title'] = json_title
+        else:
+            title_match = re.search(r'<meta\s+name="title"\s+content="([^"]+)"', html)
+            if not title_match:
+                title_match = re.search(r'<title>([^<]+)</title>', html)
+            metadata['title'] = (unescape(title_match.group(1).strip()).replace(' - YouTube', '') if title_match else "")
+
+        # Description — full text from JSON, not truncated meta tag
+        json_desc = None
+        if player_data:
+            try:
+                json_desc = player_data['videoDetails']['shortDescription']
+            except (KeyError, TypeError):
+                pass
+        if json_desc:
+            metadata['description'] = json_desc
+        else:
+            desc_match = re.search(r'<meta\s+name="description"\s+content="([^"]+)"', html)
+            metadata['description'] = unescape(desc_match.group(1)) if desc_match else ""
 
         # Channel name
-        channel_match = re.search(r'"ownerChannelName"\s*:\s*"([^"]+)"', html)
-        metadata['channel'] = unescape(channel_match.group(1)) if channel_match else ""
-
-        # View count
-        views_match = re.search(r'"viewCount"\s*:\s*"(\d+)"', html)
-        metadata['view_count'] = int(views_match.group(1)) if views_match else 0
-
-        # Duration in seconds
-        duration_match = re.search(r'"lengthSeconds"\s*:\s*"(\d+)"', html)
-        metadata['duration_seconds'] = int(duration_match.group(1)) if duration_match else 0
+        json_channel = None
+        if player_data:
+            try:
+                json_channel = player_data['videoDetails']['author']
+            except (KeyError, TypeError):
+                pass
+        if json_channel:
+            metadata['channel'] = json_channel
+        else:
+            channel_match = re.search(r'"ownerChannelName"\s*:\s*"([^"]+)"', html)
+            metadata['channel'] = unescape(channel_match.group(1)) if channel_match else ""
 
         # Channel URL
-        channel_url_match = re.search(r'"ownerChannelUrl"\s*:\s*"([^"]+)"', html)
-        metadata['channel_url'] = unescape(channel_url_match.group(1)) if channel_url_match else ""
+        ch_url = ""
+        if player_data:
+            try:
+                ch_url = player_data.get('microformat', {}).get('playerMicroformatRenderer', {}).get('ownerProfileUrl', '')
+            except (KeyError, TypeError):
+                pass
+        if not ch_url:
+            channel_url_match = re.search(r'"ownerChannelUrl"\s*:\s*"([^"]+)"', html)
+            ch_url = channel_url_match.group(1) if channel_url_match else ""
+        metadata['channel_url'] = "https://www.youtube.com" + ch_url if ch_url.startswith('/') else ch_url
+
+        # View count
+        json_views = None
+        if player_data:
+            try:
+                json_views = player_data['videoDetails']['viewCount']
+            except (KeyError, TypeError):
+                pass
+        if json_views:
+            metadata['view_count'] = int(json_views)
+        else:
+            views_match = re.search(r'"viewCount"\s*:\s*"(\d+)"', html)
+            metadata['view_count'] = int(views_match.group(1)) if views_match else 0
+
+        # Duration in seconds
+        json_dur = None
+        if player_data:
+            try:
+                json_dur = player_data.get('videoDetails', {}).get('lengthSeconds', None)
+            except (KeyError, TypeError):
+                pass
+        if json_dur is not None:
+            metadata['duration_seconds'] = int(json_dur)
+        else:
+            duration_match = re.search(r'"lengthSeconds"\s*:\s*"(\d+)"', html)
+            metadata['duration_seconds'] = int(duration_match.group(1)) if duration_match else 0
 
         # Thumbnail
         metadata['thumbnail_url'] = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
@@ -349,39 +403,38 @@ def _fetch_youtube_subtitles(video_id: str) -> Optional[Dict[str, Any]]:
     """Fetch YouTube subtitles/transcript for a video."""
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
-        from youtube_transcript_api._errors import NoTranscriptFound, TranscriptsDisabled
 
+        api = YouTubeTranscriptApi()
+
+        # Try English first, then fall back to any available
+        transcript = None
         try:
-            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
-            is_generated = False
-        except (NoTranscriptFound, TranscriptsDisabled):
-            # Try auto-generated
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)
-            is_generated = True
+            transcript = api.fetch(video_id, languages=['en'])
+        except Exception:
+            try:
+                transcript = api.fetch(video_id)
+            except Exception:
+                return None
 
-        if not transcript:
+        if not transcript or not transcript.snippets:
             return None
 
         segments = []
-        for seg in transcript:
+        for snippet in transcript.snippets:
             segments.append({
-                'text': seg.get('text', ''),
-                'start': seg.get('start', 0.0),
-                'duration': seg.get('duration', 0.0),
+                'text': snippet.text,
+                'start': snippet.start,
+                'duration': snippet.duration,
             })
 
         full_text = ' '.join(s['text'] for s in segments)
 
-        # Detect language from first segment context or default
-        language = "unknown"
-        language_code = "unknown"
-
         return {
             'full_text': full_text,
-            'language': language,
-            'language_code': language_code,
+            'language': transcript.language,
+            'language_code': transcript.language_code,
             'segments': segments,
-            'is_generated': is_generated,
+            'is_generated': transcript.is_generated,
         }
     except ImportError:
         return {"error": "missing_dependency", "error_message": "youtube-transcript-api not installed. Run: pip install youtube-transcript-api"}
