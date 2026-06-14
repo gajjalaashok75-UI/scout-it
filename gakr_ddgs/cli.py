@@ -607,7 +607,7 @@ def main():
     url_parser.add_argument('--max-size', type=str, default=None, help='Maximum response size (e.g., 100kb, 1mb, 500mb)')
     url_parser.add_argument('--out', '-o', default='url_fetch_result.json', help='Output file')
     url_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
-    url_parser.add_argument('--raw-html', action='store_true', help='Skip cleaner pipeline, return raw extracted content')
+    url_parser.add_argument('--raw-html', action='store_true', help='Return raw HTML (prettified) instead of extracted/cleaned content')
     
     args = parser.parse_args()
     
@@ -656,8 +656,8 @@ def main():
         }
         
         out_path = Path(args.out)
-        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False).replace('\\n', '\n'), encoding='utf-8')
-        
+        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+
         print(f'\n✅ WEB SEARCH COMPLETE!')
         print(f'   🔍 Query: {args.query}')
         print(f'   📊 Total results from search: {stats["search_engine"]["total"]}')
@@ -717,7 +717,7 @@ def main():
         
         out_path = Path(args.out)
         out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False).replace('\\n', '\n'), encoding='utf-8')
-        
+
         print(f'\n✅ IMAGE SEARCH COMPLETE!')
         print(f'   🖼️  Query: {args.query}')
         print(f'   📊 Total images found: {stats["search_engine"]["total"]}')

@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from unittest import mock
 
+import json
 import pytest
 import requests
 
@@ -919,6 +920,101 @@ class TestRawHtml:
             assert "cleaned_content" not in result["result"]
             assert "content_sections" not in result["result"]
             assert "extraction_status" in result["result"]
+
+
+class TestJsonOutputValidity:
+    """Test that all CLI functions produce valid strict-mode JSON output"""
+
+    def test_fetch_url_default_json_valid(self):
+        """fetch_url (default) output serializes to valid strict JSON"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 200
+            mock_response.text = "<html><title>Test</title><body>Line1\nLine2\nLine3</body></html>"
+            mock_response.url = "https://example.com"
+            mock_response.content = b"<html><body>Line1\nLine2\nLine3</body></html>"
+            mock_get.return_value = mock_response
+
+            with mock.patch('gakr_ddgs.extraction.ExtractionEngine') as mock_extractor:
+                mock_extractor.USER_AGENTS = ['test-agent']
+                mock_extract_instance = mock.Mock()
+                mock_extract_instance.extract_content.return_value = ("Line1\nLine2\nLine3", "trafilatura", 0.9)
+                mock_extractor.return_value = mock_extract_instance
+
+                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                    mock_process.return_value = ([{
+                        "cleaned_content": "Line1\nLine2\nLine3",
+                        "content_sections": {},
+                        "top_keywords": [],
+                        "sentences_count": 3,
+                        "sample_sentences": ["Line1", "Line2"],
+                    }], {})
+
+                    result = fetch_url("https://example.com", raw_html=False)
+                    # Serialize as the CLI handler does (no .replace)
+                    dumped = json.dumps(result, indent=2, ensure_ascii=False)
+                    # Must load with strict=True (no literal newlines in strings)
+                    loaded = json.loads(dumped, strict=True)
+                    assert "result" in loaded
+                    assert "error" not in loaded
+
+    def test_fetch_url_raw_html_json_valid(self):
+        """fetch_url with raw_html=True output serializes to valid strict JSON"""
+        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 200
+            mock_response.text = "<html><title>Test</title><body>Content</body></html>"
+            mock_response.url = "https://example.com"
+            mock_response.content = b""
+            mock_get.return_value = mock_response
+
+            result = fetch_url("https://example.com", raw_html=True)
+            dumped = json.dumps(result, indent=2, ensure_ascii=False)
+            loaded = json.loads(dumped, strict=True)
+            assert "result" in loaded
+            assert "error" not in loaded
+
+    def test_web_search_output_json_valid(self):
+        """web_search output serializes to valid strict JSON"""
+        with mock.patch('gakr_ddgs.cli.EnterpriseSearchEngine') as mock_engine:
+            mock_instance = mock.Mock()
+            mock_instance.execute_search.return_value = [
+                EnterpriseResult(
+                    position=1,
+                    title="Test",
+                    url="https://example.com",
+                    snippet="Test snippet",
+                    source="web",
+                    main_content="Hello\nWorld\nTest",
+                    extraction_status="success",
+                )
+            ]
+            mock_instance.stats = {'total': 1, 'success': 1}
+            mock_engine.return_value = mock_instance
+
+            with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                mock_process.return_value = ([{
+                    "position": 1,
+                    "title": "Test",
+                    "url": "https://example.com",
+                    "cleaned_content": "Hello\nWorld\nTest",
+                    "content_sections": {},
+                    "top_keywords": [],
+                    "sentences_count": 3,
+                    "sample_sentences": ["Hello", "World"],
+                }], {"total": 1, "successful": 1, "failed": 0})
+
+                result = web_search(query="test", max_results=1)
+                # The output dict includes query, structured_results, stats
+                output = {
+                    'query': "test",
+                    'structured_results': result[0],
+                    'stats': {'cleaner_stats': result[1]}
+                }
+                dumped = json.dumps(output, indent=2, ensure_ascii=False)
+                loaded = json.loads(dumped, strict=True)
+                assert "structured_results" in loaded
+                assert len(loaded["structured_results"]) == 1
 
 
 if __name__ == '__main__':

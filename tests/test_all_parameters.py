@@ -427,6 +427,165 @@ def test_fetch_url_parameters():
             print(f"    ❌ FAIL - Exception: {str(e)}")
 
 
+# ===== Content Cleaning Regression Tests =====
+# These tests verify the actual content cleaning pipeline (process_record,
+# process_results) to catch regressions where raw main_content leaks into
+# output instead of cleaned_content.
+
+def _make_test_record(main_content: str, status: str = "success") -> dict:
+    """Helper: create a realistic extraction record dict."""
+    return {
+        'main_content': main_content,
+        'url': 'https://example.com/test-page',
+        'final_url': 'https://example.com/test-page',
+        'position': 1,
+        'title': 'Test Page Title',
+        'snippet': 'A test snippet',
+        'source': 'DuckDuckGo',
+        'extraction_status': status,
+        'confidence_score': 0.95,
+        'content_word_count': len(main_content.split()),
+        'fetch_time': 0.45,
+        'publish_date': None,
+        'author': None,
+        'errors': [],
+    }
+
+
+_TEST_RAW_TEXT = (
+    "Python is a high-level, general-purpose programming language. "
+    "Its design philosophy emphasizes code readability with the use of significant indentation. "
+    "Python is dynamically typed and garbage-collected. "
+    "It supports multiple programming paradigms, including structured, object-oriented, and "
+    "functional programming. It is often described as a 'batteries included' language due to "
+    "its comprehensive standard library. Python was created by Guido van Rossum and first "
+    "released in 1991. The language has experienced significant growth in popularity, "
+    "particularly in data science, machine learning, and web development."
+)
+
+
+def test_process_record_drops_main_content():
+    """process_record() must NOT include main_content in its output dict."""
+    from gakr_ddgs.cleaner import process_record
+
+    record = _make_test_record(_TEST_RAW_TEXT)
+    result = process_record(record)
+
+    # main_content must NOT leak into output
+    assert 'main_content' not in result, (
+        "process_record output must not contain 'main_content' key"
+    )
+
+    # cleaned_content must be present and non-empty
+    assert 'cleaned_content' in result, (
+        "process_record output must contain 'cleaned_content' key"
+    )
+    assert isinstance(result['cleaned_content'], str), (
+        "cleaned_content must be a string"
+    )
+    assert len(result['cleaned_content']) > 0, (
+        "cleaned_content must not be empty"
+    )
+
+    # No raw HTML should survive in cleaned_content
+    assert '<' not in result['cleaned_content'], (
+        "cleaned_content must not contain raw HTML tags"
+    )
+    assert '>' not in result['cleaned_content'], (
+        "cleaned_content must not contain raw HTML tags"
+    )
+
+
+def test_process_record_output_json_serializable():
+    """process_record() output must be serializable to valid JSON."""
+    import json
+    from gakr_ddgs.cleaner import process_record
+
+    record = _make_test_record(_TEST_RAW_TEXT)
+    result = process_record(record)
+
+    # This must not raise
+    serialized = json.dumps(result, indent=2, ensure_ascii=False)
+
+    # Verify it round-trips
+    deserialized = json.loads(serialized)
+    assert deserialized['cleaned_content'] == result['cleaned_content']
+    # Verify no escape-sequence corruption in the JSON
+    assert '\\\\n' not in serialized, (
+        "JSON must not contain double-escaped newlines"
+    )
+
+
+def test_process_record_required_keys():
+    """process_record() output must have all expected keys."""
+    from gakr_ddgs.cleaner import process_record
+
+    record = _make_test_record(_TEST_RAW_TEXT)
+    result = process_record(record)
+
+    expected_keys = {
+        'position', 'title', 'url', 'final_url',
+        'publish_date', 'author', 'fetch_time',
+        'extraction_status', 'confidence_score', 'content_word_count',
+        'content_type', 'cleaned_content', 'first_paragraph',
+        'content_sections', 'sentences_count', 'sample_sentences',
+        'top_keywords', 'readability_metrics', 'quality_signals',
+        'content_quality_score',
+    }
+
+    missing = expected_keys - set(result.keys())
+    extra = set(result.keys()) - expected_keys
+
+    assert not missing, f"Missing expected keys: {missing}"
+    # 'main_content' in extra would indicate a regression
+    forbidden = {'main_content', 'raw_html'}
+    actual_forbidden = extra & forbidden
+    assert not actual_forbidden, (
+        f"Output contains forbidden keys: {actual_forbidden}"
+    )
+
+
+def test_process_results_filters_by_success():
+    """process_results() must keep only extraction_status=='success' records."""
+    from gakr_ddgs.cleaner import process_results
+
+    records = [
+        _make_test_record(_TEST_RAW_TEXT, status="success"),
+        _make_test_record("Should be filtered out", status="failed"),
+        _make_test_record("Should also be filtered", status="pending"),
+    ]
+
+    structured, stats = process_results(records)
+
+    assert len(structured) == 1, (
+        f"Expected 1 successful record, got {len(structured)}"
+    )
+    assert structured[0]['title'] == 'Test Page Title'
+    # Verify no main_content leaked in ANY result
+    for r in structured:
+        assert 'main_content' not in r, (
+            "process_results output must not contain 'main_content'"
+        )
+
+
+def test_process_results_json_serializable():
+    """process_results() output must be serializable to valid JSON."""
+    import json
+    from gakr_ddgs.cleaner import process_results
+
+    records = [_make_test_record(_TEST_RAW_TEXT, status="success")]
+    structured, stats = process_results(records)
+
+    # Full output with stats
+    output = {"results": structured, "stats": stats}
+    serialized = json.dumps(output, indent=2, ensure_ascii=False)
+
+    # Must round-trip cleanly
+    deserialized = json.loads(serialized)
+    assert len(deserialized['results']) == 1
+    assert deserialized['results'][0]['cleaned_content'] != ""
+
+
 def main():
     """Run all parameter tests"""
     print("\n")
@@ -440,7 +599,17 @@ def main():
     test_news_search_parameters()
     test_video_search_parameters()
     test_fetch_url_parameters()
-    
+
+    # Content cleaning regression tests
+    print("\n" + "="*80)
+    print("CONTENT CLEANING REGRESSION TESTS")
+    print("="*80)
+    test_process_record_drops_main_content()
+    test_process_record_output_json_serializable()
+    test_process_record_required_keys()
+    test_process_results_filters_by_success()
+    test_process_results_json_serializable()
+
     print("\n" + "="*80)
     print("✅ ALL PARAMETER TESTS COMPLETED")
     print("="*80)
@@ -450,7 +619,8 @@ def main():
     print("  • news_search: 7 test cases - All parameters working")
     print("  • video_search: 9 test cases - All parameters working")
     print("  • fetch_url: 4 test cases - All parameters working")
-    print("\n✅ Total: 41 test cases - 100% coverage of all parameters")
+    print("  • content_cleaning: 5 test cases - Regression tests passed")
+    print("\n✅ Total: 46 test cases - 100% coverage of all parameters")
     print("="*80 + "\n")
 
 

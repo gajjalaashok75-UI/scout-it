@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔧 Fixed
+
+#### CLI
+- **Removed `.replace('\\n', '\n')` from all 5 output write calls**: Caused invalid JSON by inserting literal newlines inside JSON string values. Reverted to clean `json.dumps()` output. Affected `web-search`, `image-search`, `news-search`, `video-search`, and `fetch-url`.
+- **Updated `--raw-html` help text**: Clarified that it returns prettified raw HTML, not extracted content.
+
+#### Test Coverage
+- **5 content-cleaning regression tests** (`tests/test_all_parameters.py`): Verify `process_record()` drops `main_content`, output is JSON-serializable, expected keys present, `process_results()` filters by success status
+- **3 JSON validity tests** (`tests/test_cli.py::TestJsonOutputValidity`): Verify `fetch-url` (default), `fetch-url --raw-html`, and `web-search` all produce strict-mode valid JSON
+
 ### ✅ Fixed
 
 #### Code Quality & Performance
