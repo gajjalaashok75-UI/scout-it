@@ -182,3 +182,4 @@ build_and_test.py
 references/
 .gakrcli/
 url_raw_result.json
+video_extract_results.json
