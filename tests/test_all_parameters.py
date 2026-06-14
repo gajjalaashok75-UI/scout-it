@@ -12,6 +12,7 @@ from gakr_ddgs.cli import (
     news_search,
     video_search,
     fetch_url,
+    video_extract,
 )
 
 def test_web_search_parameters():
@@ -584,6 +585,122 @@ def test_process_results_json_serializable():
     deserialized = json.loads(serialized)
     assert len(deserialized['results']) == 1
     assert deserialized['results'][0]['cleaned_content'] != ""
+
+
+# ===== Video Extract Tests =====
+
+def test_video_extract_empty_url():
+    """video_extract() must return error for empty URL."""
+    result = video_extract("")
+
+    assert "error" in result
+    assert result["error"] == "invalid_url"
+    assert "No URL provided" in result.get("error_message", "")
+
+
+def test_video_extract_invalid_url():
+    """video_extract() must return error for non-http URL."""
+    result = video_extract("not-a-url")
+
+    assert "error" in result
+    assert result["error"] == "invalid_url"
+
+
+def test_video_extract_non_youtube_url():
+    """video_extract() must return unsupported_platform for non-YouTube URLs."""
+    result = video_extract("https://vimeo.com/123456789")
+
+    assert "error" in result
+    assert result["error"] == "unsupported_platform"
+    assert "youtube" in result.get("supported_platforms", [])
+    assert "coming soon" in result.get("error_message", "").lower()
+
+
+def test_video_extract_youtube_success():
+    """video_extract() must return full metadata for a valid YouTube URL."""
+    mock_html = """<html>
+    <meta name="title" content="Test Video Title">
+    <meta name="description" content="A test video description.">
+    <script>var ytInitialData = {"ownerChannelName":"TestChannel","ownerChannelUrl":"/channel/UC123"};</script>
+    <script>{"viewCount":"42000","lengthSeconds":"600"}</script>
+    </html>"""
+
+    mock_transcript = [
+        {"text": "Hello world", "start": 0.0, "duration": 2.5},
+        {"text": "This is a test", "start": 2.5, "duration": 3.0},
+        {"text": "Goodbye", "start": 5.5, "duration": 1.5},
+    ]
+
+    with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        mock_response = mock.Mock()
+        mock_response.text = mock_html
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api:
+            mock_api.get_transcript.return_value = mock_transcript
+
+            result = video_extract("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+    # Verify structure
+    assert "error" not in result, f"Unexpected error: {result.get('error_message', '')}"
+    assert result["platform"] == "youtube"
+    assert result["video_id"] == "dQw4w9WgXcQ"
+    assert result["title"] == "Test Video Title"
+    assert result["channel"] == "TestChannel"
+    assert result["view_count"] == 42000
+    assert result["duration_seconds"] == 600
+
+    # Verify subtitles
+    assert result["subtitles"] is not None
+    assert "full_text" in result["subtitles"]
+    assert "segments" in result["subtitles"]
+    assert len(result["subtitles"]["segments"]) == 3
+
+    # Verify JSON-serializable
+    serialized = json.dumps(result, indent=2, ensure_ascii=False)
+    deserialized = json.loads(serialized)
+    assert deserialized["video_id"] == "dQw4w9WgXcQ"
+
+
+def test_video_extract_youtube_short_url():
+    """video_extract() must handle youtu.be short URLs."""
+    mock_html = """<html>
+    <meta name="title" content="Short URL Test">
+    <meta name="description" content="Test">
+    </html>"""
+
+    with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        mock_response = mock.Mock()
+        mock_response.text = mock_html
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api:
+            mock_api.get_transcript.return_value = []
+
+            result = video_extract("https://youtu.be/dQw4w9WgXcQ")
+
+    assert "error" not in result, f"Unexpected error: {result.get('error_message', '')}"
+    assert result["video_id"] == "dQw4w9WgXcQ"
+    assert result["platform"] == "youtube"
+
+
+def test_video_extract_output_json_serializable():
+    """video_extract() result must always be JSON-serializable, even on error."""
+    # Error case
+    error_result = video_extract("https://vimeo.com/123")
+    serialized = json.dumps(error_result, indent=2, ensure_ascii=False)
+    deserialized = json.loads(serialized)
+    assert deserialized["error"] == "unsupported_platform"
+
+    # Invalid URL case
+    invalid_result = video_extract("")
+    serialized = json.dumps(invalid_result, indent=2, ensure_ascii=False)
+    deserialized = json.loads(serialized)
+    assert deserialized["error"] == "invalid_url"
 
 
 def main():

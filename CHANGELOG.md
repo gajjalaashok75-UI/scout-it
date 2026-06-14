@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🎉 Added
+
+#### video-extract — New standalone video extraction command
+- **`gakr-ddgs video-extract --url <URL>`**: New subcommand that extracts full metadata, description, and subtitles from a video URL. Currently supports YouTube. Non-YouTube URLs receive a friendly notice: "Only YouTube supported, others coming soon."
+  - Extracts: title, description, channel, view count, duration, thumbnail, subtitles (via `youtube-transcript-api`), and structured JSON output
+  - Validates URL format and video URL validity before extraction
+  - Error classification: `invalid_url`, `unsupported_platform`, `video_not_found`, `network_error`, `timeout`, `http_error`, `missing_dependency`
+  - Default output: `video_extract_results.json` (configurable via `--out`)
+  - Supports youtube.com, youtu.be, youtube.com/embed/, and m.youtube.com URL formats
+  - 6 tests: empty URL, invalid URL, non-YouTube rejection, YouTube success, youtu.be short URL, JSON serializability
+
 ### 🔧 Fixed
 
 #### CLI

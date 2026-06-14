@@ -24,8 +24,10 @@ import json
 import random
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from html import unescape
+from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -272,6 +274,175 @@ def video_search(
         },
     )
     return results, {'search_engine': stats}
+
+
+# ---------------------------------------------------------------------------
+# YouTube video extraction (video-extract command)
+# ---------------------------------------------------------------------------
+_YOUTUBE_RE = re.compile(
+    r'(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/|m\.youtube\.com/watch\?v=)([a-zA-Z0-9_-]{11})'
+)
+
+
+def _fetch_youtube_metadata(video_id: str) -> Dict[str, Any]:
+    """Fetch video metadata (title, description, channel, etc.) from YouTube page."""
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        html = resp.text
+
+        metadata: Dict[str, Any] = {}
+
+        # Title
+        title_match = re.search(r'<meta\s+name="title"\s+content="([^"]+)"', html)
+        if not title_match:
+            title_match = re.search(r'<title>([^<]+)</title>', html)
+        raw_title = unescape(title_match.group(1).strip()).replace(' - YouTube', '') if title_match else ""
+        metadata['title'] = raw_title
+
+        # Description
+        desc_match = re.search(r'<meta\s+name="description"\s+content="([^"]+)"', html)
+        metadata['description'] = unescape(desc_match.group(1)) if desc_match else ""
+
+        # Channel name
+        channel_match = re.search(r'"ownerChannelName"\s*:\s*"([^"]+)"', html)
+        metadata['channel'] = unescape(channel_match.group(1)) if channel_match else ""
+
+        # View count
+        views_match = re.search(r'"viewCount"\s*:\s*"(\d+)"', html)
+        metadata['view_count'] = int(views_match.group(1)) if views_match else 0
+
+        # Duration in seconds
+        duration_match = re.search(r'"lengthSeconds"\s*:\s*"(\d+)"', html)
+        metadata['duration_seconds'] = int(duration_match.group(1)) if duration_match else 0
+
+        # Channel URL
+        channel_url_match = re.search(r'"ownerChannelUrl"\s*:\s*"([^"]+)"', html)
+        metadata['channel_url'] = unescape(channel_url_match.group(1)) if channel_url_match else ""
+
+        # Thumbnail
+        metadata['thumbnail_url'] = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+
+        # Core identifiers
+        metadata['url'] = f"https://www.youtube.com/watch?v={video_id}"
+        metadata['video_id'] = video_id
+
+        return metadata
+    except requests.exceptions.HTTPError as exc:
+        if exc.response is not None and exc.response.status_code == 404:
+            return {"error": "video_not_found", "error_message": "Video not found or has been removed.", "video_id": video_id}
+        return {"error": "http_error", "error_message": f"HTTP {exc.response.status_code if exc.response is not None else 'unknown'}: {str(exc)}", "video_id": video_id}
+    except requests.exceptions.ConnectionError:
+        return {"error": "network_error", "error_message": "Failed to connect to YouTube. Check your internet connection.", "video_id": video_id}
+    except requests.exceptions.Timeout:
+        return {"error": "timeout", "error_message": "Request to YouTube timed out.", "video_id": video_id}
+    except Exception as exc:
+        return {"error": "unknown", "error_message": f"Failed to fetch metadata: {str(exc)}", "video_id": video_id}
+
+
+def _fetch_youtube_subtitles(video_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch YouTube subtitles/transcript for a video."""
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        from youtube_transcript_api._errors import NoTranscriptFound, TranscriptsDisabled
+
+        try:
+            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
+            is_generated = False
+        except (NoTranscriptFound, TranscriptsDisabled):
+            # Try auto-generated
+            transcript = YouTubeTranscriptApi.get_transcript(video_id)
+            is_generated = True
+
+        if not transcript:
+            return None
+
+        segments = []
+        for seg in transcript:
+            segments.append({
+                'text': seg.get('text', ''),
+                'start': seg.get('start', 0.0),
+                'duration': seg.get('duration', 0.0),
+            })
+
+        full_text = ' '.join(s['text'] for s in segments)
+
+        # Detect language from first segment context or default
+        language = "unknown"
+        language_code = "unknown"
+
+        return {
+            'full_text': full_text,
+            'language': language,
+            'language_code': language_code,
+            'segments': segments,
+            'is_generated': is_generated,
+        }
+    except ImportError:
+        return {"error": "missing_dependency", "error_message": "youtube-transcript-api not installed. Run: pip install youtube-transcript-api"}
+    except Exception:
+        return None
+
+
+def video_extract(url: str) -> Dict[str, Any]:
+    """Extract full details from a video URL.
+
+    Supports YouTube URLs. Non-YouTube URLs receive a friendly notice.
+    """
+    url = str(url or "").strip()
+    if not url:
+        return {"error": "invalid_url", "error_message": "No URL provided. Use --url to specify a video URL.", "hint": "Example: gakr-ddgs video-extract --url \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\""}
+
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return {"error": "invalid_url", "error_message": "Invalid URL. Provide a valid http/https URL."}
+
+    # Check if YouTube URL
+    match = _YOUTUBE_RE.search(url)
+    if not match:
+        return {
+            "error": "unsupported_platform",
+            "error_message": "Only YouTube is supported at this time. Other video platforms coming soon.",
+            "url": url,
+            "supported_platforms": ["youtube"],
+        }
+
+    video_id = match.group(1)
+
+    # Fetch metadata
+    meta = _fetch_youtube_metadata(video_id)
+    if "error" in meta:
+        return meta  # error dict already has proper error classification
+
+    # Fetch subtitles
+    subs = _fetch_youtube_subtitles(video_id)
+    if subs and "error" in subs:
+        meta["subtitles_error"] = subs["error_message"]
+        subs = None
+
+    meta["subtitles"] = subs
+
+    return {
+        "url": meta["url"],
+        "video_id": video_id,
+        "platform": "youtube",
+        "title": meta.get("title", ""),
+        "description": meta.get("description", ""),
+        "channel": meta.get("channel", ""),
+        "channel_url": meta.get("channel_url", ""),
+        "view_count": meta.get("view_count", 0),
+        "duration_seconds": meta.get("duration_seconds", 0),
+        "thumbnail_url": meta.get("thumbnail_url", ""),
+        "subtitles": meta.get("subtitles"),
+    }
+
+
+# ---------------------------------------------------------------------------
 
 
 def _extract_html_title(html_text: str) -> str:
@@ -608,7 +779,29 @@ def main():
     url_parser.add_argument('--out', '-o', default='url_fetch_result.json', help='Output file')
     url_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
     url_parser.add_argument('--raw-html', action='store_true', help='Return raw HTML (prettified) instead of extracted/cleaned content')
-    
+
+    # ======================================================================
+    # video-extract subcommand
+    # ======================================================================
+    video_extract_parser = subparsers.add_parser(
+        'video-extract',
+        help='Extract full details from a video URL (supports YouTube)',
+        description=(
+            'Extract full metadata, description, and subtitles from a video URL. '
+            'Currently supports YouTube. Other platforms coming soon.'
+        ),
+        epilog=(
+            'Examples:\\n'
+            '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\\n'
+            '  gakr-ddgs video-extract --url "https://youtu.be/dQw4w9WgXcQ"\\n'
+            '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json'
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    video_extract_parser.add_argument('--url', required=True, help='Video URL to extract (e.g., https://www.youtube.com/watch?v=VIDEO_ID)')
+    video_extract_parser.add_argument('--out', '-o', default='video_extract_results.json', help='Output file (default: video_extract_results.json)')
+    video_extract_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
     args = parser.parse_args()
     
     if not args.command:
@@ -814,7 +1007,63 @@ def main():
         print(f'   📄 Results JSON: {out_path}')
         print(f'   📂 Results saved to: {out_path.resolve()}')
         print(f'   ⏱️  Execution time: {stats["search_engine"].get("execution_time", 0.0):.2f}s\n')
-    
+
+    # Video extract
+    elif args.command == 'video-extract':
+        print(f"\n🎥 Extracting video details: {args.url}\n")
+
+        result = video_extract(args.url)
+
+        # Handle error cases
+        if "error" in result:
+            err_code = result.get("error", "unknown")
+            err_msg = result.get("error_message", "Unknown error")
+
+            if err_code == "invalid_url":
+                print(f'   [ERR] Invalid URL: {err_msg}')
+            elif err_code == "unsupported_platform":
+                print(f'   [ERR] Unsupported platform: {err_msg}')
+                print(f'   [OK]  Supported platforms: {", ".join(result.get("supported_platforms", []))}')
+            elif err_code in ("video_not_found", "http_error", "network_error", "timeout"):
+                print(f'   [ERR] {err_msg}')
+            else:
+                print(f'   [ERR] {err_msg}')
+            print(f'   [HINT] Provide a valid YouTube URL: gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=VIDEO_ID"')
+            print(f'   [HINT] Other video platforms coming soon.\n')
+
+            # Still save error result to output for debugging
+            output = result
+            out_path = Path(args.out)
+            out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+        else:
+            platform = result.get("platform", "unknown")
+            title = result.get("title", "Unknown")
+            channel = result.get("channel", "Unknown")
+            views = result.get("view_count", 0)
+            duration = result.get("duration_seconds", 0)
+            has_subs = result.get("subtitles") is not None
+
+            print(f'   ✅ Platform: {platform}')
+            print(f'   ✅ Title: {title}')
+            print(f'   📺 Channel: {channel}')
+            print(f'   👁️  Views: {views:,}')
+            print(f'   ⏱️  Duration: {duration}s')
+            print(f'   📝 Subtitles: {"Available" if has_subs else "Not available"}')
+
+            output = result
+
+            out_path = Path(args.out)
+            out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+
+        if not args.json:
+            if "error" in result:
+                print(f'\n   [ERR] Extraction failed. Details saved to: {out_path.resolve()}\n')
+            else:
+                print(f'\n   ✅ VIDEO EXTRACTION COMPLETE!')
+                print(f'   📄 Results saved to: {out_path.resolve()}\n')
+        else:
+            print(json.dumps(output, indent=2, ensure_ascii=False))
+
     # Fetch URL
     elif args.command == 'fetch-url':
         # Validate: Only one of --max-chars or --max-size is allowed
