@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Default output: `video_extract_results.json` (configurable via `--out`)
   - Supports youtube.com, youtu.be, youtube.com/embed/, and m.youtube.com URL formats
   - 6 tests: empty URL, invalid URL, non-YouTube rejection, YouTube success, youtu.be short URL, JSON serializability
+- **`gakr-ddgs video-extract --subtitle-lang <CODE>`**: New `--subtitle-lang` flag for requesting non-English subtitles.
+  - Validates the requested language against available subtitle tracks before fetching
+  - If requested language is unavailable, falls back to English (`en`) with a descriptive warning
+  - Shows available subtitle languages when the requested one isn't found
+  - Handles edge cases: no subtitles at all on video, both requested and default languages unavailable
+  - 3 new tests: fallback to en, no subtitles at all, fallback also fails
 
 ### 🔧 Fixed
 

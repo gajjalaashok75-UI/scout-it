@@ -399,53 +399,110 @@ def _fetch_youtube_metadata(video_id: str) -> Dict[str, Any]:
         return {"error": "unknown", "error_message": f"Failed to fetch metadata: {str(exc)}", "video_id": video_id}
 
 
-def _fetch_youtube_subtitles(video_id: str) -> Optional[Dict[str, Any]]:
-    """Fetch YouTube subtitles/transcript for a video."""
+def _fetch_youtube_subtitles(
+    video_id: str,
+    language_code: str = "en",
+) -> Optional[Dict[str, Any]]:
+    """Fetch YouTube subtitles/transcript for a video in a specific language.
+
+    Uses ``youtube-transcript-api`` to list available transcripts, validates
+    that *language_code* is available, fetches it, and returns structured
+    data.  When the requested language is not available the error dict
+    includes an ``available_languages`` list so the caller can show the user
+    what *is* available.
+
+    Returns ``None`` for generic/unexpected failures so the caller treats it
+    as "subtitles not found (unknown reason)".
+    """
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
+        from youtube_transcript_api import NoTranscriptFound, TranscriptsDisabled
 
         api = YouTubeTranscriptApi()
 
-        # Try English first, then fall back to any available
-        transcript = None
+        # List available transcripts upfront so we can validate the language
         try:
-            transcript = api.fetch(video_id, languages=['en'])
+            transcript_list = api.list(video_id)
+        except TranscriptsDisabled:
+            return {
+                "error": "transcripts_disabled",
+                "error_message": "Subtitles are disabled for this video.",
+                "video_id": video_id,
+            }
         except Exception:
-            try:
-                transcript = api.fetch(video_id)
-            except Exception:
-                return None
+            return None
 
-        if not transcript or not transcript.snippets:
+        # Build a list of available languages for error reporting
+        available = [
+            {
+                "code": t.language_code,
+                "name": t.language,
+                "generated": t.is_generated,
+            }
+            for t in transcript_list
+        ]
+
+        # Try to find the requested language
+        try:
+            transcript = transcript_list.find_transcript([language_code])
+        except NoTranscriptFound:
+            return {
+                "error": "subtitle_lang_not_available",
+                "error_message": (
+                    f"Requested subtitle language '{language_code}' is not "
+                    f"available for this video."
+                ),
+                "requested_language": language_code,
+                "available_languages": available,
+                "video_id": video_id,
+            }
+
+        # Fetch the transcript data
+        try:
+            fetched = transcript.fetch()
+        except Exception:
+            return None
+
+        if not fetched or not fetched.snippets:
             return None
 
         segments = []
-        for snippet in transcript.snippets:
+        for snippet in fetched.snippets:
             segments.append({
-                'text': snippet.text,
-                'start': snippet.start,
-                'duration': snippet.duration,
+                "text": snippet.text,
+                "start": snippet.start,
+                "duration": snippet.duration,
             })
 
-        full_text = ' '.join(s['text'] for s in segments)
+        full_text = " ".join(s["text"] for s in segments)
 
         return {
-            'full_text': full_text,
-            'language': transcript.language,
-            'language_code': transcript.language_code,
-            'segments': segments,
-            'is_generated': transcript.is_generated,
+            "full_text": full_text,
+            "language": fetched.language,
+            "language_code": fetched.language_code,
+            "segments": segments,
+            "is_generated": fetched.is_generated,
         }
+
     except ImportError:
-        return {"error": "missing_dependency", "error_message": "youtube-transcript-api not installed. Run: pip install youtube-transcript-api"}
+        return {
+            "error": "missing_dependency",
+            "error_message": (
+                "youtube-transcript-api not installed. "
+                "Run: pip install youtube-transcript-api"
+            ),
+        }
     except Exception:
         return None
 
 
-def video_extract(url: str) -> Dict[str, Any]:
+def video_extract(url: str, subtitle_lang: str = "en") -> Dict[str, Any]:
     """Extract full details from a video URL.
 
     Supports YouTube URLs. Non-YouTube URLs receive a friendly notice.
+
+    :param url: The video URL to extract.
+    :param subtitle_lang: Preferred subtitle language code (default ``"en"``).
     """
     url = str(url or "").strip()
     if not url:
@@ -472,9 +529,37 @@ def video_extract(url: str) -> Dict[str, Any]:
     if "error" in meta:
         return meta  # error dict already has proper error classification
 
-    # Fetch subtitles
-    subs = _fetch_youtube_subtitles(video_id)
-    if subs and "error" in subs:
+    # Fetch subtitles in the requested language
+    subs = _fetch_youtube_subtitles(video_id, language_code=subtitle_lang)
+
+    if subs and subs.get("error") == "subtitle_lang_not_available":
+        avail = subs.get("available_languages", [])
+        meta["available_subtitle_languages"] = avail
+        meta["requested_subtitle_language"] = subs.get("requested_language")
+        subs = None
+
+        if not avail:
+            meta["subtitles_error"] = "No subtitles available for this video."
+        elif subtitle_lang != "en":
+            # Retry with default language
+            subs = _fetch_youtube_subtitles(video_id, language_code="en")
+            if subs and "error" in subs:
+                meta["subtitles_error"] = (
+                    f"Requested subtitle language '{subtitle_lang}' not available. "
+                    f"Default 'en' also not available."
+                )
+                subs = None
+            else:
+                meta["subtitles_error"] = (
+                    f"Requested subtitle language '{subtitle_lang}' not available, "
+                    f"falling back to default 'en'."
+                )
+        else:
+            meta["subtitles_error"] = (
+                f"Requested subtitle language '{subtitle_lang}' not available "
+                f"for this video."
+            )
+    elif subs and "error" in subs:
         meta["subtitles_error"] = subs["error_message"]
         subs = None
 
@@ -492,6 +577,9 @@ def video_extract(url: str) -> Dict[str, Any]:
         "duration_seconds": meta.get("duration_seconds", 0),
         "thumbnail_url": meta.get("thumbnail_url", ""),
         "subtitles": meta.get("subtitles"),
+        "subtitles_error": meta.get("subtitles_error"),
+        "requested_subtitle_language": meta.get("requested_subtitle_language"),
+        "available_subtitle_languages": meta.get("available_subtitle_languages"),
     }
 
 
@@ -847,11 +935,13 @@ def main():
             'Examples:\\n'
             '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\\n'
             '  gakr-ddgs video-extract --url "https://youtu.be/dQw4w9WgXcQ"\\n'
+            '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --subtitle-lang fr\\n'
             '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     video_extract_parser.add_argument('--url', required=True, help='Video URL to extract (e.g., https://www.youtube.com/watch?v=VIDEO_ID)')
+    video_extract_parser.add_argument('--subtitle-lang', default='en', help='Preferred subtitle language code (default: en)')
     video_extract_parser.add_argument('--out', '-o', default='video_extract_results.json', help='Output file (default: video_extract_results.json)')
     video_extract_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1065,7 +1155,8 @@ def main():
     elif args.command == 'video-extract':
         print(f"\n🎥 Extracting video details: {args.url}\n")
 
-        result = video_extract(args.url)
+        lang = getattr(args, 'subtitle_lang', 'en') or 'en'
+        result = video_extract(args.url, subtitle_lang=lang)
 
         # Handle error cases
         if "error" in result:
@@ -1095,13 +1186,29 @@ def main():
             views = result.get("view_count", 0)
             duration = result.get("duration_seconds", 0)
             has_subs = result.get("subtitles") is not None
+            subs_error = result.get("subtitles_error")
+            avail_langs = result.get("available_subtitle_languages")
+            req_lang = result.get("requested_subtitle_language", "en")
 
             print(f'   ✅ Platform: {platform}')
             print(f'   ✅ Title: {title}')
             print(f'   📺 Channel: {channel}')
             print(f'   👁️  Views: {views:,}')
             print(f'   ⏱️  Duration: {duration}s')
-            print(f'   📝 Subtitles: {"Available" if has_subs else "Not available"}')
+
+            if subs_error:
+                print(f'   [!]  Subtitles: {subs_error}')
+                if avail_langs:
+                    print(f'   [OK]  Available subtitle languages:')
+                    for lang in avail_langs:
+                        tag = " (auto-generated)" if lang["generated"] and "auto-generated" not in lang["name"] else ""
+                        print(f'         - {lang["code"]}: {lang["name"]}{tag}')
+
+            if has_subs:
+                sub_lang = result["subtitles"].get("language_code", "?")
+                print(f'   📝 Subtitles: Available ({sub_lang})')
+            elif not subs_error:
+                print(f'   📝 Subtitles: Not available')
 
             output = result
 

@@ -644,6 +644,13 @@ def test_video_extract_youtube_success():
     mock_transcript_obj.language_code = "en"
     mock_transcript_obj.is_generated = True
 
+    # The fetched transcript returned by transcript.fetch()
+    mock_fetched = mock.Mock()
+    mock_fetched.snippets = [snippet1, snippet2, snippet3]
+    mock_fetched.language = "English"
+    mock_fetched.language_code = "en"
+    mock_fetched.is_generated = True
+
     with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
         mock_response = mock.Mock()
         mock_response.text = mock_html
@@ -653,7 +660,19 @@ def test_video_extract_youtube_success():
 
         with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api_cls:
             mock_api_instance = mock.Mock()
-            mock_api_instance.fetch.return_value = mock_transcript_obj
+
+            # Build a mock TranscriptList that supports iteration + find_transcript
+            mock_transcript_list = mock.MagicMock()
+            mock_transcript_list.find_transcript.return_value = mock_transcript_obj
+            mock_transcript_list.__iter__.return_value = iter([
+                mock.Mock(language_code="en", language="English", is_generated=True),
+                mock.Mock(language_code="de", language="German", is_generated=True),
+            ])
+            mock_api_instance.list.return_value = mock_transcript_list
+
+            # The Transcript.fetch() returns the fetched data
+            mock_transcript_obj.fetch.return_value = mock_fetched
+
             mock_api_cls.return_value = mock_api_instance
 
             result = video_extract("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
@@ -718,6 +737,145 @@ def test_video_extract_output_json_serializable():
     serialized = json.dumps(invalid_result, indent=2, ensure_ascii=False)
     deserialized = json.loads(serialized)
     assert deserialized["error"] == "invalid_url"
+
+
+def test_video_extract_subtitle_lang_fallback():
+    """video_extract() must fall back to 'en' when requested subtitle lang is unavailable."""
+    from youtube_transcript_api import NoTranscriptFound
+
+    mock_html = """<html>
+    <meta name="title" content="Fallback Test">
+    <meta name="description" content="Test">
+    <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"Fallback Test","author":"Channel","viewCount":"100","lengthSeconds":"60","shortDescription":"Test"}};</script>
+    </html>"""
+
+    snippet = mock.Mock()
+    snippet.text = "Hello"
+    snippet.start = 0.0
+    snippet.duration = 1.0
+
+    mock_transcript_obj = mock.Mock()
+    mock_transcript_obj.snippets = [snippet]
+    mock_transcript_obj.language = "English"
+    mock_transcript_obj.language_code = "en"
+    mock_transcript_obj.is_generated = True
+
+    mock_fetched = mock.Mock()
+    mock_fetched.snippets = [snippet]
+    mock_fetched.language = "English"
+    mock_fetched.language_code = "en"
+    mock_fetched.is_generated = True
+
+    with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        mock_response = mock.Mock()
+        mock_response.text = mock_html
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api_cls:
+            mock_api_instance = mock.Mock()
+            mock_transcript_list = mock.MagicMock()
+            # First find_transcript("fr") raises, second find_transcript("en") returns
+            mock_transcript_list.find_transcript.side_effect = [
+                NoTranscriptFound("dQw4w9WgXcQ", ["fr"], mock.MagicMock()),
+                mock_transcript_obj,
+            ]
+            mock_transcript_list.__iter__.return_value = iter([
+                mock.Mock(language_code="en", language="English", is_generated=True),
+            ])
+            mock_api_instance.list.return_value = mock_transcript_list
+            mock_transcript_obj.fetch.return_value = mock_fetched
+            mock_api_cls.return_value = mock_api_instance
+
+            result = video_extract(
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                subtitle_lang="fr",
+            )
+
+    assert "error" not in result, f"Unexpected error: {result.get('error_message', '')}"
+    assert result["subtitles"] is not None
+    assert result["subtitles"]["language_code"] == "en"
+    assert "falling back" in result.get("subtitles_error", "")
+    assert result.get("requested_subtitle_language") == "fr"
+    assert len(result.get("available_subtitle_languages", [])) > 0
+
+
+def test_video_extract_subtitle_lang_no_subs():
+    """video_extract() must report when no subtitles exist at all on the video."""
+    from youtube_transcript_api import NoTranscriptFound
+
+    mock_html = """<html>
+    <meta name="title" content="No Subs">
+    <meta name="description" content="Test">
+    <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"No Subs","author":"Channel","viewCount":"100","lengthSeconds":"60","shortDescription":"Test"}};</script>
+    </html>"""
+
+    with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        mock_response = mock.Mock()
+        mock_response.text = mock_html
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api_cls:
+            mock_api_instance = mock.Mock()
+            mock_transcript_list = mock.MagicMock()
+            mock_transcript_list.find_transcript.side_effect = NoTranscriptFound("dQw4w9WgXcQ", ["en"], mock.MagicMock())
+            mock_transcript_list.__iter__.return_value = iter([])
+            mock_api_instance.list.return_value = mock_transcript_list
+            mock_api_cls.return_value = mock_api_instance
+
+            result = video_extract(
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                subtitle_lang="en",
+            )
+
+    assert "error" not in result
+    assert result["subtitles"] is None
+    assert "No subtitles available" in result.get("subtitles_error", "")
+    assert len(result.get("available_subtitle_languages", [])) == 0
+
+
+def test_video_extract_subtitle_lang_fallback_fails():
+    """video_extract() must report when both requested and default subtitle langs fail."""
+    from youtube_transcript_api import NoTranscriptFound
+
+    mock_html = """<html>
+    <meta name="title" content="Double Fail">
+    <meta name="description" content="Test">
+    <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"Double Fail","author":"Channel","viewCount":"100","lengthSeconds":"60","shortDescription":"Test"}};</script>
+    </html>"""
+
+    with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        mock_response = mock.Mock()
+        mock_response.text = mock_html
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api_cls:
+            mock_api_instance = mock.Mock()
+            mock_transcript_list = mock.MagicMock()
+            # Both find_transcript calls fail (fr, then en)
+            mock_transcript_list.find_transcript.side_effect = [
+                NoTranscriptFound("dQw4w9WgXcQ", ["fr"], mock.MagicMock()),
+                NoTranscriptFound("dQw4w9WgXcQ", ["en"], mock.MagicMock()),
+            ]
+            mock_transcript_list.__iter__.return_value = iter([
+                mock.Mock(language_code="en", language="English", is_generated=True),
+            ])
+            mock_api_instance.list.return_value = mock_transcript_list
+            mock_api_cls.return_value = mock_api_instance
+
+            result = video_extract(
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                subtitle_lang="fr",
+            )
+
+    assert "error" not in result
+    assert result["subtitles"] is None
+    assert "Default 'en' also not available" in result.get("subtitles_error", "")
 
 
 def main():
