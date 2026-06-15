@@ -701,7 +701,7 @@ class TestAdvancedSearchFeatures:
             mock_ddgs.return_value = ([{'title': 'news'}], {'total': 1, 'success': 1, 'execution_time': 0.1})
             results, stats = news_search('economy', max_results=5)
 
-            assert len(results) == 1
+            assert len(results) == 0  # no URL → extraction_status failed → filtered out
             assert stats['search_engine']['success'] == 1
             call_args, call_kwargs = mock_ddgs.call_args
             assert call_args[0] == 'news'
@@ -1106,19 +1106,19 @@ class TestEnhanceVideoDescriptions:
         assert out[0]["description"] == "short desc"
 
 
-class TestEnhanceNewsBodies:
-    """Test _enhance_news_bodies behaviour"""
+class TestExtractNewsContent:
+    """Test _extract_news_content behaviour"""
 
     def test_empty_results(self):
         """empty list returns immediately"""
-        from gakr_ddgs.cli import _enhance_news_bodies
-        assert _enhance_news_bodies([]) == []
+        from gakr_ddgs.cli import _extract_news_content
+        assert _extract_news_content([]) == []
 
     @mock.patch('gakr_ddgs.cli.ExtractionEngine')
     @mock.patch('gakr_ddgs.cli.requests')
-    def test_enhances_body(self, mock_requests, mock_engine_cls):
-        """article body is replaced with full extracted content"""
-        from gakr_ddgs.cli import _enhance_news_bodies
+    def test_enriches_result(self, mock_requests, mock_engine_cls):
+        """article URL is fetched, extracted, and enriched with process_results-compatible keys"""
+        from gakr_ddgs.cli import _extract_news_content
 
         mock_engine_cls.USER_AGENTS = ["TestAgent/1.0"]
         mock_resp = mock.MagicMock()
@@ -1131,42 +1131,66 @@ class TestEnhanceNewsBodies:
         mock_engine_cls.return_value = mock_engine
 
         results = [{"url": "https://example.com/article", "body": "short trunc..."}]
-        out = _enhance_news_bodies(results)
-        assert out[0]["body"] == "full " * 100
+        out = _extract_news_content(results)
+        assert out[0]["main_content"] == "full " * 100
+        assert out[0]["extraction_status"] == "success"
+        assert out[0]["confidence_score"] == 0.95
+        assert out[0]["extraction_method"] == "trafilatura"
+        assert out[0]["content_word_count"] == 100
 
     @mock.patch('gakr_ddgs.cli.ExtractionEngine')
     @mock.patch('gakr_ddgs.cli.requests')
-    def test_shorter_content_keeps_original(self, mock_requests, mock_engine_cls):
-        """extracted content shorter than original keeps DDGS body"""
-        from gakr_ddgs.cli import _enhance_news_bodies
+    def test_empty_url_failed(self, mock_requests, mock_engine_cls):
+        """empty URL results in extraction_status failed"""
+        from gakr_ddgs.cli import _extract_news_content
 
-        mock_engine_cls.USER_AGENTS = ["TestAgent/1.0"]
-        mock_resp = mock.MagicMock()
-        mock_resp.status_code = 200
-        mock_requests.get.return_value = mock_resp
-
-        mock_engine = mock.MagicMock()
-        mock_engine.extract_content.return_value = ("short", "trafilatura", 0.5)
-        mock_engine_cls.return_value = mock_engine
-
-        results = [{"url": "https://example.com/article", "body": "A much longer original truncated body from DDGS that should be kept..."}]
-        out = _enhance_news_bodies(results)
-        assert out[0]["body"] == "A much longer original truncated body from DDGS that should be kept..."
+        results = [{"url": "", "body": "no url"}]
+        out = _extract_news_content(results)
+        assert out[0]["extraction_status"] == "failed"
+        assert out[0]["main_content"] == ""
 
     @mock.patch('gakr_ddgs.cli.ExtractionEngine')
     @mock.patch('gakr_ddgs.cli.requests')
-    def test_http_error_keeps_original(self, mock_requests, mock_engine_cls):
-        """non-200 status keeps original truncated body"""
-        from gakr_ddgs.cli import _enhance_news_bodies
+    def test_http_error_failed(self, mock_requests, mock_engine_cls):
+        """non-200 status results in extraction_status failed"""
+        from gakr_ddgs.cli import _extract_news_content
 
         mock_engine_cls.USER_AGENTS = ["TestAgent/1.0"]
         mock_resp = mock.MagicMock()
         mock_resp.status_code = 403
         mock_requests.get.return_value = mock_resp
 
-        results = [{"url": "https://example.com/article", "body": "original body"}]
-        out = _enhance_news_bodies(results)
-        assert out[0]["body"] == "original body"
+        results = [{"url": "https://example.com/article"}]
+        out = _extract_news_content(results)
+        assert out[0]["extraction_status"] == "failed"
+        assert out[0]["main_content"] == ""
+
+    @mock.patch('gakr_ddgs.cli.ExtractionEngine')
+    @mock.patch('gakr_ddgs.cli.requests')
+    def test_preserves_original_order(self, mock_requests, mock_engine_cls):
+        """output list preserves the order of input results"""
+        from gakr_ddgs.cli import _extract_news_content
+
+        mock_engine_cls.USER_AGENTS = ["TestAgent/1.0"]
+        mock_resp = mock.MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = "<html>content</html>"
+        mock_requests.get.return_value = mock_resp
+
+        mock_engine = mock.MagicMock()
+        mock_engine.extract_content.return_value = ("article body", "trafilatura", 0.9)
+        mock_engine_cls.return_value = mock_engine
+
+        results = [
+            {"url": "https://example.com/a", "title": "first"},
+            {"url": "https://example.com/b", "title": "second"},
+            {"url": "https://example.com/c", "title": "third"},
+        ]
+        out = _extract_news_content(results)
+        assert out[0]["title"] == "first"
+        assert out[1]["title"] == "second"
+        assert out[2]["title"] == "third"
+        assert all(r["extraction_status"] == "success" for r in out)
 
 
 if __name__ == '__main__':

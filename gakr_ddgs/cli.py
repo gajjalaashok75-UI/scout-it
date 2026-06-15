@@ -299,9 +299,16 @@ def news_search(
     region: str = 'us-en',
     safesearch: str = 'moderate',
     timelimit: Optional[str] = None,
+    workers: int = 3,
 ):
-    """DuckDuckGo news search wrapper with retry support."""
-    results, stats = _ddgs_list_search(
+    """DuckDuckGo news search with full content extraction and cleaning.
+
+    Returns structured results matching the web-search output format:
+    each result goes through ``ExtractionEngine`` → ``process_results()``
+    to produce cleaned content with quality signals and readability metrics.
+    """
+    # Phase 1: Get raw DDGS news results
+    raw_results, search_stats = _ddgs_list_search(
         'news',
         query=query,
         max_results=max_results,
@@ -311,7 +318,22 @@ def news_search(
             'timelimit': timelimit,
         },
     )
-    return results, {'search_engine': stats}
+
+    if not raw_results:
+        return [], {'search_engine': search_stats, 'cleaner': {'total_input': 0, 'successful': 0, 'failed': 0, 'processed': 0}}
+
+    # Phase 2: Fetch and extract full article content in parallel
+    enriched_results = _extract_news_content(raw_results, max_workers=workers)
+
+    # Phase 3: Clean and structure via process_results
+    structured_results, cleaner_stats = process_results(enriched_results)
+
+    # Combine stats
+    combined_stats = {
+        'search_engine': search_stats,
+        'cleaner': cleaner_stats,
+    }
+    return structured_results, combined_stats
 
 
 def video_search(
@@ -374,20 +396,23 @@ def _enhance_video_descriptions(results: List[Dict[str, Any]], max_workers: int 
     return results
 
 
-def _enhance_news_bodies(results: List[Dict[str, Any]], max_workers: int = 3) -> List[Dict[str, Any]]:
-    """Enhance news results with full article bodies.
+def _extract_news_content(results: List[Dict[str, Any]], max_workers: int = 3) -> List[Dict[str, Any]]:
+    """Fetch and extract full article content for news results in parallel.
 
-    DuckDuckGo ``news()`` returns article bodies truncated at ~200-300
-    characters.  This fetches each article URL and uses the extraction
-    engine to get the full cleaned body *in-place*.
+    Takes raw DDGS news result dicts, fetches each URL, runs through
+    ``ExtractionEngine``, and returns enriched dicts compatible with
+    ``process_results()`` (i.e. containing ``main_content``,
+    ``extraction_status``, ``confidence_score``, etc.).
     """
     if not results:
         return results
-    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    def _fetch_one(r):
+    def _extract_one(r):
         url = r.get("url", "")
         if not url:
+            r["extraction_status"] = "failed"
+            r["main_content"] = ""
             return r
         try:
             resp = requests.get(
@@ -395,18 +420,28 @@ def _enhance_news_bodies(results: List[Dict[str, Any]], max_workers: int = 3) ->
                 headers={"User-Agent": random.choice(ExtractionEngine.USER_AGENTS)},
             )
             if resp.status_code != 200:
+                r["extraction_status"] = "failed"
+                r["main_content"] = ""
                 return r
             engine = ExtractionEngine()
             content, method, confidence = engine.extract_content(url, resp.text)
-            if content and len(content) > len(r.get("body", "")):
-                r["body"] = content
+            r["main_content"] = content
+            r["extraction_method"] = method
+            r["confidence_score"] = confidence
+            r["extraction_status"] = "success" if content.strip() else "failed"
+            r["content_word_count"] = len(content.split())
         except Exception:
-            pass
+            r["extraction_status"] = "failed"
+            r["main_content"] = ""
         return r
 
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        pool.map(_fetch_one, results)
-    return results
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_extract_one, r): idx for idx, r in enumerate(results)}
+        enriched = [None] * len(results)
+        for future in as_completed(futures):
+            idx = futures[future]
+            enriched[idx] = future.result()
+    return enriched
 
 
 # ---------------------------------------------------------------------------
@@ -1007,8 +1042,8 @@ def main():
     # News search subcommand
     news_parser = subparsers.add_parser(
         'news-search',
-        help='DuckDuckGo news search',
-        description='News search with regional and temporal filtering.\n\n'
+        help='DuckDuckGo news search with full content extraction',
+        description='News search with regional and temporal filtering and full article content extraction.\n\n'
                     '⚠️  RATE LIMITING: DuckDuckGo is rate-limited. If you get zero results after searches,\n'
                     'try: (1) Broadening your query, (2) Removing --timelimit filter,\n'
                     '(3) Changing --region, or (4) Waiting and retrying.'
@@ -1019,6 +1054,7 @@ def main():
     news_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
     news_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     news_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
+    news_parser.add_argument('--workers', type=int, default=3, help='Parallel workers for content extraction')
     news_parser.set_defaults(retry_on_zero=True)
     news_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries on zero results')
     news_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts on zero results')
@@ -1224,16 +1260,15 @@ def main():
             region=args.region,
             safesearch=args.safesearch,
             timelimit=args.timelimit,
+            workers=getattr(args, 'workers', 3),
         )
-
-        # Enhance truncated DDGS bodies with full article content
-        news_results = _enhance_news_bodies(news_results)
 
         output = {
             'query': args.query,
             'search_type': 'news',
             'parameters': {
                 'max_results': args.max,
+                'workers': args.workers if hasattr(args, 'workers') else 3,
                 'region': args.region,
                 'safesearch': args.safesearch,
                 'timelimit': args.timelimit,
@@ -1242,7 +1277,7 @@ def main():
                 'retry_backoff': args.retry_backoff,
             },
             'stats': stats,
-            'news_results': news_results,
+            'structured_results': news_results,
         }
 
         out_path = Path(args.out)
@@ -1250,10 +1285,12 @@ def main():
 
         print(f'\n✅ NEWS SEARCH COMPLETE!')
         print(f'   📰 Query: {args.query}')
-        print(f'   📊 Total news found: {stats["search_engine"].get("total", 0)}')
-        print(f'   📄 Results JSON: {out_path}')
+        print(f'   📊 Total results from search: {stats["search_engine"].get("total", 0)}')
+        print(f'   ✅ Successfully extracted: {stats.get("cleaner", {}).get("successful", 0)}')
+        print(f'   ❌ Failed (ignored): {stats.get("cleaner", {}).get("failed", 0)}')
+        print(f'   📄 Structured JSON: {out_path}')
         print(f'   📂 Results saved to: {out_path.resolve()}')
-        print(f'   ⏱️  Execution time: {stats["search_engine"].get("execution_time", 0.0):.2f}s\n')
+        print(f'   ⏱️  Execution time: {stats["search_engine"].get("execution_time", 0.0):.1f}s\n')
 
     # Video search
     elif args.command == 'video-search':
