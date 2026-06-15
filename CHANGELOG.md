@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Handles edge cases: no subtitles at all on video, both requested and default languages unavailable
   - 3 new tests: fallback to en, no subtitles at all, fallback also fails
 
+### 🚀 Improved
+
+#### Output Formatting
+- **Max 400 chars per JSON line**: All output files now word-wrap long string values to keep each line under 400 characters via `_write_output()` helper. Uses `_word_wrap_string()` and `_wrap_long_strings()` pre-serialisation helpers. Applied to all commands: `web-search`, `image-search`, `news-search`, `video-search`, `video-extract`, and `fetch-url`.
+
 ### 🔧 Fixed
 
 #### CLI

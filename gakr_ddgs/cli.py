@@ -45,6 +45,58 @@ except Exception as e:
     raise ImportError("Could not import from gakr_ddgs modules: " + str(e))
 
 
+# ---------------------------------------------------------------------------
+# Output helpers — ensure no single JSON line exceeds 400 characters
+# ---------------------------------------------------------------------------
+
+def _word_wrap_string(value: str, max_line: int = 360) -> str:
+    """Word-wrap a string at word boundaries so no line exceeds *max_line* chars."""
+    if len(value) <= max_line:
+        return value
+    words = value.split()
+    lines: List[str] = []
+    current = ""
+    for word in words:
+        if not current:
+            current = word
+        elif len(current) + 1 + len(word) > max_line:
+            lines.append(current)
+            current = word
+        else:
+            current += " " + word
+    if current:
+        lines.append(current)
+    return "\n".join(lines)
+
+
+def _wrap_long_strings(data: Any, max_line: int = 360) -> Any:
+    """Recursively word-wrap long string values in a JSON-serialisable structure."""
+    if isinstance(data, str):
+        return _word_wrap_string(data, max_line)
+    if isinstance(data, dict):
+        return {k: _wrap_long_strings(v, max_line) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_wrap_long_strings(item, max_line) for item in data]
+    return data
+
+
+_MAX_LINE = 400
+
+
+def _write_output(out_path: Path, data: Any) -> None:
+    """Write JSON to *out_path*, wrapping lines so no line exceeds 400 chars.
+
+    Long string values are word-wrapped *before* serialisation so the
+    resulting JSON file stays readable and no single line exceeds 400
+    characters.
+    """
+    wrapped = _wrap_long_strings(data, _MAX_LINE - 60)
+    json_str = json.dumps(wrapped, indent=2, ensure_ascii=False)
+    # Turn escaped newlines (inserted by _wrap_long_strings) into real newlines
+    json_str = json_str.replace("\\n", "\n")
+    out_path.write_text(json_str, encoding="utf-8")
+
+
 def _ddgs_list_search(
     method_name: str,
     query: str,
@@ -992,7 +1044,7 @@ def main():
         }
         
         out_path = Path(args.out)
-        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+        _write_output(out_path, output)
 
         print(f'\n✅ WEB SEARCH COMPLETE!')
         print(f'   🔍 Query: {args.query}')
@@ -1052,7 +1104,7 @@ def main():
         }
         
         out_path = Path(args.out)
-        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False).replace('\\n', '\n'), encoding='utf-8')
+        _write_output(out_path, output)
 
         print(f'\n✅ IMAGE SEARCH COMPLETE!')
         print(f'   🖼️  Query: {args.query}')
@@ -1102,7 +1154,7 @@ def main():
         }
 
         out_path = Path(args.out)
-        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False).replace('\\n', '\n'), encoding='utf-8')
+        _write_output(out_path, output)
 
         print(f'\n✅ NEWS SEARCH COMPLETE!')
         print(f'   📰 Query: {args.query}')
@@ -1142,7 +1194,7 @@ def main():
         }
 
         out_path = Path(args.out)
-        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False).replace('\\n', '\n'), encoding='utf-8')
+        _write_output(out_path, output)
 
         print(f'\n✅ VIDEO SEARCH COMPLETE!')
         print(f'   🎬 Query: {args.query}')
@@ -1178,7 +1230,7 @@ def main():
             # Still save error result to output for debugging
             output = result
             out_path = Path(args.out)
-            out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
+            _write_output(out_path, output)
         else:
             platform = result.get("platform", "unknown")
             title = result.get("title", "Unknown")
@@ -1213,8 +1265,7 @@ def main():
             output = result
 
             out_path = Path(args.out)
-            out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding='utf-8')
-
+            _write_output(out_path, output)
         if not args.json:
             if "error" in result:
                 print(f'\n   [ERR] Extraction failed. Details saved to: {out_path.resolve()}\n')
@@ -1222,7 +1273,8 @@ def main():
                 print(f'\n   ✅ VIDEO EXTRACTION COMPLETE!')
                 print(f'   📄 Results saved to: {out_path.resolve()}\n')
         else:
-            print(json.dumps(output, indent=2, ensure_ascii=False))
+            wrapped = _wrap_long_strings(output, _MAX_LINE - 60)
+            print(json.dumps(wrapped, indent=2, ensure_ascii=False).replace('\\n', '\n'))
 
     # Fetch URL
     elif args.command == 'fetch-url':
@@ -1255,7 +1307,7 @@ def main():
         }
 
         out_path = Path(args.out)
-        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False).replace('\\n', '\n'), encoding='utf-8')
+        _write_output(out_path, output)
 
         if "error" in result:
             print(f"❌ Error: {result['error']}\n")
