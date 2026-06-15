@@ -69,14 +69,22 @@ def _word_wrap_string(value: str, max_line: int = 360) -> str:
     return "\n".join(lines)
 
 
-def _wrap_long_strings(data: Any, max_line: int = 360) -> Any:
-    """Recursively word-wrap long string values in a JSON-serialisable structure."""
+def _wrap_long_strings(data: Any, max_line: int = 360, skip_keys: Optional[set] = None) -> Any:
+    """Recursively word-wrap long string values in a JSON-serialisable structure.
+
+    String values under keys listed in *skip_keys* are returned verbatim
+    (useful for preserving HTML, long descriptions, or other structured text).
+    """
     if isinstance(data, str):
         return _word_wrap_string(data, max_line)
     if isinstance(data, dict):
-        return {k: _wrap_long_strings(v, max_line) for k, v in data.items()}
+        skip_keys = skip_keys or set()
+        return {
+            k: v if k in skip_keys else _wrap_long_strings(v, max_line, skip_keys)
+            for k, v in data.items()
+        }
     if isinstance(data, list):
-        return [_wrap_long_strings(item, max_line) for item in data]
+        return [_wrap_long_strings(item, max_line, skip_keys) for item in data]
     return data
 
 
@@ -89,8 +97,15 @@ def _write_output(out_path: Path, data: Any) -> None:
     Long string values are word-wrapped *before* serialisation so the
     resulting JSON file stays readable and no single line exceeds 400
     characters.
+
+    The following fields are preserved verbatim (not word-wrapped):
+    - ``raw_html``  (prettified HTML — wrapping would break tag structure)
+    - ``description``  (video descriptions / metadata — can be very long)
+    - ``body``         (news article body — long-form text)
     """
-    wrapped = _wrap_long_strings(data, _MAX_LINE - 60)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    skip_keys = {"raw_html", "description", "body"}
+    wrapped = _wrap_long_strings(data, _MAX_LINE - 60, skip_keys)
     json_str = json.dumps(wrapped, indent=2, ensure_ascii=False)
     # Turn escaped newlines (inserted by _wrap_long_strings) into real newlines
     json_str = json_str.replace("\\n", "\n")
@@ -324,6 +339,74 @@ def video_search(
         },
     )
     return results, {'search_engine': stats}
+
+
+# ---------------------------------------------------------------------------
+# Result enhancement: full descriptions/bodies from source URLs
+# ---------------------------------------------------------------------------
+
+def _enhance_video_descriptions(results: List[Dict[str, Any]], max_workers: int = 5) -> List[Dict[str, Any]]:
+    """Enhance video results with full descriptions from YouTube.
+
+    DuckDuckGo ``videos()`` returns descriptions truncated at ~200-300
+    characters (noticeable by trailing ``...``).  For YouTube videos this
+    fetches the full description from the YouTube page and replaces the
+    truncated one *in-place*.
+    """
+    if not results:
+        return results
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _fetch_one(r):
+        url = r.get("content", "") or r.get("url", "")
+        if not _YOUTUBE_RE.search(url):
+            return r
+        try:
+            meta = _fetch_youtube_metadata(url)
+            if meta and "error" not in meta and meta.get("description"):
+                r["description"] = meta["description"]
+        except Exception:
+            pass
+        return r
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        pool.map(_fetch_one, results)
+    return results
+
+
+def _enhance_news_bodies(results: List[Dict[str, Any]], max_workers: int = 3) -> List[Dict[str, Any]]:
+    """Enhance news results with full article bodies.
+
+    DuckDuckGo ``news()`` returns article bodies truncated at ~200-300
+    characters.  This fetches each article URL and uses the extraction
+    engine to get the full cleaned body *in-place*.
+    """
+    if not results:
+        return results
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _fetch_one(r):
+        url = r.get("url", "")
+        if not url:
+            return r
+        try:
+            resp = requests.get(
+                url, timeout=10,
+                headers={"User-Agent": random.choice(ExtractionEngine.USER_AGENTS)},
+            )
+            if resp.status_code != 200:
+                return r
+            engine = ExtractionEngine()
+            content, method, confidence = engine.extract_content(url, resp.text)
+            if content and len(content) > len(r.get("body", "")):
+                r["body"] = content
+        except Exception:
+            pass
+        return r
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        pool.map(_fetch_one, results)
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -1122,9 +1205,9 @@ def main():
         
         # Download images if requested
         if args.download and image_results:
-            from references.quick_scrape import ImageSearchEngine
+            from .extraction import ImageSearchResult
             engine = ImageSearchEngine()
-            engine.results = [type('obj', (object,), r)() for r in image_results]
+            engine.results = [ImageSearchResult(**r) for r in image_results]
             engine.download_images(args.download_dir, min(10, len(image_results)))
         
         print()
@@ -1142,6 +1225,9 @@ def main():
             safesearch=args.safesearch,
             timelimit=args.timelimit,
         )
+
+        # Enhance truncated DDGS bodies with full article content
+        news_results = _enhance_news_bodies(news_results)
 
         output = {
             'query': args.query,
@@ -1182,6 +1268,9 @@ def main():
             duration=args.duration,
             license_videos=args.license_videos,
         )
+
+        # Enhance truncated DDGS descriptions with full YouTube descriptions
+        video_results = _enhance_video_descriptions(video_results)
 
         output = {
             'query': args.query,
@@ -1280,7 +1369,7 @@ def main():
                 print(f'\n   ✅ VIDEO EXTRACTION COMPLETE!')
                 print(f'   📄 Results saved to: {out_path.resolve()}\n')
         else:
-            wrapped = _wrap_long_strings(output, _MAX_LINE - 60)
+            wrapped = _wrap_long_strings(output, _MAX_LINE - 60, skip_keys={"description"})
             print(json.dumps(wrapped, indent=2, ensure_ascii=False).replace('\\n', '\n'))
 
     # Fetch URL

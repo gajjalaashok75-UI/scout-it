@@ -30,13 +30,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🚀 Improved
 
 #### Output Formatting
+- **`_write_output()` — skip_keys parameter**: Long-form fields (`raw_html`, `description`, `body`) are now excluded from word-wrapping so they are preserved verbatim in JSON output. Wrapping any of these fields corrupted their content:
+  - `raw_html`: wrapping broke HTML tag structure (e.g., `<div class="content">` split across lines)
+  - `description`: video descriptions (search results + YouTube extraction) no longer get word-break `\n` inserts
+  - `body`: news article bodies preserved without artificial line splitting
+- **`video-extract --json` stdout path** also uses `skip_keys={"description"}` for consistency with file output
+- **`_enhance_video_descriptions()` — Full YouTube descriptions**: DuckDuckGo's ``videos()`` API returns descriptions truncated at ~200-300 chars. After search results are returned, any YouTube video result is enhanced by fetching the full description from the YouTube page (using ``_fetch_youtube_metadata``). Non-YouTube results are untouched. Uses ``ThreadPoolExecutor`` for parallel fetching (default 5 workers). Falls back gracefully to truncated description on any fetch error.
+- **`_enhance_news_bodies()` — Full article bodies**: DuckDuckGo's ``news()`` API returns article bodies truncated at ~200-300 chars. After search results are returned, each article URL is fetched and cleaned via the extraction engine to get the full body. Uses ``ThreadPoolExecutor`` for parallel fetching (3 workers). Falls back gracefully if fetch fails or extracted content is shorter than the DDGS body.
+
+### 🚀 Improved
+
+#### Output Formatting
 - **Max 400 chars per JSON line**: All output files now word-wrap long string values to keep each line under 400 characters via `_write_output()` helper. Uses `_word_wrap_string()` and `_wrap_long_strings()` pre-serialisation helpers. Applied to all commands: `web-search`, `image-search`, `news-search`, `video-search`, `video-extract`, and `fetch-url`.
 
 ### 🔧 Fixed
 
+#### Output Formatting
+- **`_wrap_long_strings()` — Added `skip_keys` parameter**: `raw_html`, `description`, and `body` fields are now preserved verbatim instead of being word-wrapped. This fixes:
+  - `--raw-html` output: HTML structure and tag integrity preserved (no more broken `<div class=..."` attribute wrapping)
+  - Video descriptions: YouTube descriptions (hundreds-to-thousands of chars) displayed verbatim without word-break `\n` inserts
+  - News bodies: Long-form news article bodies preserved without artificial line splitting
+  - All other fields (titles, snippets, URLs, metadata) continue to be word-wrapped at 340 chars as before
+
 #### CLI
 - **Removed `.replace('\\n', '\n')` from all 5 output write calls**: Caused invalid JSON by inserting literal newlines inside JSON string values. Reverted to clean `json.dumps()` output. Affected `web-search`, `image-search`, `news-search`, `video-search`, and `fetch-url`.
 - **Updated `--raw-html` help text**: Clarified that it returns prettified raw HTML, not extracted content.
+- **Fixed `image-search --download` crash**: `from references.quick_scrape import ImageSearchEngine` was not a valid import path (references was never a Python package). Now reconstructs `ImageSearchResult` dataclass instances from result dicts and delegates to the already-imported `ImageSearchEngine` in the extraction module.
+- **`_write_output()` creates parent directories**: Added `out_path.parent.mkdir(parents=True, exist_ok=True)` to prevent `FileNotFoundError` when output path has nested directories that don't exist yet.
 
 #### Test Coverage
 - **5 content-cleaning regression tests** (`tests/test_all_parameters.py`): Verify `process_record()` drops `main_content`, output is JSON-serializable, expected keys present, `process_results()` filters by success status

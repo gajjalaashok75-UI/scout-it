@@ -1017,5 +1017,157 @@ class TestJsonOutputValidity:
                 assert len(loaded["structured_results"]) == 1
 
 
+class TestWrapLongStrings:
+    """Test _wrap_long_strings skip_keys behaviour"""
+
+    def test_skip_keys_preserves_html(self):
+        """raw_html key is preserved verbatim"""
+        from gakr_ddgs.cli import _wrap_long_strings
+        html = '<div class="test"><p>long content that would exceed wrap limit</p></div>'
+        data = {"raw_html": html}
+        result = _wrap_long_strings(data, 40, skip_keys={"raw_html"})
+        assert result["raw_html"] == html
+
+    def test_skip_keys_preserves_description(self):
+        """description key is preserved verbatim while other strings are wrapped"""
+        from gakr_ddgs.cli import _wrap_long_strings
+        long_desc = " ".join(["word"] * 50)
+        long_title = " ".join(["word"] * 50)
+        data = {"description": long_desc, "title": long_title}
+        result = _wrap_long_strings(data, 40, skip_keys={"description"})
+        assert result["description"] == long_desc
+        assert "\n" in result["title"]
+
+    def test_skip_keys_preserves_body(self):
+        """body key is preserved verbatim"""
+        from gakr_ddgs.cli import _wrap_long_strings
+        long_body = " ".join(["word"] * 50)
+        data = {"body": long_body}
+        result = _wrap_long_strings(data, 40, skip_keys={"body"})
+        assert result["body"] == long_body
+
+    def test_skip_keys_nested(self):
+        """skip_keys works on nested dicts and lists"""
+        from gakr_ddgs.cli import _wrap_long_strings
+        long_desc = " ".join(["word"] * 50)
+        data = {
+            "results": [
+                {"description": long_desc, "title": long_desc},
+                {"description": long_desc, "title": long_desc},
+            ]
+        }
+        result = _wrap_long_strings(data, 40, skip_keys={"description"})
+        assert "\n" not in result["results"][0]["description"]
+        assert "\n" in result["results"][0]["title"]
+
+    def test_default_no_skip(self):
+        """default behaviour (skip_keys=None) still wraps all strings"""
+        from gakr_ddgs.cli import _wrap_long_strings
+        long_str = " ".join(["word"] * 50)
+        data = {"key": long_str}
+        result = _wrap_long_strings(data, 40)
+        assert "\n" in result["key"]
+
+
+class TestEnhanceVideoDescriptions:
+    """Test _enhance_video_descriptions behaviour"""
+
+    def test_empty_results(self):
+        """empty list returns immediately"""
+        from gakr_ddgs.cli import _enhance_video_descriptions
+        assert _enhance_video_descriptions([]) == []
+
+    @mock.patch('gakr_ddgs.cli._fetch_youtube_metadata')
+    def test_skips_non_youtube(self, mock_fetch):
+        """non-YouTube URLs are not fetched"""
+        from gakr_ddgs.cli import _enhance_video_descriptions
+        results = [{"content": "https://vimeo.com/12345", "description": "short"}]
+        out = _enhance_video_descriptions(results)
+        mock_fetch.assert_not_called()
+        assert out[0]["description"] == "short"
+
+    @mock.patch('gakr_ddgs.cli._fetch_youtube_metadata')
+    def test_enhances_youtube(self, mock_fetch):
+        """YouTube URLs get full description injected"""
+        from gakr_ddgs.cli import _enhance_video_descriptions
+        mock_fetch.return_value = {"description": "full " * 100}
+        results = [{"content": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "description": "short"}]
+        out = _enhance_video_descriptions(results)
+        mock_fetch.assert_called_once()
+        assert out[0]["description"] == "full " * 100
+
+    @mock.patch('gakr_ddgs.cli._fetch_youtube_metadata')
+    def test_error_keeps_original(self, mock_fetch):
+        """fetch error keeps original truncated description"""
+        from gakr_ddgs.cli import _enhance_video_descriptions
+        mock_fetch.return_value = {"error": "network_error"}
+        results = [{"content": "https://youtu.be/dQw4w9WgXcQ", "description": "short desc"}]
+        out = _enhance_video_descriptions(results)
+        assert out[0]["description"] == "short desc"
+
+
+class TestEnhanceNewsBodies:
+    """Test _enhance_news_bodies behaviour"""
+
+    def test_empty_results(self):
+        """empty list returns immediately"""
+        from gakr_ddgs.cli import _enhance_news_bodies
+        assert _enhance_news_bodies([]) == []
+
+    @mock.patch('gakr_ddgs.cli.ExtractionEngine')
+    @mock.patch('gakr_ddgs.cli.requests')
+    def test_enhances_body(self, mock_requests, mock_engine_cls):
+        """article body is replaced with full extracted content"""
+        from gakr_ddgs.cli import _enhance_news_bodies
+
+        mock_engine_cls.USER_AGENTS = ["TestAgent/1.0"]
+        mock_resp = mock.MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = "<html>full article</html>"
+        mock_requests.get.return_value = mock_resp
+
+        mock_engine = mock.MagicMock()
+        mock_engine.extract_content.return_value = ("full " * 100, "trafilatura", 0.95)
+        mock_engine_cls.return_value = mock_engine
+
+        results = [{"url": "https://example.com/article", "body": "short trunc..."}]
+        out = _enhance_news_bodies(results)
+        assert out[0]["body"] == "full " * 100
+
+    @mock.patch('gakr_ddgs.cli.ExtractionEngine')
+    @mock.patch('gakr_ddgs.cli.requests')
+    def test_shorter_content_keeps_original(self, mock_requests, mock_engine_cls):
+        """extracted content shorter than original keeps DDGS body"""
+        from gakr_ddgs.cli import _enhance_news_bodies
+
+        mock_engine_cls.USER_AGENTS = ["TestAgent/1.0"]
+        mock_resp = mock.MagicMock()
+        mock_resp.status_code = 200
+        mock_requests.get.return_value = mock_resp
+
+        mock_engine = mock.MagicMock()
+        mock_engine.extract_content.return_value = ("short", "trafilatura", 0.5)
+        mock_engine_cls.return_value = mock_engine
+
+        results = [{"url": "https://example.com/article", "body": "A much longer original truncated body from DDGS that should be kept..."}]
+        out = _enhance_news_bodies(results)
+        assert out[0]["body"] == "A much longer original truncated body from DDGS that should be kept..."
+
+    @mock.patch('gakr_ddgs.cli.ExtractionEngine')
+    @mock.patch('gakr_ddgs.cli.requests')
+    def test_http_error_keeps_original(self, mock_requests, mock_engine_cls):
+        """non-200 status keeps original truncated body"""
+        from gakr_ddgs.cli import _enhance_news_bodies
+
+        mock_engine_cls.USER_AGENTS = ["TestAgent/1.0"]
+        mock_resp = mock.MagicMock()
+        mock_resp.status_code = 403
+        mock_requests.get.return_value = mock_resp
+
+        results = [{"url": "https://example.com/article", "body": "original body"}]
+        out = _enhance_news_bodies(results)
+        assert out[0]["body"] == "original body"
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v', '--tb=short'])
