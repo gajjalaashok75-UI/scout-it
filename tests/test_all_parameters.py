@@ -675,7 +675,7 @@ def test_video_extract_youtube_success():
 
             mock_api_cls.return_value = mock_api_instance
 
-            result = video_extract("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+            result = video_extract("https://www.youtube.com/watch?v=dQw4w9WgXcQ", include_segments=True)
 
     # Verify structure
     assert "error" not in result, f"Unexpected error: {result.get('error_message', '')}"
@@ -722,6 +722,64 @@ def test_video_extract_youtube_short_url():
     assert "error" not in result, f"Unexpected error: {result.get('error_message', '')}"
     assert result["video_id"] == "dQw4w9WgXcQ"
     assert result["platform"] == "youtube"
+
+
+def test_video_extract_no_segments_by_default():
+    """video_extract() must NOT include subtitle segments when called without include_segments."""
+    mock_html = """<html>
+    <meta name="title" content="No Segments Test">
+    <meta name="description" content="Test">
+    <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"No Segments","author":"Channel","viewCount":"100","lengthSeconds":"60","shortDescription":"Test"}};</script>
+    </html>"""
+
+    snippet1 = mock.Mock()
+    snippet1.text = "First"
+    snippet1.start = 0.0
+    snippet1.duration = 1.0
+    snippet2 = mock.Mock()
+    snippet2.text = "Second"
+    snippet2.start = 1.0
+    snippet2.duration = 1.0
+
+    mock_transcript_obj = mock.Mock()
+    mock_transcript_obj.snippets = [snippet1, snippet2]
+    mock_transcript_obj.language = "English"
+    mock_transcript_obj.language_code = "en"
+    mock_transcript_obj.is_generated = True
+
+    mock_fetched = mock.Mock()
+    mock_fetched.snippets = [snippet1, snippet2]
+    mock_fetched.language = "English"
+    mock_fetched.language_code = "en"
+    mock_fetched.is_generated = True
+
+    with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        mock_response = mock.Mock()
+        mock_response.text = mock_html
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api_cls:
+            mock_api_instance = mock.Mock()
+            mock_transcript_list = mock.MagicMock()
+            mock_transcript_list.find_transcript.return_value = mock_transcript_obj
+            mock_transcript_list.__iter__.return_value = iter([
+                mock.Mock(language_code="en", language="English", is_generated=True),
+            ])
+            mock_api_instance.list.return_value = mock_transcript_list
+            mock_transcript_obj.fetch.return_value = mock_fetched
+            mock_api_cls.return_value = mock_api_instance
+
+            # Default: include_segments=False
+            result = video_extract("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+    assert "error" not in result
+    assert result["subtitles"] is not None
+    assert "full_text" in result["subtitles"]
+    assert "segments" not in result["subtitles"], "segments should be absent by default"
+    assert result["subtitles"]["is_generated"] is True
+    assert result["subtitles"]["language_code"] == "en"
 
 
 def test_video_extract_output_json_serializable():

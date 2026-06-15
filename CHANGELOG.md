@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Shows available subtitle languages when the requested one isn't found
   - Handles edge cases: no subtitles at all on video, both requested and default languages unavailable
   - 3 new tests: fallback to en, no subtitles at all, fallback also fails
+- **`--segments` flag**: New optional flag to include subtitle segment timestamps in video-extract output. By default, segments are excluded to keep output compact. When `--segments` is provided, each subtitle entry includes `text`, `start`, and `duration` fields. 1 new test: segments excluded by default.
 
 ### 🚀 Improved
 

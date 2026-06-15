@@ -454,6 +454,7 @@ def _fetch_youtube_metadata(video_id: str) -> Dict[str, Any]:
 def _fetch_youtube_subtitles(
     video_id: str,
     language_code: str = "en",
+    include_segments: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Fetch YouTube subtitles/transcript for a video in a specific language.
 
@@ -528,13 +529,15 @@ def _fetch_youtube_subtitles(
 
         full_text = " ".join(s["text"] for s in segments)
 
-        return {
+        result: Dict[str, Any] = {
             "full_text": full_text,
             "language": fetched.language,
             "language_code": fetched.language_code,
-            "segments": segments,
             "is_generated": fetched.is_generated,
         }
+        if include_segments:
+            result["segments"] = segments
+        return result
 
     except ImportError:
         return {
@@ -548,13 +551,14 @@ def _fetch_youtube_subtitles(
         return None
 
 
-def video_extract(url: str, subtitle_lang: str = "en") -> Dict[str, Any]:
+def video_extract(url: str, subtitle_lang: str = "en", include_segments: bool = False) -> Dict[str, Any]:
     """Extract full details from a video URL.
 
     Supports YouTube URLs. Non-YouTube URLs receive a friendly notice.
 
     :param url: The video URL to extract.
     :param subtitle_lang: Preferred subtitle language code (default ``"en"``).
+    :param include_segments: If True, include subtitle segment timestamps in output.
     """
     url = str(url or "").strip()
     if not url:
@@ -582,7 +586,7 @@ def video_extract(url: str, subtitle_lang: str = "en") -> Dict[str, Any]:
         return meta  # error dict already has proper error classification
 
     # Fetch subtitles in the requested language
-    subs = _fetch_youtube_subtitles(video_id, language_code=subtitle_lang)
+    subs = _fetch_youtube_subtitles(video_id, language_code=subtitle_lang, include_segments=include_segments)
 
     if subs and subs.get("error") == "subtitle_lang_not_available":
         avail = subs.get("available_languages", [])
@@ -594,7 +598,7 @@ def video_extract(url: str, subtitle_lang: str = "en") -> Dict[str, Any]:
             meta["subtitles_error"] = "No subtitles available for this video."
         elif subtitle_lang != "en":
             # Retry with default language
-            subs = _fetch_youtube_subtitles(video_id, language_code="en")
+            subs = _fetch_youtube_subtitles(video_id, language_code="en", include_segments=include_segments)
             if subs and "error" in subs:
                 meta["subtitles_error"] = (
                     f"Requested subtitle language '{subtitle_lang}' not available. "
@@ -988,12 +992,14 @@ def main():
             '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\\n'
             '  gakr-ddgs video-extract --url "https://youtu.be/dQw4w9WgXcQ"\\n'
             '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --subtitle-lang fr\\n'
-            '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json'
+            '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --segments\\n'
+        '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     video_extract_parser.add_argument('--url', required=True, help='Video URL to extract (e.g., https://www.youtube.com/watch?v=VIDEO_ID)')
     video_extract_parser.add_argument('--subtitle-lang', default='en', help='Preferred subtitle language code (default: en)')
+    video_extract_parser.add_argument('--segments', action='store_true', help='Include subtitle segments with timestamps (default: off)')
     video_extract_parser.add_argument('--out', '-o', default='video_extract_results.json', help='Output file (default: video_extract_results.json)')
     video_extract_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1208,7 +1214,8 @@ def main():
         print(f"\n🎥 Extracting video details: {args.url}\n")
 
         lang = getattr(args, 'subtitle_lang', 'en') or 'en'
-        result = video_extract(args.url, subtitle_lang=lang)
+        include_segments = getattr(args, 'segments', False)
+        result = video_extract(args.url, subtitle_lang=lang, include_segments=include_segments)
 
         # Handle error cases
         if "error" in result:
