@@ -251,7 +251,7 @@ data-scout fetch-url --url "https://en.wikipedia.org/wiki/Artificial_intelligenc
 ### Python Example - Basic Extraction
 
 ```python
-from gakr_ddgs.extraction import ExtractionEngine
+from data_scout.extraction import ExtractionEngine
 
 engine = ExtractionEngine()
 content, method, confidence = engine.extract(
@@ -268,7 +268,7 @@ print(f"\nFirst 500 characters:\n{content[:500]}")
 ### Python Example - Cleaned Content
 
 ```python
-from gakr_ddgs.cli import fetch_url
+from data_scout.cli import fetch_url
 
 # Use CLI function directly
 result = fetch_url(url="https://en.wikipedia.org/wiki/Dogs")
@@ -284,7 +284,7 @@ if result and "result" in result:
 ### Python Example - Error Handling
 
 ```python
-from gakr_ddgs.extraction import ExtractionEngine
+from data_scout.extraction import ExtractionEngine
 
 engine = ExtractionEngine()
 
@@ -306,7 +306,7 @@ except Exception as e:
 ### Python Example - Batch URL Processing
 
 ```python
-from gakr_ddgs.extraction import ExtractionEngine
+from data_scout.extraction import ExtractionEngine
 
 engine = ExtractionEngine()
 

@@ -225,7 +225,7 @@ data-scout video-search --query "30 minute workout"
 ### Python Example - Basic Search
 
 ```python
-from gakr_ddgs.extraction import DDGS
+from data_scout.extraction import DDGS
 
 ddgs = DDGS()
 results = ddgs.videos(query="python programming", max_results=10)
@@ -242,7 +242,7 @@ for result in results:
 ### Python Example - Filter by Duration
 
 ```python
-from gakr_ddgs.extraction import DDGS
+from data_scout.extraction import DDGS
 
 ddgs = DDGS()
 results = ddgs.videos(query="tutorial", max_results=20)
@@ -266,7 +266,7 @@ for video in results:
 
 ```python
 import subprocess
-from gakr_ddgs.extraction import DDGS
+from data_scout.extraction import DDGS
 
 ddgs = DDGS()
 results = ddgs.videos(query="web development crash course", max_results=5)
@@ -284,7 +284,7 @@ with open('playlist.txt', 'w') as f:
 ### Python Example - Analyze Video Results
 
 ```python
-from gakr_ddgs.extraction import DDGS
+from data_scout.extraction import DDGS
 import re
 
 ddgs = DDGS()

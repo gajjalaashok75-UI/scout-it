@@ -42,7 +42,7 @@ try:
         _compact_options,
     )
 except Exception as e:
-    raise ImportError("Could not import from gakr_ddgs modules: " + str(e))
+    raise ImportError("Could not import from data_scout modules: " + str(e))
 
 
 # ---------------------------------------------------------------------------

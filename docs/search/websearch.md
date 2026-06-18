@@ -191,8 +191,8 @@ data-scout web-search \
 ### Python Example
 
 ```python
-from gakr_ddgs.extraction import EnterpriseSearchEngine
-from gakr_ddgs.cleaner import process_results
+from data_scout.extraction import EnterpriseSearchEngine
+from data_scout.cleaner import process_results
 
 # Create search engine
 engine = EnterpriseSearchEngine()
@@ -219,7 +219,7 @@ for result in cleaned_results:
 ### Custom Extraction from Results
 
 ```python
-from gakr_ddgs.extraction import EnterpriseSearchEngine
+from data_scout.extraction import EnterpriseSearchEngine
 
 engine = EnterpriseSearchEngine()
 results = engine.search(query="Python", max_results=3)

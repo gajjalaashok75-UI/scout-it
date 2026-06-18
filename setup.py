@@ -12,7 +12,7 @@ setup(
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     url="https://github.com/Ashok-gakr/data-scout",
-    packages=["gakr_ddgs"],
+    packages=["data_scout"],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
@@ -37,7 +37,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "data-scout=gakr_ddgs.cli:main",
+            "data-scout=data_scout.cli:main",
         ],
     },
 )

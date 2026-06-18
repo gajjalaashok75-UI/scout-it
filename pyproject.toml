@@ -59,10 +59,10 @@ Repository = "https://github.com/Ashok-gakr/data-scout.git"
 "Bug Tracker" = "https://github.com/Ashok-gakr/data-scout/issues"
 
 [project.scripts]
-data-scout = "gakr_ddgs.cli:main"
+data-scout = "data_scout.cli:main"
 
 [tool.setuptools]
-packages = ["gakr_ddgs"]
+packages = ["data_scout"]
 
 [tool.black]
 line-length = 100

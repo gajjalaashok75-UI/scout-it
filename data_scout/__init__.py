@@ -6,7 +6,7 @@ Author: Ashok-gakr
 License: MIT
 
 Quick Start:
-    from gakr_ddgs import search_web, search_images, search_news, search_videos
+    from data_scout import search_web, search_images, search_news, search_videos
     
     # Web search with content extraction
     results, stats = search_web("python automation", max_results=10)

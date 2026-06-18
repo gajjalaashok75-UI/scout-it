@@ -23,7 +23,7 @@ Your web search project has been successfully converted into a **professional, p
 
 ```
 data-scout/
-├── gakr_ddgs/                    # Main package directory
+├── data_scout/                    # Main package directory
 │   ├── __init__.py              # Package initialization & public API
 │   ├── extraction.py            # Web/Image search & content extraction
 │   ├── cleaner.py               # Content cleaning & structuring  
@@ -52,10 +52,10 @@ data-scout/
 ### Core Package Files (NEW)
 | File | Purpose | Status |
 |------|---------|--------|
-| `gakr_ddgs/__init__.py` | Package initialization & API | ✅ Created |
-| `gakr_ddgs/extraction.py` | Web/Image search engines | ✅ Migrated |
-| `gakr_ddgs/cleaner.py` | Content cleaning | ✅ Migrated |
-| `gakr_ddgs/cli.py` | CLI interface | ✅ Migrated |
+| `data_scout/__init__.py` | Package initialization & API | ✅ Created |
+| `data_scout/extraction.py` | Web/Image search engines | ✅ Migrated |
+| `data_scout/cleaner.py` | Content cleaning | ✅ Migrated |
+| `data_scout/cli.py` | CLI interface | ✅ Migrated |
 | `tests/__init__.py` | Test package marker | ✅ Created |
 | `tests/test_cli.py` | Test suite | ✅ Migrated |
 
@@ -162,7 +162,7 @@ data-scout fetch-url --url "https://example.com"
 ## 🐍 Programmatic Usage Examples
 
 ```python
-from gakr_ddgs import EnterpriseSearchEngine, ImageSearchEngine
+from data_scout import EnterpriseSearchEngine, ImageSearchEngine
 
 # Web search
 engine = EnterpriseSearchEngine(max_workers=8)
@@ -217,8 +217,8 @@ python -m build
 ```
 
 This creates:
-- `dist/gakr_ddgs-1.0.0.tar.gz` - Source distribution
-- `dist/gakr_ddgs-1.0.0-py3-none-any.whl` - Wheel distribution
+- `dist/data_scout-1.0.0.tar.gz` - Source distribution
+- `dist/data_scout-1.0.0-py3-none-any.whl` - Wheel distribution
 
 ### Step 2: Verify Package Integrity
 ```bash
@@ -318,7 +318,7 @@ test_search.py         ❌ Not organized
 
 ### After (Package)
 ```
-gakr_ddgs/                 ✅ Proper package structure
+data_scout/                 ✅ Proper package structure
 ├── __init__.py           ✅ Public API defined
 ├── extraction.py         ✅ Modular extraction engine
 ├── cleaner.py            ✅ Modular content cleaner
@@ -351,7 +351,7 @@ setup.py                  ✅ Legacy compatibility
 - **Installation**: See `INSTALL.md`
 - **CLI Help**: `data-scout --help`
 - **Code Examples**: See `README.md`
-- **API Reference**: Check docstrings in `gakr_ddgs/*.py`
+- **API Reference**: Check docstrings in `data_scout/*.py`
 - **Issues**: Report on GitHub
 
 ---

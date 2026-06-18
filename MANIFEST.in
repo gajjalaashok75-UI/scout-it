@@ -13,7 +13,7 @@ include tox.ini
 include .gitignore
 
 # Include package source code
-recursive-include gakr_ddgs *.py
+recursive-include data_scout *.py
 recursive-include tests *.py
 
 # Exclude unwanted files

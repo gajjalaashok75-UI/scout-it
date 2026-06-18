@@ -6,7 +6,7 @@ Tests all parameters with actual function calls.
 
 import json
 from unittest import mock
-from gakr_ddgs.cli import (
+from data_scout.cli import (
     web_search,
     image_search,
     news_search,
@@ -90,13 +90,13 @@ def test_web_search_parameters():
         print(f"    Parameters: {json.dumps(test_case['kwargs'], indent=6)}")
         try:
             # Mock the actual search to avoid network calls
-            with mock.patch('gakr_ddgs.cli.EnterpriseSearchEngine') as mock_engine:
+            with mock.patch('data_scout.cli.EnterpriseSearchEngine') as mock_engine:
                 mock_instance = mock.Mock()
                 mock_instance.execute_search.return_value = []
                 mock_instance.stats = {'total': 0, 'success': 0}
                 mock_engine.return_value = mock_instance
                 
-                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                with mock.patch('data_scout.cli.process_results') as mock_process:
                     mock_process.return_value = ([], {})
                     
                     result = web_search(**test_case['kwargs'])
@@ -204,12 +204,12 @@ def test_image_search_parameters():
         print(f"\n  ✓ Testing: {test_case['name']}")
         print(f"    Parameters: {json.dumps({k: str(v) for k, v in test_case['kwargs'].items()}, indent=6)}")
         try:
-            with mock.patch('gakr_ddgs.cli.ImageSearchEngine') as mock_engine:
+            with mock.patch('data_scout.cli.ImageSearchEngine') as mock_engine:
                 mock_instance = mock.Mock()
                 mock_instance.execute_image_search.return_value = []
                 mock_engine.return_value = mock_instance
                 
-                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                with mock.patch('data_scout.cli.process_results') as mock_process:
                     mock_process.return_value = ([], {})
                     
                     result = image_search(**test_case['kwargs'])
@@ -277,13 +277,13 @@ def test_news_search_parameters():
         print(f"\n  ✓ Testing: {test_case['name']}")
         print(f"    Parameters: {json.dumps({k: str(v) for k, v in test_case['kwargs'].items()}, indent=6)}")
         try:
-            with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            with mock.patch('data_scout.cli.requests.get') as mock_get:
                 mock_response = mock.Mock()
                 mock_response.text = "<html><body>test</body></html>"
                 mock_response.status_code = 200
                 mock_get.return_value = mock_response
                 
-                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                with mock.patch('data_scout.cli.process_results') as mock_process:
                     mock_process.return_value = ([], {})
                     
                     result = news_search(**test_case['kwargs'])
@@ -354,13 +354,13 @@ def test_video_search_parameters():
         print(f"\n  ✓ Testing: {test_case['name']}")
         print(f"    Parameters: {json.dumps({k: str(v) for k, v in test_case['kwargs'].items()}, indent=6)}")
         try:
-            with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            with mock.patch('data_scout.cli.requests.get') as mock_get:
                 mock_response = mock.Mock()
                 mock_response.text = "<html><body>test</body></html>"
                 mock_response.status_code = 200
                 mock_get.return_value = mock_response
                 
-                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                with mock.patch('data_scout.cli.process_results') as mock_process:
                     mock_process.return_value = ([], {})
                     
                     result = video_search(**test_case['kwargs'])
@@ -402,20 +402,20 @@ def test_fetch_url_parameters():
         print(f"\n  ✓ Testing: {test_case['name']}")
         print(f"    Parameters: {json.dumps({k: str(v) for k, v in test_case['kwargs'].items()}, indent=6)}")
         try:
-            with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+            with mock.patch('data_scout.cli.requests.get') as mock_get:
                 mock_response = mock.Mock()
                 mock_response.text = "<html><title>Test Page</title><body>test content</body></html>"
                 mock_response.status_code = 200
                 mock_response.url = "https://example.com"
                 mock_get.return_value = mock_response
                 
-                with mock.patch('gakr_ddgs.cli.ExtractionEngine') as mock_engine_class:
+                with mock.patch('data_scout.cli.ExtractionEngine') as mock_engine_class:
                     mock_engine = mock.Mock()
                     mock_engine.extract_content.return_value = ("test content", "trafilatura", 0.95)
                     mock_engine_class.return_value = mock_engine
                     mock_engine_class.USER_AGENTS = ["Mozilla/5.0"]
                     
-                    with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                    with mock.patch('data_scout.cli.process_results') as mock_process:
                         mock_process.return_value = ([{"title": "Test"}], {})
                         
                         result = fetch_url(**test_case['kwargs'])
@@ -467,7 +467,7 @@ _TEST_RAW_TEXT = (
 
 def test_process_record_drops_main_content():
     """process_record() must NOT include main_content in its output dict."""
-    from gakr_ddgs.cleaner import process_record
+    from data_scout.cleaner import process_record
 
     record = _make_test_record(_TEST_RAW_TEXT)
     result = process_record(record)
@@ -500,7 +500,7 @@ def test_process_record_drops_main_content():
 def test_process_record_output_json_serializable():
     """process_record() output must be serializable to valid JSON."""
     import json
-    from gakr_ddgs.cleaner import process_record
+    from data_scout.cleaner import process_record
 
     record = _make_test_record(_TEST_RAW_TEXT)
     result = process_record(record)
@@ -519,7 +519,7 @@ def test_process_record_output_json_serializable():
 
 def test_process_record_required_keys():
     """process_record() output must have all expected keys."""
-    from gakr_ddgs.cleaner import process_record
+    from data_scout.cleaner import process_record
 
     record = _make_test_record(_TEST_RAW_TEXT)
     result = process_record(record)
@@ -548,7 +548,7 @@ def test_process_record_required_keys():
 
 def test_process_results_filters_by_success():
     """process_results() must keep only extraction_status=='success' records."""
-    from gakr_ddgs.cleaner import process_results
+    from data_scout.cleaner import process_results
 
     records = [
         _make_test_record(_TEST_RAW_TEXT, status="success"),
@@ -572,7 +572,7 @@ def test_process_results_filters_by_success():
 def test_process_results_json_serializable():
     """process_results() output must be serializable to valid JSON."""
     import json
-    from gakr_ddgs.cleaner import process_results
+    from data_scout.cleaner import process_results
 
     records = [_make_test_record(_TEST_RAW_TEXT, status="success")]
     structured, stats = process_results(records)
@@ -651,7 +651,7 @@ def test_video_extract_youtube_success():
     mock_fetched.language_code = "en"
     mock_fetched.is_generated = True
 
-    with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+    with mock.patch('data_scout.cli.requests.get') as mock_get:
         mock_response = mock.Mock()
         mock_response.text = mock_html
         mock_response.status_code = 200
@@ -705,7 +705,7 @@ def test_video_extract_youtube_short_url():
     <meta name="description" content="Test">
     </html>"""
 
-    with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+    with mock.patch('data_scout.cli.requests.get') as mock_get:
         mock_response = mock.Mock()
         mock_response.text = mock_html
         mock_response.status_code = 200
@@ -753,7 +753,7 @@ def test_video_extract_no_segments_by_default():
     mock_fetched.language_code = "en"
     mock_fetched.is_generated = True
 
-    with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+    with mock.patch('data_scout.cli.requests.get') as mock_get:
         mock_response = mock.Mock()
         mock_response.text = mock_html
         mock_response.status_code = 200
@@ -824,7 +824,7 @@ def test_video_extract_subtitle_lang_fallback():
     mock_fetched.language_code = "en"
     mock_fetched.is_generated = True
 
-    with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+    with mock.patch('data_scout.cli.requests.get') as mock_get:
         mock_response = mock.Mock()
         mock_response.text = mock_html
         mock_response.status_code = 200
@@ -869,7 +869,7 @@ def test_video_extract_subtitle_lang_no_subs():
     <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"No Subs","author":"Channel","viewCount":"100","lengthSeconds":"60","shortDescription":"Test"}};</script>
     </html>"""
 
-    with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+    with mock.patch('data_scout.cli.requests.get') as mock_get:
         mock_response = mock.Mock()
         mock_response.text = mock_html
         mock_response.status_code = 200
@@ -905,7 +905,7 @@ def test_video_extract_subtitle_lang_fallback_fails():
     <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"Double Fail","author":"Channel","viewCount":"100","lengthSeconds":"60","shortDescription":"Test"}};</script>
     </html>"""
 
-    with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+    with mock.patch('data_scout.cli.requests.get') as mock_get:
         mock_response = mock.Mock()
         mock_response.text = mock_html
         mock_response.status_code = 200

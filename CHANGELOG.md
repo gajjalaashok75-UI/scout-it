@@ -158,7 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Parameter Passing
 - Fixed all search functions to pass parameters to underlying engines
-- Fixed mock patch imports to use correct `gakr_ddgs` submodule paths
+- Fixed mock patch imports to use correct `data_scout` submodule paths
 - Fixed test assertions to verify truncation behavior
 
 #### Documentation

@@ -64,7 +64,7 @@ twine upload dist/*
 
 ```
 data-scout/
-├── gakr_ddgs/              # Main package
+├── data_scout/              # Main package
 │   ├── __init__.py        # Package initialization
 │   ├── extraction.py      # Web/image search & extraction
 │   ├── cleaner.py         # Content cleaning & structuring
@@ -94,7 +94,7 @@ data-scout fetch-url --url "https://example.com"
 ## Programmatic Usage
 
 ```python
-from gakr_ddgs import EnterpriseSearchEngine, ImageSearchEngine
+from data_scout import EnterpriseSearchEngine, ImageSearchEngine
 
 # Web search
 engine = EnterpriseSearchEngine(max_workers=8)

@@ -88,7 +88,7 @@ export MAX_WORKERS="8"
 When using the Python API, pass parameters directly:
 
 ```python
-from gakr_ddgs.extraction import EnterpriseSearchEngine
+from data_scout.extraction import EnterpriseSearchEngine
 
 engine = EnterpriseSearchEngine()
 results = engine.search(

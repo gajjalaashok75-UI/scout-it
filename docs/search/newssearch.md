@@ -158,7 +158,7 @@ data-scout news-search --query "research" --retry-attempts 3 --retry-backoff 1.5
 ### Python Example - Basic Search
 
 ```python
-from gakr_ddgs.extraction import DDGS
+from data_scout.extraction import DDGS
 
 ddgs = DDGS()
 results = ddgs.news(query="artificial intelligence", max_results=10)
@@ -174,7 +174,7 @@ for result in results:
 ### Python Example - Recent News Only
 
 ```python
-from gakr_ddgs.extraction import DDGS
+from data_scout.extraction import DDGS
 from datetime import datetime, timedelta
 
 ddgs = DDGS()
@@ -195,7 +195,7 @@ for article in today_news:
 ### Python Example - News by Source
 
 ```python
-from gakr_ddgs.extraction import DDGS
+from data_scout.extraction import DDGS
 
 ddgs = DDGS()
 results = ddgs.news(query="finance", max_results=30)

@@ -23,8 +23,8 @@ import requests
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import gakr_ddgs
-from gakr_ddgs.cleaner import (
+import data_scout
+from data_scout.cleaner import (
     _is_content_section,
     _is_nav_paragraph,
     advanced_clean_text,
@@ -34,7 +34,7 @@ from gakr_ddgs.cleaner import (
 )
 
 # Import modules to test
-from gakr_ddgs.cli import (
+from data_scout.cli import (
     _check_max_size_warning,
     _extract_html_title,
     fatchurl,
@@ -44,7 +44,7 @@ from gakr_ddgs.cli import (
     video_search,
     web_search,
 )
-from gakr_ddgs.extraction import (
+from data_scout.extraction import (
     EnterpriseResult,
     EnterpriseSearchEngine,
     ImageSearchEngine,
@@ -61,13 +61,13 @@ class TestWebSearch:
     
     def test_web_search_returns_tuple(self):
         """Test that web_search returns (results, stats) tuple"""
-        with mock.patch('gakr_ddgs.cli.EnterpriseSearchEngine') as mock_engine:
+        with mock.patch('data_scout.cli.EnterpriseSearchEngine') as mock_engine:
             mock_instance = mock.Mock()
             mock_instance.execute_search.return_value = []
             mock_instance.stats = {'total': 0, 'success': 0}
             mock_engine.return_value = mock_instance
             
-            with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+            with mock.patch('data_scout.cli.process_results') as mock_process:
                 mock_process.return_value = ([], {'successful': 0, 'failed': 0})
                 
                 results, stats = web_search("test query", max_results=10, workers=2)
@@ -79,13 +79,13 @@ class TestWebSearch:
     
     def test_web_search_with_custom_parameters(self):
         """Test web_search with custom max_results and workers"""
-        with mock.patch('gakr_ddgs.cli.EnterpriseSearchEngine') as mock_engine:
+        with mock.patch('data_scout.cli.EnterpriseSearchEngine') as mock_engine:
             mock_instance = mock.Mock()
             mock_instance.execute_search.return_value = []
             mock_instance.stats = {'total': 0, 'success': 0}
             mock_engine.return_value = mock_instance
             
-            with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+            with mock.patch('data_scout.cli.process_results') as mock_process:
                 mock_process.return_value = ([], {})
                 
                 web_search("query", max_results=50, workers=4)
@@ -105,7 +105,7 @@ class TestImageSearch:
     
     def test_image_search_returns_tuple(self):
         """Test that image_search returns (results, stats) tuple"""
-        with mock.patch('gakr_ddgs.cli.ImageSearchEngine') as mock_engine:
+        with mock.patch('data_scout.cli.ImageSearchEngine') as mock_engine:
             mock_instance = mock.Mock()
             mock_instance.execute_image_search.return_value = []
             mock_instance.stats = {'total': 0, 'success': 0, 'execution_time': 0.5}
@@ -119,7 +119,7 @@ class TestImageSearch:
     
     def test_image_search_calls_engine_with_correct_params(self):
         """Test that image_search calls ImageSearchEngine with correct parameters"""
-        with mock.patch('gakr_ddgs.cli.ImageSearchEngine') as mock_engine:
+        with mock.patch('data_scout.cli.ImageSearchEngine') as mock_engine:
             mock_instance = mock.Mock()
             mock_instance.execute_image_search.return_value = []
             mock_instance.stats = {'total': 0, 'success': 0, 'execution_time': 0.1}
@@ -148,7 +148,7 @@ class TestFetchUrl:
     
     def test_fetch_url_valid_url_structure(self):
         """Test fetch_url with valid URL structure"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = "<html><title>Test Page</title><body>Content</body></html>"
@@ -156,13 +156,13 @@ class TestFetchUrl:
             mock_response.content = b"<html><title>Test Page</title><body>Content</body></html>"
             mock_get.return_value = mock_response
             
-            with mock.patch('gakr_ddgs.extraction.ExtractionEngine') as mock_extractor:
+            with mock.patch('data_scout.extraction.ExtractionEngine') as mock_extractor:
                 mock_extractor.USER_AGENTS = ['test-agent']
                 mock_extract_instance = mock.Mock()
                 mock_extract_instance.extract_content.return_value = ("Test content", "trafilatura", 0.9)
                 mock_extractor.return_value = mock_extract_instance
                 
-                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                with mock.patch('data_scout.cli.process_results') as mock_process:
                     mock_process.return_value = ([], {})
                     
                     result = fetch_url("https://example.com")
@@ -173,7 +173,7 @@ class TestFetchUrl:
     
     def test_fetch_url_http_scheme(self):
         """Test fetch_url accepts HTTP scheme validation"""
-        with mock.patch('gakr_ddgs.cli.requests.get', side_effect=Exception("network blocked")):
+        with mock.patch('data_scout.cli.requests.get', side_effect=Exception("network blocked")):
             result = fetch_url("http://example.com/test")
             # Should fail gracefully without raising
             assert isinstance(result, dict)
@@ -181,7 +181,7 @@ class TestFetchUrl:
     
     def test_fetch_url_https_scheme(self):
         """Test fetch_url accepts HTTPS scheme validation"""
-        with mock.patch('gakr_ddgs.cli.requests.get', side_effect=Exception("network blocked")):
+        with mock.patch('data_scout.cli.requests.get', side_effect=Exception("network blocked")):
             result = fetch_url("https://example.com/test")
             # Should fail gracefully without raising
             assert isinstance(result, dict)
@@ -189,7 +189,7 @@ class TestFetchUrl:
     
     def test_fetch_url_with_max_chars(self):
         """Test fetch_url with max_chars parameter - verifies truncation"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = "<html><title>Test</title><body>Long content here</body></html>"
@@ -197,7 +197,7 @@ class TestFetchUrl:
             mock_response.content = b"<html><title>Test</title><body>Long content here</body></html>"
             mock_get.return_value = mock_response
             
-            with mock.patch('gakr_ddgs.extraction.ExtractionEngine') as mock_extractor:
+            with mock.patch('data_scout.extraction.ExtractionEngine') as mock_extractor:
                 mock_extractor.USER_AGENTS = ['test-agent']
                 mock_extract_instance = mock.Mock()
                 # Return long content that should be truncated
@@ -205,7 +205,7 @@ class TestFetchUrl:
                 mock_extract_instance.extract_content.return_value = (long_content, "trafilatura", 0.9)
                 mock_extractor.return_value = mock_extract_instance
                 
-                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                with mock.patch('data_scout.cli.process_results') as mock_process:
                     mock_process.return_value = ([], {})
                     
                     result = fetch_url("https://example.com", max_chars=20)
@@ -215,7 +215,7 @@ class TestFetchUrl:
     
     def test_fetch_url_with_max_size(self):
         """Test fetch_url with max_size parameter - truncates response"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             # Large HTML response (2000 bytes)
@@ -225,13 +225,13 @@ class TestFetchUrl:
             mock_response.content = large_html.encode('utf-8')
             mock_get.return_value = mock_response
             
-            with mock.patch('gakr_ddgs.extraction.ExtractionEngine') as mock_extractor:
+            with mock.patch('data_scout.extraction.ExtractionEngine') as mock_extractor:
                 mock_extractor.USER_AGENTS = ['test-agent']
                 mock_extract_instance = mock.Mock()
                 mock_extract_instance.extract_content.return_value = ("Content", "trafilatura", 0.9)
                 mock_extractor.return_value = mock_extract_instance
                 
-                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                with mock.patch('data_scout.cli.process_results') as mock_process:
                     mock_process.return_value = ([], {})
                     
                     # Request with max_size of 1kb (1024 bytes) - should truncate
@@ -243,7 +243,7 @@ class TestFetchUrl:
     
     def test_fetch_url_with_max_size_small_content(self):
         """Test fetch_url with max_size parameter when content is smaller than limit"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = "<html><title>Test</title><body>Small</body></html>"
@@ -251,13 +251,13 @@ class TestFetchUrl:
             mock_response.content = b"x" * 500  # 500 bytes
             mock_get.return_value = mock_response
             
-            with mock.patch('gakr_ddgs.extraction.ExtractionEngine') as mock_extractor:
+            with mock.patch('data_scout.extraction.ExtractionEngine') as mock_extractor:
                 mock_extractor.USER_AGENTS = ['test-agent']
                 mock_extract_instance = mock.Mock()
                 mock_extract_instance.extract_content.return_value = ("Content", "trafilatura", 0.9)
                 mock_extractor.return_value = mock_extract_instance
                 
-                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                with mock.patch('data_scout.cli.process_results') as mock_process:
                     mock_process.return_value = ([], {})
                     
                     result = fetch_url("https://example.com", max_size="1mb")  # 1mb should allow 500 bytes
@@ -282,7 +282,7 @@ class TestFetchUrl:
 
     def test_fetch_url_error_http_404(self):
         """Test fetch_url with HTTP 404 error"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 404
             mock_response.url = "https://example.com/404"
@@ -297,7 +297,7 @@ class TestFetchUrl:
 
     def test_fetch_url_error_connection_refused(self):
         """Test fetch_url with connection refused"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_get.side_effect = requests.ConnectionError("Connection refused")
 
             result = fetch_url("https://example.com:9999")
@@ -306,7 +306,7 @@ class TestFetchUrl:
 
     def test_fetch_url_error_timeout(self):
         """Test fetch_url with timeout"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_get.side_effect = requests.Timeout("Request timed out")
 
             result = fetch_url("https://example.com", timeout=3)
@@ -315,7 +315,7 @@ class TestFetchUrl:
 
     def test_fetch_url_max_size_warning(self):
         """Test max-size generates content warning"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = "<html><body><p>" + "word " * 30 + "</p></body></html>"
@@ -323,13 +323,13 @@ class TestFetchUrl:
             mock_response.content = b"<html><body><p>" + b"word " * 30 + b"</p></body></html>"
             mock_get.return_value = mock_response
 
-            with mock.patch('gakr_ddgs.extraction.ExtractionEngine') as mock_extractor:
+            with mock.patch('data_scout.extraction.ExtractionEngine') as mock_extractor:
                 mock_extractor.USER_AGENTS = ['test-agent']
                 mock_extract_instance = mock.Mock()
                 mock_extract_instance.extract_content.return_value = ("word " * 25, "trafilatura", 0.9)
                 mock_extractor.return_value = mock_extract_instance
 
-                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                with mock.patch('data_scout.cli.process_results') as mock_process:
                     mock_process.return_value = ([], {})
                     result = fetch_url("https://example.com", max_size="50kb")
 
@@ -362,7 +362,7 @@ class TestSizeParsingUtility:
     
     def test_parse_size_string_bytes(self):
         """Test parsing size in bytes"""
-        from gakr_ddgs.cli import _parse_size_string
+        from data_scout.cli import _parse_size_string
         
         assert _parse_size_string("1024b") == 1024
         assert _parse_size_string("100B") == 100
@@ -370,7 +370,7 @@ class TestSizeParsingUtility:
     
     def test_parse_size_string_kilobytes(self):
         """Test parsing size in kilobytes"""
-        from gakr_ddgs.cli import _parse_size_string
+        from data_scout.cli import _parse_size_string
         
         assert _parse_size_string("1kb") == 1024
         assert _parse_size_string("100kb") == 102400
@@ -379,7 +379,7 @@ class TestSizeParsingUtility:
     
     def test_parse_size_string_megabytes(self):
         """Test parsing size in megabytes"""
-        from gakr_ddgs.cli import _parse_size_string
+        from data_scout.cli import _parse_size_string
         
         assert _parse_size_string("1mb") == 1024 ** 2
         assert _parse_size_string("5mb") == 5 * (1024 ** 2)
@@ -388,7 +388,7 @@ class TestSizeParsingUtility:
     
     def test_parse_size_string_gigabytes(self):
         """Test parsing size in gigabytes"""
-        from gakr_ddgs.cli import _parse_size_string
+        from data_scout.cli import _parse_size_string
         
         assert _parse_size_string("1gb") == 1024 ** 3
         assert _parse_size_string("2gb") == 2 * (1024 ** 3)
@@ -396,7 +396,7 @@ class TestSizeParsingUtility:
     
     def test_parse_size_string_invalid(self):
         """Test parsing invalid size strings"""
-        from gakr_ddgs.cli import _parse_size_string
+        from data_scout.cli import _parse_size_string
         
         assert _parse_size_string(None) is None
         assert _parse_size_string("") is None
@@ -410,7 +410,7 @@ class TestBackwardCompatibility:
     
     def test_fatchurl_calls_fetch_url(self):
         """Test that fatchurl (old name) still works"""
-        with mock.patch('gakr_ddgs.cli.fetch_url') as mock_fetch:
+        with mock.patch('data_scout.cli.fetch_url') as mock_fetch:
             mock_fetch.return_value = {"result": "test"}
             
             result = fatchurl("https://example.com")
@@ -674,8 +674,8 @@ class TestIntegration:
     
     def test_full_pipeline_with_mock_data(self):
         """Test the full pipeline with mocked data"""
-        with mock.patch('gakr_ddgs.extraction.EnterpriseSearchEngine'):
-            with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+        with mock.patch('data_scout.extraction.EnterpriseSearchEngine'):
+            with mock.patch('data_scout.cli.process_results') as mock_process:
                 mock_process.return_value = (
                     [
                         {
@@ -697,7 +697,7 @@ class TestAdvancedSearchFeatures:
     """Tests for retry and advanced DDGS feature wiring."""
 
     def test_news_search_uses_ddgs_wrapper(self):
-        with mock.patch('gakr_ddgs.cli._ddgs_list_search') as mock_ddgs:
+        with mock.patch('data_scout.cli._ddgs_list_search') as mock_ddgs:
             mock_ddgs.return_value = ([{'title': 'news'}], {'total': 1, 'success': 1, 'execution_time': 0.1})
             results, stats = news_search('economy', max_results=5)
 
@@ -708,7 +708,7 @@ class TestAdvancedSearchFeatures:
             assert call_kwargs['max_results'] == 5
 
     def test_video_search_uses_ddgs_wrapper(self):
-        with mock.patch('gakr_ddgs.cli._ddgs_list_search') as mock_ddgs:
+        with mock.patch('data_scout.cli._ddgs_list_search') as mock_ddgs:
             mock_ddgs.return_value = ([{'title': 'video'}], {'total': 1, 'success': 1, 'execution_time': 0.2})
             results, stats = video_search('dogs', max_results=3, duration='short')
 
@@ -743,7 +743,7 @@ class TestAdvancedSearchFeatures:
                     'height': 768,
                 }]
 
-        monkeypatch.setattr(gakr_ddgs.extraction, 'DDGS', DummyDDGS)
+        monkeypatch.setattr(data_scout.extraction, 'DDGS', DummyDDGS)
 
         engine = ImageSearchEngine()
         results = engine.execute_image_search(
@@ -775,7 +775,7 @@ class TestAdvancedSearchFeatures:
                     {'title': 'missing', 'image': 'https://example.com/c.jpg', 'url': 'https://example.com/c'},
                 ]
 
-        monkeypatch.setattr(gakr_ddgs.extraction, 'DDGS', DummyDDGS)
+        monkeypatch.setattr(data_scout.extraction, 'DDGS', DummyDDGS)
 
         engine = ImageSearchEngine()
         results = engine.execute_image_search(
@@ -836,7 +836,7 @@ class TestRawHtml:
 
     def test_raw_html_mode_key_present(self):
         """Test raw_html key is present when raw_html=True"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = self.RAW_HTML
@@ -850,7 +850,7 @@ class TestRawHtml:
 
     def test_raw_html_starts_with_html_tag(self):
         """Test raw_html output starts with typical HTML markup"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = self.RAW_HTML
@@ -864,7 +864,7 @@ class TestRawHtml:
 
     def test_raw_html_is_multi_line(self):
         """Test raw_html has multiple lines (prettified, not single-line)"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = self.RAW_HTML
@@ -881,7 +881,7 @@ class TestRawHtml:
 
     def test_raw_html_with_max_chars_truncation(self):
         """Test raw_html respects max_chars truncation"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = self.RAW_HTML * 50  # Make it long
@@ -895,7 +895,7 @@ class TestRawHtml:
 
     def test_raw_html_counts_words_correctly(self):
         """Test raw_html mode reports correct word count"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = self.RAW_HTML
@@ -908,7 +908,7 @@ class TestRawHtml:
 
     def test_raw_html_has_no_cleaner_keys(self):
         """Test raw_html mode does not contain cleaner-specific keys"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = self.RAW_HTML
@@ -927,7 +927,7 @@ class TestJsonOutputValidity:
 
     def test_fetch_url_default_json_valid(self):
         """fetch_url (default) output serializes to valid strict JSON"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = "<html><title>Test</title><body>Line1\nLine2\nLine3</body></html>"
@@ -935,13 +935,13 @@ class TestJsonOutputValidity:
             mock_response.content = b"<html><body>Line1\nLine2\nLine3</body></html>"
             mock_get.return_value = mock_response
 
-            with mock.patch('gakr_ddgs.extraction.ExtractionEngine') as mock_extractor:
+            with mock.patch('data_scout.extraction.ExtractionEngine') as mock_extractor:
                 mock_extractor.USER_AGENTS = ['test-agent']
                 mock_extract_instance = mock.Mock()
                 mock_extract_instance.extract_content.return_value = ("Line1\nLine2\nLine3", "trafilatura", 0.9)
                 mock_extractor.return_value = mock_extract_instance
 
-                with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+                with mock.patch('data_scout.cli.process_results') as mock_process:
                     mock_process.return_value = ([{
                         "cleaned_content": "Line1\nLine2\nLine3",
                         "content_sections": {},
@@ -960,7 +960,7 @@ class TestJsonOutputValidity:
 
     def test_fetch_url_raw_html_json_valid(self):
         """fetch_url with raw_html=True output serializes to valid strict JSON"""
-        with mock.patch('gakr_ddgs.cli.requests.get') as mock_get:
+        with mock.patch('data_scout.cli.requests.get') as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = "<html><title>Test</title><body>Content</body></html>"
@@ -976,7 +976,7 @@ class TestJsonOutputValidity:
 
     def test_web_search_output_json_valid(self):
         """web_search output serializes to valid strict JSON"""
-        with mock.patch('gakr_ddgs.cli.EnterpriseSearchEngine') as mock_engine:
+        with mock.patch('data_scout.cli.EnterpriseSearchEngine') as mock_engine:
             mock_instance = mock.Mock()
             mock_instance.execute_search.return_value = [
                 EnterpriseResult(
@@ -992,7 +992,7 @@ class TestJsonOutputValidity:
             mock_instance.stats = {'total': 1, 'success': 1}
             mock_engine.return_value = mock_instance
 
-            with mock.patch('gakr_ddgs.cli.process_results') as mock_process:
+            with mock.patch('data_scout.cli.process_results') as mock_process:
                 mock_process.return_value = ([{
                     "position": 1,
                     "title": "Test",
@@ -1022,7 +1022,7 @@ class TestWrapLongStrings:
 
     def test_skip_keys_preserves_html(self):
         """raw_html key is preserved verbatim"""
-        from gakr_ddgs.cli import _wrap_long_strings
+        from data_scout.cli import _wrap_long_strings
         html = '<div class="test"><p>long content that would exceed wrap limit</p></div>'
         data = {"raw_html": html}
         result = _wrap_long_strings(data, 40, skip_keys={"raw_html"})
@@ -1030,7 +1030,7 @@ class TestWrapLongStrings:
 
     def test_skip_keys_preserves_description(self):
         """description key is preserved verbatim while other strings are wrapped"""
-        from gakr_ddgs.cli import _wrap_long_strings
+        from data_scout.cli import _wrap_long_strings
         long_desc = " ".join(["word"] * 50)
         long_title = " ".join(["word"] * 50)
         data = {"description": long_desc, "title": long_title}
@@ -1040,7 +1040,7 @@ class TestWrapLongStrings:
 
     def test_skip_keys_preserves_body(self):
         """body key is preserved verbatim"""
-        from gakr_ddgs.cli import _wrap_long_strings
+        from data_scout.cli import _wrap_long_strings
         long_body = " ".join(["word"] * 50)
         data = {"body": long_body}
         result = _wrap_long_strings(data, 40, skip_keys={"body"})
@@ -1048,7 +1048,7 @@ class TestWrapLongStrings:
 
     def test_skip_keys_nested(self):
         """skip_keys works on nested dicts and lists"""
-        from gakr_ddgs.cli import _wrap_long_strings
+        from data_scout.cli import _wrap_long_strings
         long_desc = " ".join(["word"] * 50)
         data = {
             "results": [
@@ -1062,7 +1062,7 @@ class TestWrapLongStrings:
 
     def test_default_no_skip(self):
         """default behaviour (skip_keys=None) still wraps all strings"""
-        from gakr_ddgs.cli import _wrap_long_strings
+        from data_scout.cli import _wrap_long_strings
         long_str = " ".join(["word"] * 50)
         data = {"key": long_str}
         result = _wrap_long_strings(data, 40)
@@ -1074,32 +1074,32 @@ class TestEnhanceVideoDescriptions:
 
     def test_empty_results(self):
         """empty list returns immediately"""
-        from gakr_ddgs.cli import _enhance_video_descriptions
+        from data_scout.cli import _enhance_video_descriptions
         assert _enhance_video_descriptions([]) == []
 
-    @mock.patch('gakr_ddgs.cli._fetch_youtube_metadata')
+    @mock.patch('data_scout.cli._fetch_youtube_metadata')
     def test_skips_non_youtube(self, mock_fetch):
         """non-YouTube URLs are not fetched"""
-        from gakr_ddgs.cli import _enhance_video_descriptions
+        from data_scout.cli import _enhance_video_descriptions
         results = [{"content": "https://vimeo.com/12345", "description": "short"}]
         out = _enhance_video_descriptions(results)
         mock_fetch.assert_not_called()
         assert out[0]["description"] == "short"
 
-    @mock.patch('gakr_ddgs.cli._fetch_youtube_metadata')
+    @mock.patch('data_scout.cli._fetch_youtube_metadata')
     def test_enhances_youtube(self, mock_fetch):
         """YouTube URLs get full description injected"""
-        from gakr_ddgs.cli import _enhance_video_descriptions
+        from data_scout.cli import _enhance_video_descriptions
         mock_fetch.return_value = {"description": "full " * 100}
         results = [{"content": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "description": "short"}]
         out = _enhance_video_descriptions(results)
         mock_fetch.assert_called_once()
         assert out[0]["description"] == "full " * 100
 
-    @mock.patch('gakr_ddgs.cli._fetch_youtube_metadata')
+    @mock.patch('data_scout.cli._fetch_youtube_metadata')
     def test_error_keeps_original(self, mock_fetch):
         """fetch error keeps original truncated description"""
-        from gakr_ddgs.cli import _enhance_video_descriptions
+        from data_scout.cli import _enhance_video_descriptions
         mock_fetch.return_value = {"error": "network_error"}
         results = [{"content": "https://youtu.be/dQw4w9WgXcQ", "description": "short desc"}]
         out = _enhance_video_descriptions(results)
@@ -1111,14 +1111,14 @@ class TestExtractNewsContent:
 
     def test_empty_results(self):
         """empty list returns immediately"""
-        from gakr_ddgs.cli import _extract_news_content
+        from data_scout.cli import _extract_news_content
         assert _extract_news_content([]) == []
 
-    @mock.patch('gakr_ddgs.cli.ExtractionEngine')
-    @mock.patch('gakr_ddgs.cli.requests')
+    @mock.patch('data_scout.cli.ExtractionEngine')
+    @mock.patch('data_scout.cli.requests')
     def test_enriches_result(self, mock_requests, mock_engine_cls):
         """article URL is fetched, extracted, and enriched with process_results-compatible keys"""
-        from gakr_ddgs.cli import _extract_news_content
+        from data_scout.cli import _extract_news_content
 
         mock_engine_cls.USER_AGENTS = ["TestAgent/1.0"]
         mock_resp = mock.MagicMock()
@@ -1138,22 +1138,22 @@ class TestExtractNewsContent:
         assert out[0]["extraction_method"] == "trafilatura"
         assert out[0]["content_word_count"] == 100
 
-    @mock.patch('gakr_ddgs.cli.ExtractionEngine')
-    @mock.patch('gakr_ddgs.cli.requests')
+    @mock.patch('data_scout.cli.ExtractionEngine')
+    @mock.patch('data_scout.cli.requests')
     def test_empty_url_failed(self, mock_requests, mock_engine_cls):
         """empty URL results in extraction_status failed"""
-        from gakr_ddgs.cli import _extract_news_content
+        from data_scout.cli import _extract_news_content
 
         results = [{"url": "", "body": "no url"}]
         out = _extract_news_content(results)
         assert out[0]["extraction_status"] == "failed"
         assert out[0]["main_content"] == ""
 
-    @mock.patch('gakr_ddgs.cli.ExtractionEngine')
-    @mock.patch('gakr_ddgs.cli.requests')
+    @mock.patch('data_scout.cli.ExtractionEngine')
+    @mock.patch('data_scout.cli.requests')
     def test_http_error_failed(self, mock_requests, mock_engine_cls):
         """non-200 status results in extraction_status failed"""
-        from gakr_ddgs.cli import _extract_news_content
+        from data_scout.cli import _extract_news_content
 
         mock_engine_cls.USER_AGENTS = ["TestAgent/1.0"]
         mock_resp = mock.MagicMock()
@@ -1165,11 +1165,11 @@ class TestExtractNewsContent:
         assert out[0]["extraction_status"] == "failed"
         assert out[0]["main_content"] == ""
 
-    @mock.patch('gakr_ddgs.cli.ExtractionEngine')
-    @mock.patch('gakr_ddgs.cli.requests')
+    @mock.patch('data_scout.cli.ExtractionEngine')
+    @mock.patch('data_scout.cli.requests')
     def test_preserves_original_order(self, mock_requests, mock_engine_cls):
         """output list preserves the order of input results"""
-        from gakr_ddgs.cli import _extract_news_content
+        from data_scout.cli import _extract_news_content
 
         mock_engine_cls.USER_AGENTS = ["TestAgent/1.0"]
         mock_resp = mock.MagicMock()

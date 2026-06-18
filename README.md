@@ -75,7 +75,7 @@ There are 5 query/search modes available through `search.py`:
 
 ```text
 data-scout/
-  gakr_ddgs/
+  data_scout/
     __init__.py               # Package initialization + public API
     cli.py                    # CLI entry point (data-scout command)
     extraction.py             # Search engines + extraction engines
@@ -350,8 +350,8 @@ You can import and use the search engines and extraction functions directly from
 ### Web Search with Content Extraction
 
 ```python
-from gakr_ddgs.extraction import EnterpriseSearchEngine
-from gakr_ddgs.cleaner import process_results
+from data_scout.extraction import EnterpriseSearchEngine
+from data_scout.cleaner import process_results
 
 engine = EnterpriseSearchEngine()
 results = engine.search(
@@ -373,7 +373,7 @@ for result in cleaned_results:
 ### Image Search
 
 ```python
-from gakr_ddgs.extraction import ImageSearchEngine
+from data_scout.extraction import ImageSearchEngine
 
 engine = ImageSearchEngine()
 results = engine.search(
@@ -393,7 +393,7 @@ for result in results:
 ### Direct Content Extraction from URL
 
 ```python
-from gakr_ddgs.extraction import ExtractionEngine
+from data_scout.extraction import ExtractionEngine
 
 engine = ExtractionEngine()
 content, method, confidence = engine.extract(
@@ -409,7 +409,7 @@ print(f"Content:\n{content[:500]}...")
 ### Text Cleaning and Processing
 
 ```python
-from gakr_ddgs.cleaner import advanced_clean_text
+from data_scout.cleaner import advanced_clean_text
 
 raw_text = "   Hello   world   with   extra    spaces   "
 cleaned = advanced_clean_text(raw_text)
@@ -553,7 +553,7 @@ data-scout fetch-url --url "https://en.wikipedia.org/wiki/Artificial_intelligenc
 ### Example F: Programmatic Web Search (Python)
 
 ```python
-from gakr_ddgs.extraction import EnterpriseSearchEngine
+from data_scout.extraction import EnterpriseSearchEngine
 
 engine = EnterpriseSearchEngine()
 results = engine.search(
@@ -578,7 +578,7 @@ pytest tests/ -v
 Run with coverage:
 
 ```bash
-pytest tests/ --cov=gakr_ddgs --cov-report=html
+pytest tests/ --cov=data_scout --cov-report=html
 ```
 
 Current test suite includes:
@@ -629,7 +629,7 @@ Current test suite includes:
 pip install -e ".[dev]"
 
 # Or verify installation
-python -c "from gakr_ddgs import EnterpriseSearchEngine; print('OK')"
+python -c "from data_scout import EnterpriseSearchEngine; print('OK')"
 ```
 
 ### 5) Python version mismatch

@@ -57,7 +57,7 @@ This file is a guide for AI coding agents (GitHub Copilot, Cursor, Claude, etc.)
 ### System Design
 
 ```
-CLI Layer (gakr_ddgs/cli.py)
+CLI Layer (data_scout/cli.py)
     ↓
     ├─→ EnterpriseSearchEngine (web/news search)
     ├─→ ImageSearchEngine (image search)
@@ -92,7 +92,7 @@ CLI Layer (gakr_ddgs/cli.py)
 
 ```
 data-scout/
-├── gakr_ddgs/
+├── data_scout/
 │   ├── __init__.py          (Public API exports)
 │   ├── extraction.py        (Search & extraction engines)
 │   ├── cleaner.py           (Content cleaning)
@@ -161,8 +161,8 @@ pip install build twine
 python -m build
 
 # Output:
-# dist/gakr_ddgs-1.0.0-py3-none-any.whl (29.2 KB)
-# dist/gakr_ddgs-1.0.0.tar.gz (42.3 KB)
+# dist/data_scout-1.0.0-py3-none-any.whl (29.2 KB)
+# dist/data_scout-1.0.0.tar.gz (42.3 KB)
 ```
 
 ### Verify Build
@@ -180,7 +180,7 @@ python -m venv test_env
 source test_env/bin/activate
 
 # Install from wheel
-pip install dist/gakr_ddgs-1.0.0-py3-none-any.whl
+pip install dist/data_scout-1.0.0-py3-none-any.whl
 
 # Test CLI
 data-scout web-search --query "test" --max-results 2
@@ -202,7 +202,7 @@ pytest tests/test_cli.py -v
 
 ### Run Tests with Coverage
 ```bash
-pytest tests/ --cov=gakr_ddgs --cov-report=html
+pytest tests/ --cov=data_scout --cov-report=html
 ```
 
 ### Run Tests with Markers
@@ -238,16 +238,16 @@ pytest tests/test_cli.py::test_web_search -v
 **Use these tools:**
 ```bash
 # Format with black
-black gakr_ddgs/ tests/ --line-length=100
+black data_scout/ tests/ --line-length=100
 
 # Sort imports with isort
-isort gakr_ddgs/ tests/ --profile black
+isort data_scout/ tests/ --profile black
 
 # Lint with flake8
-flake8 gakr_ddgs/ tests/ --max-line-length=100
+flake8 data_scout/ tests/ --max-line-length=100
 
 # Type check with mypy
-mypy gakr_ddgs/ --strict
+mypy data_scout/ --strict
 ```
 
 **Standards:**
@@ -354,13 +354,13 @@ def search(query, max_results=10):
 Before committing:
 ```bash
 # Check for secrets
-grep -r "password\|api_key\|token" gakr_ddgs/ | grep -v ".pyc"
+grep -r "password\|api_key\|token" data_scout/ | grep -v ".pyc"
 
 # Check for hardcoded URLs (should use config)
-grep -r "http://" gakr_ddgs/ | grep -v "test\|example"
+grep -r "http://" data_scout/ | grep -v "test\|example"
 
 # Check for dangerous functions
-grep -r "eval\|exec\|pickle" gakr_ddgs/ | grep -v "test"
+grep -r "eval\|exec\|pickle" data_scout/ | grep -v "test"
 ```
 
 ### Environment Variables
@@ -385,14 +385,14 @@ export MAX_WORKERS="8"
 - ❌ `dist/` - Build artifacts (regenerated each build)
 - ❌ `__pycache__/` - Python cache (regenerated)
 - ❌ `.mypy_cache/` - Type checker cache (regenerated)
-- ❌ `gakr_ddgs.egg-info/` - Package metadata (regenerated)
+- ❌ `data_scout.egg-info/` - Package metadata (regenerated)
 - ❌ `docs/` - User documentation (contact maintainer to update)
 - ❌ `references/` - Legacy code archive (historical reference only)
 - ❌ `LICENSE` - MIT license (do not modify)
 - ❌ `setup.py` - Only update if changing dependencies
 
 ### CAN MODIFY:
-- ✅ `gakr_ddgs/` - Source code (main development area)
+- ✅ `data_scout/` - Source code (main development area)
 - ✅ `tests/` - Test suite (add tests for new features)
 - ✅ `README.md` - Main documentation (user-facing docs)
 - ✅ `AGENTS.md` - This file (agent instructions)
@@ -402,7 +402,7 @@ export MAX_WORKERS="8"
 ### Package Layout
 
 ```
-gakr_ddgs/                          # Main package
+data_scout/                          # Main package
 ├── __init__.py                     # Public API
 ├── extraction.py                   # Search engines (570+ lines)
 ├── cleaner.py                      # Content cleaning (350+ lines)
@@ -449,13 +449,13 @@ git checkout -b feature/my-feature
 # - Run tests: pytest tests/ -v
 
 # 3. Format code
-black gakr_ddgs/ && isort gakr_ddgs/
+black data_scout/ && isort data_scout/
 
 # 4. Type check
-mypy gakr_ddgs/ --strict
+mypy data_scout/ --strict
 
 # 5. Lint
-flake8 gakr_ddgs/
+flake8 data_scout/
 
 # 6. Commit
 git add .
@@ -466,12 +466,12 @@ git commit -m "feat: description"
 
 **Always use relative imports within package:**
 ```python
-# ✅ Correct (within gakr_ddgs/)
+# ✅ Correct (within data_scout/)
 from .extraction import EnterpriseSearchEngine
 from .cleaner import process_results
 
 # ❌ Wrong
-from gakr_ddgs.extraction import EnterpriseSearchEngine
+from data_scout.extraction import EnterpriseSearchEngine
 ```
 
 ### 4. Dependency Management
@@ -577,10 +577,10 @@ Closes #123
 
 ### Pre-Commit Checklist
 - [ ] Tests pass: `pytest tests/ -v`
-- [ ] Code formatted: `black gakr_ddgs/`
-- [ ] Imports sorted: `isort gakr_ddgs/`
-- [ ] Linting passes: `flake8 gakr_ddgs/`
-- [ ] Type checking passes: `mypy gakr_ddgs/`
+- [ ] Code formatted: `black data_scout/`
+- [ ] Imports sorted: `isort data_scout/`
+- [ ] Linting passes: `flake8 data_scout/`
+- [ ] Type checking passes: `mypy data_scout/`
 - [ ] No hardcoded secrets
 - [ ] Docstrings added/updated
 - [ ] Commit message follows convention
@@ -602,10 +602,10 @@ git push origin feature/my-feature
 |------|---------|
 | Install development | `pip install -e ".[dev]"` |
 | Run tests | `pytest tests/ -v` |
-| Format code | `black gakr_ddgs/` |
-| Sort imports | `isort gakr_ddgs/` |
-| Lint | `flake8 gakr_ddgs/` |
-| Type check | `mypy gakr_ddgs/` |
+| Format code | `black data_scout/` |
+| Sort imports | `isort data_scout/` |
+| Lint | `flake8 data_scout/` |
+| Type check | `mypy data_scout/` |
 | Build package | `python -m build` |
 | CLI help | `data-scout --help` |
 | Web search | `data-scout web-search --query "test"` |
@@ -613,10 +613,10 @@ git push origin feature/my-feature
 ### File Purposes
 | File | Purpose | Modify? |
 |------|---------|---------|
-| `gakr_ddgs/__init__.py` | Public API | ✅ Yes |
-| `gakr_ddgs/extraction.py` | Search engines | ✅ Yes |
-| `gakr_ddgs/cleaner.py` | Content cleaning | ✅ Yes |
-| `gakr_ddgs/cli.py` | CLI interface | ✅ Yes |
+| `data_scout/__init__.py` | Public API | ✅ Yes |
+| `data_scout/extraction.py` | Search engines | ✅ Yes |
+| `data_scout/cleaner.py` | Content cleaning | ✅ Yes |
+| `data_scout/cli.py` | CLI interface | ✅ Yes |
 | `tests/test_cli.py` | Test suite | ✅ Yes |
 | `pyproject.toml` | Build config | ✅ (Carefully) |
 | `setup.py` | Legacy setup | ✅ (Only if needed) |

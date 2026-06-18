@@ -320,7 +320,7 @@ Available licenses for `--license-image` filter:
 ### Python Example - Basic Search
 
 ```python
-from gakr_ddgs.extraction import ImageSearchEngine
+from data_scout.extraction import ImageSearchEngine
 
 engine = ImageSearchEngine()
 results = engine.search(
@@ -338,7 +338,7 @@ for result in results:
 ### Python Example - With Dimension Filtering
 
 ```python
-from gakr_ddgs.extraction import ImageSearchEngine
+from data_scout.extraction import ImageSearchEngine
 
 engine = ImageSearchEngine()
 results = engine.search(
@@ -358,7 +358,7 @@ for result in results:
 ### Python Example - Filtering Results
 
 ```python
-from gakr_ddgs.extraction import ImageSearchEngine
+from data_scout.extraction import ImageSearchEngine
 
 engine = ImageSearchEngine()
 results = engine.search(query="nature", max_results=20)
