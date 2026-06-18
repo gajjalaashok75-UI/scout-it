@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Setup configuration for gakr-ddgs package."""
+"""Setup configuration for data-scout package."""
 
 from setuptools import setup
 
 setup(
-    name="gakr-ddgs",
+    name="data-scout",
     version="1.0.0",
     author="Ashok-gakr",
     description="Enterprise-grade DuckDuckGo search toolkit with content extraction, cleaning, and structured JSON output",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
-    url="https://github.com/Ashok-gakr/gakr-ddgs",
+    url="https://github.com/Ashok-gakr/data-scout",
     packages=["gakr_ddgs"],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
@@ -37,7 +37,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "gakr-ddgs=gakr_ddgs.cli:main",
+            "data-scout=gakr_ddgs.cli:main",
         ],
     },
 )

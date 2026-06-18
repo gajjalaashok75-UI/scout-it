@@ -1,6 +1,6 @@
 # 🤖 AGENTS.md - Instructions for AI Coding Agents
 
-**Project:** gakr-ddgs v1.0.0  
+**Project:** data-scout v1.0.0  
 **Author:** Ashok-gakr  
 **Date:** June 12, 2026  
 **Status:** Production Ready
@@ -26,7 +26,7 @@ This file is a guide for AI coding agents (GitHub Copilot, Cursor, Claude, etc.)
 
 ## Project Overview
 
-**gakr-ddgs** is a production-ready Python package for AI-powered web search, image search, and content extraction.
+**data-scout** is a production-ready Python package for AI-powered web search, image search, and content extraction.
 
 ### What it does:
 - Searches the web via DuckDuckGo and Google APIs
@@ -91,7 +91,7 @@ CLI Layer (gakr_ddgs/cli.py)
 ### File Organization
 
 ```
-gakr-ddgs/
+data-scout/
 ├── gakr_ddgs/
 │   ├── __init__.py          (Public API exports)
 │   ├── extraction.py        (Search & extraction engines)
@@ -114,8 +114,8 @@ gakr-ddgs/
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/Ashok-gakr/gakr-ddgs.git
-cd gakr-ddgs
+git clone https://github.com/Ashok-gakr/data-scout.git
+cd data-scout
 ```
 
 ### 2. Create Virtual Environment
@@ -125,8 +125,8 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Or using conda
-conda create -n gakr-ddgs python=3.11
-conda activate gakr-ddgs
+conda create -n data-scout python=3.11
+conda activate data-scout
 ```
 
 ### 3. Install Package in Development Mode
@@ -142,7 +142,7 @@ pip install -r requirements.txt
 ### 5. Verify Installation
 ```bash
 # Check CLI
-gakr-ddgs --help
+data-scout --help
 
 # Run tests
 pytest tests/ -v
@@ -183,7 +183,7 @@ source test_env/bin/activate
 pip install dist/gakr_ddgs-1.0.0-py3-none-any.whl
 
 # Test CLI
-gakr-ddgs web-search --query "test" --max-results 2
+data-scout web-search --query "test" --max-results 2
 ```
 
 ---
@@ -607,8 +607,8 @@ git push origin feature/my-feature
 | Lint | `flake8 gakr_ddgs/` |
 | Type check | `mypy gakr_ddgs/` |
 | Build package | `python -m build` |
-| CLI help | `gakr-ddgs --help` |
-| Web search | `gakr-ddgs web-search --query "test"` |
+| CLI help | `data-scout --help` |
+| Web search | `data-scout web-search --query "test"` |
 
 ### File Purposes
 | File | Purpose | Modify? |

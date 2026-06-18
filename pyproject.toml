@@ -3,7 +3,7 @@ requires = ["setuptools>=65.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gakr-ddgs"
+name = "data-scout"
 version = "1.0.0"
 description = "Enterprise-grade DuckDuckGo search toolkit with content extraction, cleaning, and structured JSON output"
 readme = "README.md"
@@ -53,13 +53,13 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Ashok-gakr/gakr-ddgs"
-Documentation = "https://github.com/Ashok-gakr/gakr-ddgs#readme"
-Repository = "https://github.com/Ashok-gakr/gakr-ddgs.git"
-"Bug Tracker" = "https://github.com/Ashok-gakr/gakr-ddgs/issues"
+Homepage = "https://github.com/Ashok-gakr/data-scout"
+Documentation = "https://github.com/Ashok-gakr/data-scout#readme"
+Repository = "https://github.com/Ashok-gakr/data-scout.git"
+"Bug Tracker" = "https://github.com/Ashok-gakr/data-scout/issues"
 
 [project.scripts]
-gakr-ddgs = "gakr_ddgs.cli:main"
+data-scout = "gakr_ddgs.cli:main"
 
 [tool.setuptools]
 packages = ["gakr_ddgs"]

@@ -1,7 +1,7 @@
-# gakr-ddgs: Complete Python Package Conversion Summary
+# data-scout: Complete Python Package Conversion Summary
 
 **Date:** June 12, 2026  
-**Package:** gakr-ddgs v1.0.0  
+**Package:** data-scout v1.0.0  
 **Author:** Ashok-gakr  
 **License:** MIT  
 **Status:** ✅ Production Ready
@@ -22,7 +22,7 @@ Your web search project has been successfully converted into a **professional, p
 ## 📦 Package Structure Created
 
 ```
-gakr-ddgs/
+data-scout/
 ├── gakr_ddgs/                    # Main package directory
 │   ├── __init__.py              # Package initialization & public API
 │   ├── extraction.py            # Web/Image search & content extraction
@@ -86,13 +86,13 @@ gakr-ddgs/
 ## 📋 Package Metadata
 
 ```
-Name:              gakr-ddgs
+Name:              data-scout
 Version:           1.0.0
 Author:            Ashok-gakr
 License:           MIT
 Python:            >= 3.8
-Repository:        https://github.com/Ashok-gakr/gakr-ddgs
-Bug Tracker:       https://github.com/Ashok-gakr/gakr-ddgs/issues
+Repository:        https://github.com/Ashok-gakr/data-scout
+Bug Tracker:       https://github.com/Ashok-gakr/data-scout/issues
 ```
 
 ---
@@ -126,35 +126,35 @@ pip install .
 
 ### 3. **From GitHub** (Once pushed)
 ```bash
-pip install git+https://github.com/Ashok-gakr/gakr-ddgs.git
+pip install git+https://github.com/Ashok-gakr/data-scout.git
 ```
 
 ### 4. **From PyPI** (Once published)
 ```bash
-pip install gakr-ddgs
+pip install data-scout
 ```
 
 ---
 
 ## 💻 CLI Usage Examples
 
-After installation, use the `gakr-ddgs` command:
+After installation, use the `data-scout` command:
 
 ```bash
 # Web search with content extraction
-gakr-ddgs web-search --query "python automation" --max 10
+data-scout web-search --query "python automation" --max 10
 
 # Image search
-gakr-ddgs image-search --query "sunset landscapes" --max 20 
+data-scout image-search --query "sunset landscapes" --max 20 
 
 # News search
-gakr-ddgs news-search --query "technology news" --max 10
+data-scout news-search --query "technology news" --max 10
 
 # Video search  
-gakr-ddgs video-search --query "python tutorial" --max 10
+data-scout video-search --query "python tutorial" --max 10
 
 # Fetch & extract single URL
-gakr-ddgs fetch-url --url "https://example.com"
+data-scout fetch-url --url "https://example.com"
 ```
 
 ---
@@ -238,7 +238,7 @@ twine upload dist/*
 
 After publishing, anyone can install with:
 ```bash
-pip install gakr-ddgs
+pip install data-scout
 ```
 
 ---
@@ -255,10 +255,10 @@ git init
 git add .
 
 # Create initial commit
-git commit -m "Initial release: gakr-ddgs v1.0.0"
+git commit -m "Initial release: data-scout v1.0.0"
 
 # Add remote (update URL with your repo)
-git remote add origin https://github.com/Ashok-gakr/gakr-ddgs.git
+git remote add origin https://github.com/Ashok-gakr/data-scout.git
 
 # Push to GitHub
 git branch -M main
@@ -349,7 +349,7 @@ setup.py                  ✅ Legacy compatibility
 ## 📞 Support & Documentation
 
 - **Installation**: See `INSTALL.md`
-- **CLI Help**: `gakr-ddgs --help`
+- **CLI Help**: `data-scout --help`
 - **Code Examples**: See `README.md`
 - **API Reference**: Check docstrings in `gakr_ddgs/*.py`
 - **Issues**: Report on GitHub

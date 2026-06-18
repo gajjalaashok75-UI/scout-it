@@ -5,8 +5,8 @@ Runs extraction.py → cleaner.py
 Outputs: structured JSON with filtered results
 
 Usage (CLI):
-  gakr-ddgs web-search --query "today hot news" --max 50 --workers 6 --out results.json
-  gakr-ddgs image-search --query "sunset" --max 20 --out images.json
+  data-scout web-search --query "today hot news" --max 50 --workers 6 --out results.json
+  data-scout image-search --query "sunset" --max 20 --out images.json
 
 This imports `EnterpriseSearchEngine`, `ImageSearchEngine` from `extraction.py` 
 and `process_results` from `cleaner.py`
@@ -680,7 +680,7 @@ def video_extract(url: str, subtitle_lang: str = "en", include_segments: bool = 
     """
     url = str(url or "").strip()
     if not url:
-        return {"error": "invalid_url", "error_message": "No URL provided. Use --url to specify a video URL.", "hint": "Example: gakr-ddgs video-extract --url \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\""}
+        return {"error": "invalid_url", "error_message": "No URL provided. Use --url to specify a video URL.", "hint": "Example: data-scout video-extract --url \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\""}
 
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -1108,11 +1108,11 @@ def main():
         ),
         epilog=(
             'Examples:\\n'
-            '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\\n'
-            '  gakr-ddgs video-extract --url "https://youtu.be/dQw4w9WgXcQ"\\n'
-            '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --subtitle-lang fr\\n'
-            '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --segments\\n'
-        '  gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json'
+            '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\\n'
+            '  data-scout video-extract --url "https://youtu.be/dQw4w9WgXcQ"\\n'
+            '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --subtitle-lang fr\\n'
+            '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --segments\\n'
+        '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1357,7 +1357,7 @@ def main():
                 print(f'   [ERR] {err_msg}')
             else:
                 print(f'   [ERR] {err_msg}')
-            print(f'   [HINT] Provide a valid YouTube URL: gakr-ddgs video-extract --url "https://www.youtube.com/watch?v=VIDEO_ID"')
+            print(f'   [HINT] Provide a valid YouTube URL: data-scout video-extract --url "https://www.youtube.com/watch?v=VIDEO_ID"')
             print(f'   [HINT] Other video platforms coming soon.\n')
 
             # Still save error result to output for debugging

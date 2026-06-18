@@ -74,10 +74,10 @@ There are 5 query/search modes available through `search.py`:
 ## Project Structure
 
 ```text
-gakr-ddgs/
+data-scout/
   gakr_ddgs/
     __init__.py               # Package initialization + public API
-    cli.py                    # CLI entry point (gakr-ddgs command)
+    cli.py                    # CLI entry point (data-scout command)
     extraction.py             # Search engines + extraction engines
     cleaner.py                # Content cleaning + structuring
   tests/
@@ -148,8 +148,8 @@ Python packages used by the project:
 
 ```bash
 # Clone repository
-git clone https://github.com/Ashok-gakr/gakr-ddgs.git
-cd gakr-ddgs
+git clone https://github.com/Ashok-gakr/data-scout.git
+cd data-scout
 
 # Create virtual environment
 python -m venv venv
@@ -162,13 +162,13 @@ pip install -e ".[dev]"
 ### Option 2: Install from PyPI (When Published)
 
 ```bash
-pip install gakr-ddgs
+pip install data-scout
 ```
 
 ### Verify Installation
 
 ```bash
-gakr-ddgs --help
+data-scout --help
 ```
 
 ## Quick Start
@@ -176,37 +176,37 @@ gakr-ddgs --help
 ### 1) Web Search (3 results)
 
 ```bash
-gakr-ddgs web-search --query "dog" --max-results 3
+data-scout web-search --query "dog" --max-results 3
 ```
 
 ### 2) Image Search (3 results)
 
 ```bash
-gakr-ddgs image-search --query "dog" --max-results 3
+data-scout image-search --query "dog" --max-results 3
 ```
 
 ### 3) News Search
 
 ```bash
-gakr-ddgs news-search --query "dog" --max-results 5
+data-scout news-search --query "dog" --max-results 5
 ```
 
 ### 4) Video Search
 
 ```bash
-gakr-ddgs video-search --query "dog" --max-results 5
+data-scout video-search --query "dog" --max-results 5
 ```
 
 ### 5) Fetch and Extract a Single URL
 
 ```bash
-gakr-ddgs fetch-url --url "https://en.wikipedia.org/wiki/Dog"
+data-scout fetch-url --url "https://en.wikipedia.org/wiki/Dog"
 ```
 
 ### 6) Web Search with JSON Output
 
 ```bash
-gakr-ddgs web-search --query "machine learning" --max-results 10 --json
+data-scout web-search --query "machine learning" --max-results 10 --json
 ```
 
 ## CLI Reference
@@ -214,7 +214,7 @@ gakr-ddgs web-search --query "machine learning" --max-results 10 --json
 ### Global Help
 
 ```bash
-gakr-ddgs --help
+data-scout --help
 ```
 
 Subcommands:
@@ -228,7 +228,7 @@ Subcommands:
 ### web-search
 
 ```bash
-gakr-ddgs web-search --query "<text>" [options]
+data-scout web-search --query "<text>" [options]
 ```
 
 Options:
@@ -240,13 +240,13 @@ Options:
 
 **Example:**
 ```bash
-gakr-ddgs web-search --query "machine learning" --max-results 5
+data-scout web-search --query "machine learning" --max-results 5
 ```
 
 ### image-search
 
 ```bash
-gakr-ddgs image-search --query "<text>" [options]
+data-scout image-search --query "<text>" [options]
 ```
 
 Options:
@@ -259,13 +259,13 @@ Options:
 
 **Example:**
 ```bash
-gakr-ddgs image-search --query "landscape" --max-results 10 --min-width 1024 --min-height 768
+data-scout image-search --query "landscape" --max-results 10 --min-width 1024 --min-height 768
 ```
 
 ### news-search
 
 ```bash
-gakr-ddgs news-search --query "<text>" [options]
+data-scout news-search --query "<text>" [options]
 ```
 
 Options:
@@ -276,13 +276,13 @@ Options:
 
 **Example:**
 ```bash
-gakr-ddgs news-search --query "artificial intelligence" --max-results 5
+data-scout news-search --query "artificial intelligence" --max-results 5
 ```
 
 ### video-search
 
 ```bash
-gakr-ddgs video-search --query "<text>" [options]
+data-scout video-search --query "<text>" [options]
 ```
 
 Options:
@@ -293,13 +293,13 @@ Options:
 
 **Example:**
 ```bash
-gakr-ddgs video-search --query "python tutorial" --max-results 5
+data-scout video-search --query "python tutorial" --max-results 5
 ```
 
 ### fetch-url
 
 ```bash
-gakr-ddgs fetch-url --url "https://example.com" [options]
+data-scout fetch-url --url "https://example.com" [options]
 ```
 
 Options:
@@ -310,7 +310,7 @@ Options:
 
 **Example:**
 ```bash
-gakr-ddgs fetch-url --url "https://example.com/article"
+data-scout fetch-url --url "https://example.com/article"
 ```
 
 ## Detailed Search Documentation
@@ -514,7 +514,7 @@ If no dimension filters are enabled:
 ### Example A: Web Search for Articles
 
 ```bash
-gakr-ddgs web-search --query "artificial intelligence" --max-results 5
+data-scout web-search --query "artificial intelligence" --max-results 5
 ```
 
 **Output:**
@@ -529,25 +529,25 @@ Content: [extracted article text...]
 ### Example B: High-Resolution Image Search
 
 ```bash
-gakr-ddgs image-search --query "mountain scenery" --max-results 10 --min-width 1920 --min-height 1080
+data-scout image-search --query "mountain scenery" --max-results 10 --min-width 1920 --min-height 1080
 ```
 
 ### Example C: News Search
 
 ```bash
-gakr-ddgs news-search --query "technology breakthroughs" --max-results 5
+data-scout news-search --query "technology breakthroughs" --max-results 5
 ```
 
 ### Example D: Video Search
 
 ```bash
-gakr-ddgs video-search --query "python programming tutorial" --max-results 5
+data-scout video-search --query "python programming tutorial" --max-results 5
 ```
 
 ### Example E: Extract Content from Specific URL
 
 ```bash
-gakr-ddgs fetch-url --url "https://en.wikipedia.org/wiki/Artificial_intelligence"
+data-scout fetch-url --url "https://en.wikipedia.org/wiki/Artificial_intelligence"
 ```
 
 ### Example F: Programmatic Web Search (Python)

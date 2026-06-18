@@ -4,8 +4,8 @@
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/Ashok-gakr/gakr-ddgs.git
-cd gakr-ddgs
+git clone https://github.com/Ashok-gakr/data-scout.git
+cd data-scout
 ```
 
 2. **Create virtual environment:**
@@ -31,12 +31,12 @@ pytest tests/ -v
 
 ### From PyPI (Once published):
 ```bash
-pip install gakr-ddgs
+pip install data-scout
 ```
 
 ### From GitHub:
 ```bash
-pip install git+https://github.com/Ashok-gakr/gakr-ddgs.git
+pip install git+https://github.com/Ashok-gakr/data-scout.git
 ```
 
 ### From local source:
@@ -63,7 +63,7 @@ twine upload dist/*
 ## Project Structure
 
 ```
-gakr-ddgs/
+data-scout/
 ├── gakr_ddgs/              # Main package
 │   ├── __init__.py        # Package initialization
 │   ├── extraction.py      # Web/image search & extraction
@@ -84,11 +84,11 @@ gakr-ddgs/
 After installation, use:
 
 ```bash
-gakr-ddgs web-search --query "your query" --max 10
-gakr-ddgs image-search --query "your query" --max 20
-gakr-ddgs news-search --query "your query" --max 10
-gakr-ddgs video-search --query "your query" --max 10
-gakr-ddgs fetch-url --url "https://example.com"
+data-scout web-search --query "your query" --max 10
+data-scout image-search --query "your query" --max 20
+data-scout news-search --query "your query" --max 10
+data-scout video-search --query "your query" --max 10
+data-scout fetch-url --url "https://example.com"
 ```
 
 ## Programmatic Usage

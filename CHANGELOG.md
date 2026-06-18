@@ -12,14 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🎉 Added
 
 #### video-extract — New standalone video extraction command
-- **`gakr-ddgs video-extract --url <URL>`**: New subcommand that extracts full metadata, description, and subtitles from a video URL. Currently supports YouTube. Non-YouTube URLs receive a friendly notice: "Only YouTube supported, others coming soon."
+- **`data-scout video-extract --url <URL>`**: New subcommand that extracts full metadata, description, and subtitles from a video URL. Currently supports YouTube. Non-YouTube URLs receive a friendly notice: "Only YouTube supported, others coming soon."
   - Extracts: title, description, channel, view count, duration, thumbnail, subtitles (via `youtube-transcript-api`), and structured JSON output
   - Validates URL format and video URL validity before extraction
   - Error classification: `invalid_url`, `unsupported_platform`, `video_not_found`, `network_error`, `timeout`, `http_error`, `missing_dependency`
   - Default output: `video_extract_results.json` (configurable via `--out`)
   - Supports youtube.com, youtu.be, youtube.com/embed/, and m.youtube.com URL formats
   - 6 tests: empty URL, invalid URL, non-YouTube rejection, YouTube success, youtu.be short URL, JSON serializability
-- **`gakr-ddgs video-extract --subtitle-lang <CODE>`**: New `--subtitle-lang` flag for requesting non-English subtitles.
+- **`data-scout video-extract --subtitle-lang <CODE>`**: New `--subtitle-lang` flag for requesting non-English subtitles.
   - Validates the requested language against available subtitle tracks before fetching
   - If requested language is unavailable, falls back to English (`en`) with a descriptive warning
   - Shows available subtitle languages when the requested one isn't found
@@ -214,7 +214,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Providing faster results for quick testing
   - Encouraging users to use reasonable result counts
   - Teaching users to specify desired `--max` explicitly
-  - Example: `gakr-ddgs web-search --query "example" --max 50`
+  - Example: `data-scout web-search --query "example" --max 50`
 - Help text now shows supported range: `--max 50 (1-100 for web, 1-50 for others)`
 
 #### Rate Limiting & User Experience Enhancements

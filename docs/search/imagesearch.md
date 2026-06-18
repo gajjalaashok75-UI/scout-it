@@ -7,7 +7,7 @@ Image search retrieves images from DuckDuckGo with advanced filtering options. I
 ## Command Syntax
 
 ```bash
-gakr-ddgs image-search [OPTIONS]
+data-scout image-search [OPTIONS]
 ```
 
 ## Required Options
@@ -120,7 +120,7 @@ Location: Full path is displayed in console with 📂 emoji
 Get any images:
 
 ```bash
-gakr-ddgs image-search --query "cat"
+data-scout image-search --query "cat"
 ```
 
 ### Minimum Width
@@ -128,7 +128,7 @@ gakr-ddgs image-search --query "cat"
 Find images at least 1024px wide:
 
 ```bash
-gakr-ddgs image-search --query "wallpaper" --min-width 1024
+data-scout image-search --query "wallpaper" --min-width 1024
 ```
 
 ### Minimum Height
@@ -136,7 +136,7 @@ gakr-ddgs image-search --query "wallpaper" --min-width 1024
 Find images at least 768px tall:
 
 ```bash
-gakr-ddgs image-search --query "portrait" --min-height 768
+data-scout image-search --query "portrait" --min-height 768
 ```
 
 ### Both Width and Height
@@ -144,7 +144,7 @@ gakr-ddgs image-search --query "portrait" --min-height 768
 Find HD images (1920×1080 or larger):
 
 ```bash
-gakr-ddgs image-search --query "landscape" --min-width 1920 --min-height 1080
+data-scout image-search --query "landscape" --min-width 1920 --min-height 1080
 ```
 
 ### Filtering Behavior
@@ -161,7 +161,7 @@ gakr-ddgs image-search --query "landscape" --min-width 1920 --min-height 1080
 Search for dog images:
 
 ```bash
-gakr-ddgs image-search --query "dog"
+data-scout image-search --query "dog"
 ```
 
 ### HD Images Only (1920×1080+)
@@ -169,7 +169,7 @@ gakr-ddgs image-search --query "dog"
 Find high-resolution wallpapers:
 
 ```bash
-gakr-ddgs image-search --query "wallpaper" --min-width 1920 --min-height 1080 --max 20
+data-scout image-search --query "wallpaper" --min-width 1920 --min-height 1080 --max 20
 ```
 
 ### Specific Visual Characteristics
@@ -177,7 +177,7 @@ gakr-ddgs image-search --query "wallpaper" --min-width 1920 --min-height 1080 --
 Find blue clipart logos:
 
 ```bash
-gakr-ddgs image-search --query "logo" --type-image "clipart" --color "Blue" --layout "Square"
+data-scout image-search --query "logo" --type-image "clipart" --color "Blue" --layout "Square"
 ```
 
 ### Size + Layout
@@ -185,7 +185,7 @@ gakr-ddgs image-search --query "logo" --type-image "clipart" --color "Blue" --la
 Find panoramic landscape images:
 
 ```bash
-gakr-ddgs image-search --query "landscape" --size "Wallpaper" --layout "Wide" --max 10
+data-scout image-search --query "landscape" --size "Wallpaper" --layout "Wide" --max 10
 ```
 
 ### License Filtered
@@ -193,7 +193,7 @@ gakr-ddgs image-search --query "landscape" --size "Wallpaper" --layout "Wide" --
 Find Creative Commons images:
 
 ```bash
-gakr-ddgs image-search --query "photo" --license-image "creative_commons" --max 15
+data-scout image-search --query "photo" --license-image "creative_commons" --max 15
 ```
 
 ### Download Images
@@ -201,7 +201,7 @@ gakr-ddgs image-search --query "photo" --license-image "creative_commons" --max 
 Download matching images:
 
 ```bash
-gakr-ddgs image-search \
+data-scout image-search \
   --query "nature" \
   --max 20 \
   --min-width 1024 \
@@ -214,7 +214,7 @@ gakr-ddgs image-search \
 Find ultra-wide images:
 
 ```bash
-gakr-ddgs image-search --query "mountain" --layout "Panoramic" --size "Wallpaper"
+data-scout image-search --query "mountain" --layout "Panoramic" --size "Wallpaper"
 ```
 
 ### Last Week's Images
@@ -222,7 +222,7 @@ gakr-ddgs image-search --query "mountain" --layout "Panoramic" --size "Wallpaper
 Find recently added images:
 
 ```bash
-gakr-ddgs image-search --query "news" --timelimit w --max 30
+data-scout image-search --query "news" --timelimit w --max 30
 ```
 
 ### JSON Output
@@ -230,7 +230,7 @@ gakr-ddgs image-search --query "news" --timelimit w --max 30
 Output raw JSON for processing:
 
 ```bash
-gakr-ddgs image-search --query "city" --json > city_images.json
+data-scout image-search --query "city" --json > city_images.json
 ```
 
 ### Professional Photo Database
@@ -238,7 +238,7 @@ gakr-ddgs image-search --query "city" --json > city_images.json
 Find high-quality commercial images:
 
 ```bash
-gakr-ddgs image-search \
+data-scout image-search \
   --query "business professional" \
   --type-image "photo" \
   --license-image "commercial" \
@@ -252,7 +252,7 @@ gakr-ddgs image-search \
 Create a wallpaper collection:
 
 ```bash
-gakr-ddgs image-search \
+data-scout image-search \
   --query "nature landscape" \
   --size "Wallpaper" \
   --layout "Wide" \
@@ -380,7 +380,7 @@ for img in landscape_images:
 
 ```bash
 # Collect 50 high-quality cat images
-gakr-ddgs image-search \
+data-scout image-search \
   --query "cat" \
   --max 50 \
   --min-width 800 \
@@ -392,7 +392,7 @@ gakr-ddgs image-search \
 
 ```bash
 # Find professional design images
-gakr-ddgs image-search \
+data-scout image-search \
   --query "modern interior design" \
   --max 20 \
   --min-width 1280 \
@@ -403,7 +403,7 @@ gakr-ddgs image-search \
 
 ```bash
 # Find 4K wallpapers
-gakr-ddgs image-search \
+data-scout image-search \
   --query "space universe" \
   --max 10 \
   --min-width 3840 \
@@ -414,7 +414,7 @@ gakr-ddgs image-search \
 
 ```bash
 # Get images that will work as thumbnails
-gakr-ddgs image-search \
+data-scout image-search \
   --query "logo" \
   --max 30 \
   --min-width 128 \
@@ -486,7 +486,7 @@ gakr-ddgs image-search \
 ```bash
 # Collect images for multiple queries
 for topic in "dog" "cat" "bird"; do
-  gakr-ddgs image-search \
+  data-scout image-search \
     --query "$topic" \
     --max 20 \
     --min-width 1280 \
@@ -500,7 +500,7 @@ done
 Find all landscape images:
 
 ```bash
-gakr-ddgs image-search --query "nature" --json | \
+data-scout image-search --query "nature" --json | \
   jq '.results[] | 
       select(.dimensions.width > .dimensions.height) | 
       {title, dimensions, image_url}'
@@ -511,7 +511,7 @@ gakr-ddgs image-search --query "nature" --json | \
 Get images with 16:9 aspect ratio (1920×1080 is 16:9):
 
 ```bash
-gakr-ddgs image-search --query "landscape" --json | \
+data-scout image-search --query "landscape" --json | \
   jq '.results[] | 
       select((.dimensions.width / .dimensions.height) > 1.7 and 
              (.dimensions.width / .dimensions.height) < 1.8)'
@@ -541,13 +541,13 @@ DuckDuckGo image search is **rate-limited**. If you encounter zero results:
 sleep 300
 
 # Step 2: Try with minimal filters
-gakr-ddgs image-search --query "simple keywords" --max 5
+data-scout image-search --query "simple keywords" --max 5
 
 # Step 3: Try different region
-gakr-ddgs image-search --query "original query" --region "us-en" --max 5
+data-scout image-search --query "original query" --region "us-en" --max 5
 
 # Step 4: No filters at all
-gakr-ddgs image-search --query "broad query" --max 10
+data-scout image-search --query "broad query" --max 10
 ```
 
 ### Best Practices

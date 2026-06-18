@@ -7,7 +7,7 @@ News search retrieves recent news articles related to your query from DuckDuckGo
 ## Command Syntax
 
 ```bash
-gakr-ddgs news-search [OPTIONS]
+data-scout news-search [OPTIONS]
 ```
 
 ## Required Options
@@ -94,7 +94,7 @@ Location: Full path is displayed in console with 📂 emoji
 Get the latest news on a topic:
 
 ```bash
-gakr-ddgs news-search --query "AI breakthrough"
+data-scout news-search --query "AI breakthrough"
 ```
 
 ### Regional News (UK)
@@ -102,7 +102,7 @@ gakr-ddgs news-search --query "AI breakthrough"
 Search for news from UK region:
 
 ```bash
-gakr-ddgs news-search --query "technology" --region uk-en
+data-scout news-search --query "technology" --region uk-en
 ```
 
 ### Last 24 Hours
@@ -110,7 +110,7 @@ gakr-ddgs news-search --query "technology" --region uk-en
 Get today's news:
 
 ```bash
-gakr-ddgs news-search --query "politics" --timelimit d --max 20
+data-scout news-search --query "politics" --timelimit d --max 20
 ```
 
 ### Last Week's News
@@ -118,7 +118,7 @@ gakr-ddgs news-search --query "politics" --timelimit d --max 20
 Get news from the past week:
 
 ```bash
-gakr-ddgs news-search --query "finance" --timelimit w --max 30
+data-scout news-search --query "finance" --timelimit w --max 30
 ```
 
 ### Safe Search Enabled
@@ -126,7 +126,7 @@ gakr-ddgs news-search --query "finance" --timelimit w --max 30
 Filter adult content:
 
 ```bash
-gakr-ddgs news-search --query "general interest" --safesearch on
+data-scout news-search --query "general interest" --safesearch on
 ```
 
 ### Custom Output
@@ -134,7 +134,7 @@ gakr-ddgs news-search --query "general interest" --safesearch on
 Save to specific file:
 
 ```bash
-gakr-ddgs news-search --query "technology" --out ./news/tech_news.json --max 50
+data-scout news-search --query "technology" --out ./news/tech_news.json --max 50
 ```
 
 ### JSON Output
@@ -142,7 +142,7 @@ gakr-ddgs news-search --query "technology" --out ./news/tech_news.json --max 50
 Output to stdout:
 
 ```bash
-gakr-ddgs news-search --query "AI breakthrough" --json
+data-scout news-search --query "AI breakthrough" --json
 ```
 
 ### With Retry Configuration
@@ -150,7 +150,7 @@ gakr-ddgs news-search --query "AI breakthrough" --json
 Retry on failures:
 
 ```bash
-gakr-ddgs news-search --query "research" --retry-attempts 3 --retry-backoff 1.5
+data-scout news-search --query "research" --retry-attempts 3 --retry-backoff 1.5
 ```
 
 ## Programmatic API
@@ -221,7 +221,7 @@ for source, articles in by_source.items():
 Get latest news on a specific topic:
 
 ```bash
-gakr-ddgs news-search \
+data-scout news-search \
   --query "electric vehicles" \
   --max 20 \
   --json > ev_news.json
@@ -233,7 +233,7 @@ Check for updates on an ongoing story:
 
 ```bash
 # Run periodically (e.g., in a cron job)
-gakr-ddgs news-search \
+data-scout news-search \
   --query "natural disaster" \
   --max 10 \
   --json > breaking_news.json
@@ -244,7 +244,7 @@ gakr-ddgs news-search \
 Track news in your industry:
 
 ```bash
-gakr-ddgs news-search \
+data-scout news-search \
   --query "software development trends" \
   --max 15
 ```
@@ -254,7 +254,7 @@ gakr-ddgs news-search \
 Monitor competitor news:
 
 ```bash
-gakr-ddgs news-search \
+data-scout news-search \
   --query "major_competitor_name" \
   --max 25
 ```
@@ -265,16 +265,16 @@ Search different news categories:
 
 ```bash
 # Technology
-gakr-ddgs news-search --query "technology innovation" --max 10
+data-scout news-search --query "technology innovation" --max 10
 
 # Health
-gakr-ddgs news-search --query "medical breakthrough" --max 10
+data-scout news-search --query "medical breakthrough" --max 10
 
 # Finance
-gakr-ddgs news-search --query "stock market" --max 10
+data-scout news-search --query "stock market" --max 10
 
 # Politics
-gakr-ddgs news-search --query "government policy" --max 10
+data-scout news-search --query "government policy" --max 10
 ```
 
 ## Performance Considerations
@@ -357,7 +357,7 @@ Monitor multiple topics:
 topics=("AI" "Climate" "Space" "Medicine")
 
 for topic in "${topics[@]}"; do
-  gakr-ddgs news-search \
+  data-scout news-search \
     --query "$topic" \
     --max 10 \
     --json > "news_${topic}.json"
@@ -370,7 +370,7 @@ done
 Extract headlines and sources:
 
 ```bash
-gakr-ddgs news-search --query "technology" --json | \
+data-scout news-search --query "technology" --json | \
   jq '.results[] | {title, source, date}'
 ```
 
@@ -379,7 +379,7 @@ gakr-ddgs news-search --query "technology" --json | \
 Find news from the last 24 hours:
 
 ```bash
-gakr-ddgs news-search --query "urgent" --json | \
+data-scout news-search --query "urgent" --json | \
   jq '.results[] | 
       select(
         (now - (.date | fromdateiso8601)) < 86400
@@ -391,7 +391,7 @@ gakr-ddgs news-search --query "urgent" --json | \
 
 ```bash
 # Collect news
-gakr-ddgs news-search --query "AI" --max 30 --json > ai_news.json
+data-scout news-search --query "AI" --max 30 --json > ai_news.json
 
 # Extract unique sources
 jq '.results[] | .source' ai_news.json | sort -u
@@ -421,13 +421,13 @@ News search is **rate-limited** by DuckDuckGo. If you get zero results:
 sleep 300
 
 # Try with basic query
-gakr-ddgs news-search --query "simple keywords" --max 5
+data-scout news-search --query "simple keywords" --max 5
 
 # Try without time filter
-gakr-ddgs news-search --query "original query" --max 5
+data-scout news-search --query "original query" --max 5
 
 # Try different region
-gakr-ddgs news-search --query "original query" --region "wt-wt" --max 10
+data-scout news-search --query "original query" --region "wt-wt" --max 10
 ```
 
 ### Best Practices

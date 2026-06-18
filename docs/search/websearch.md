@@ -7,7 +7,7 @@ Web search combines DuckDuckGo search functionality with multi-strategy content 
 ## Command Syntax
 
 ```bash
-gakr-ddgs web-search [OPTIONS]
+data-scout web-search [OPTIONS]
 ```
 
 ## Required Options
@@ -120,7 +120,7 @@ If layer 1 succeeds, layers 2-5 are skipped. This ensures fast extraction with b
 Search for articles about Python:
 
 ```bash
-gakr-ddgs web-search --query "Python programming"
+data-scout web-search --query "Python programming"
 ```
 
 ### With Custom Workers & Timeout
@@ -128,7 +128,7 @@ gakr-ddgs web-search --query "Python programming"
 Increase extraction parallelism:
 
 ```bash
-gakr-ddgs web-search --query "Python" --max 20 --workers 8 --timeout 10
+data-scout web-search --query "Python" --max 20 --workers 8 --timeout 10
 ```
 
 ### UK Region, Safe Search Off
@@ -136,7 +136,7 @@ gakr-ddgs web-search --query "Python" --max 20 --workers 8 --timeout 10
 Search in UK region without filtering:
 
 ```bash
-gakr-ddgs web-search --query "technology" --region uk-en --safesearch off
+data-scout web-search --query "technology" --region uk-en --safesearch off
 ```
 
 ### Last Week's Articles
@@ -144,7 +144,7 @@ gakr-ddgs web-search --query "technology" --region uk-en --safesearch off
 Get recent articles:
 
 ```bash
-gakr-ddgs web-search --query "news" --timelimit w --max 20
+data-scout web-search --query "news" --timelimit w --max 20
 ```
 
 ### With Retry Configuration
@@ -152,7 +152,7 @@ gakr-ddgs web-search --query "news" --timelimit w --max 20
 Retry on failures:
 
 ```bash
-gakr-ddgs web-search --query "research" --retry-attempts 3 --retry-backoff 1.5
+data-scout web-search --query "research" --retry-attempts 3 --retry-backoff 1.5
 ```
 
 ### Custom Output Location
@@ -160,7 +160,7 @@ gakr-ddgs web-search --query "research" --retry-attempts 3 --retry-backoff 1.5
 Save to specific file:
 
 ```bash
-gakr-ddgs web-search --query "data" --out ./results/my_results.json
+data-scout web-search --query "data" --out ./results/my_results.json
 ```
 
 ### JSON Output to Console
@@ -168,7 +168,7 @@ gakr-ddgs web-search --query "data" --out ./results/my_results.json
 Output raw JSON to stdout for piping:
 
 ```bash
-gakr-ddgs web-search --query "machine learning" --json > results.json
+data-scout web-search --query "machine learning" --json > results.json
 ```
 
 ### Combined Options
@@ -176,7 +176,7 @@ gakr-ddgs web-search --query "machine learning" --json > results.json
 Comprehensive search with multiple parameters:
 
 ```bash
-gakr-ddgs web-search \
+data-scout web-search \
   --query "renewable energy" \
   --max 20 \
   --workers 8 \
@@ -341,20 +341,20 @@ Common region codes for `--region` parameter:
 
 ```bash
 for query in "Python" "JavaScript" "Go programming"; do
-  gakr-ddgs web-search --query "$query" --max 5
+  data-scout web-search --query "$query" --max 5
 done
 ```
 
 ### Processing Results with JQ
 
 ```bash
-gakr-ddgs web-search --query "AI" --json | jq '.results[] | {title, confidence_score}'
+data-scout web-search --query "AI" --json | jq '.results[] | {title, confidence_score}'
 ```
 
 ### Extracting Only High-Confidence Results
 
 ```bash
-gakr-ddgs web-search --query "news" --json | \
+data-scout web-search --query "news" --json | \
   jq '.results[] | select(.confidence_score > 0.8)'
 ```
 
@@ -383,13 +383,13 @@ If the search still returns zero results:
 sleep 300
 
 # Try with simplified query
-gakr-ddgs web-search --query "simplified query" --max 5
+data-scout web-search --query "simplified query" --max 5
 
 # Try different region
-gakr-ddgs web-search --query "original query" --region "wt-wt" --max 5
+data-scout web-search --query "original query" --region "wt-wt" --max 5
 
 # Try with fewer retries but more backoff
-gakr-ddgs web-search --query "original query" \
+data-scout web-search --query "original query" \
   --retry-attempts 3 \
   --retry-backoff 2.0
 ```

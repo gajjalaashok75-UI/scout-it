@@ -1,6 +1,6 @@
 # Documentation
 
-This folder contains comprehensive documentation for the gakr-ddgs package.
+This folder contains comprehensive documentation for the data-scout package.
 
 ## Files
 

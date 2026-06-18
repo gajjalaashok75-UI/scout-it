@@ -7,7 +7,7 @@ URL fetch extracts main content from a single URL and cleans it for analysis. It
 ## Command Syntax
 
 ```bash
-gakr-ddgs fetch-url [OPTIONS]
+data-scout fetch-url [OPTIONS]
 ```
 
 ## Required Options
@@ -133,7 +133,7 @@ URL fetch uses the same 5-layer fallback approach as web search:
 Fetch and extract an article:
 
 ```bash
-gakr-ddgs fetch-url --url "https://en.wikipedia.org/wiki/Machine_learning"
+data-scout fetch-url --url "https://en.wikipedia.org/wiki/Machine_learning"
 ```
 
 **Output:**
@@ -151,7 +151,7 @@ Words: 3245
 Extract from a news site:
 
 ```bash
-gakr-ddgs fetch-url --url "https://technews.com/ai-breakthrough"
+data-scout fetch-url --url "https://technews.com/ai-breakthrough"
 ```
 
 ### Blog Post
@@ -159,7 +159,7 @@ gakr-ddgs fetch-url --url "https://technews.com/ai-breakthrough"
 Extract from a blog:
 
 ```bash
-gakr-ddgs fetch-url --url "https://medium.com/@author/how-to-learn-python"
+data-scout fetch-url --url "https://medium.com/@author/how-to-learn-python"
 ```
 
 ### With Max Characters Limit
@@ -167,7 +167,7 @@ gakr-ddgs fetch-url --url "https://medium.com/@author/how-to-learn-python"
 Extract but limit to first 5000 characters:
 
 ```bash
-gakr-ddgs fetch-url --url "https://example.com/article" --max-chars 5000
+data-scout fetch-url --url "https://example.com/article" --max-chars 5000
 ```
 
 ### With Max Size Constraint
@@ -175,7 +175,7 @@ gakr-ddgs fetch-url --url "https://example.com/article" --max-chars 5000
 Fetch only if response is under 2 MB:
 
 ```bash
-gakr-ddgs fetch-url --url "https://example.com/document" --max-size 2mb
+data-scout fetch-url --url "https://example.com/document" --max-size 2mb
 ```
 
 ### With Custom Timeout
@@ -183,7 +183,7 @@ gakr-ddgs fetch-url --url "https://example.com/document" --max-size 2mb
 Increase timeout for slow-loading pages:
 
 ```bash
-gakr-ddgs fetch-url --url "https://example.com" --timeout 30
+data-scout fetch-url --url "https://example.com" --timeout 30
 ```
 
 ### With Custom Output Location
@@ -191,7 +191,7 @@ gakr-ddgs fetch-url --url "https://example.com" --timeout 30
 Save to custom file:
 
 ```bash
-gakr-ddgs fetch-url --url "https://example.com" --out ./results/my_fetch.json
+data-scout fetch-url --url "https://example.com" --out ./results/my_fetch.json
 ```
 
 ### With JSON Output to Console
@@ -199,14 +199,14 @@ gakr-ddgs fetch-url --url "https://example.com" --out ./results/my_fetch.json
 Output JSON to stdout instead of file:
 
 ```bash
-gakr-ddgs fetch-url --url "https://example.com" --json
+data-scout fetch-url --url "https://example.com" --json
 ```
 
 ### ❌ INVALID: Both constraints together
 
 ```bash
 # This will ERROR - only use ONE constraint parameter
-gakr-ddgs fetch-url --url "https://example.com" --max-chars 10000 --max-size 5mb
+data-scout fetch-url --url "https://example.com" --max-chars 10000 --max-size 5mb
 # ERROR: Cannot use both --max-chars and --max-size together. Use only ONE parameter at a time
 ```
 
@@ -215,7 +215,7 @@ gakr-ddgs fetch-url --url "https://example.com" --max-chars 10000 --max-size 5mb
 Extract from documentation:
 
 ```bash
-gakr-ddgs fetch-url --url "https://docs.python.org/3/tutorial/"
+data-scout fetch-url --url "https://docs.python.org/3/tutorial/"
 ```
 
 ### Longer Timeout
@@ -223,7 +223,7 @@ gakr-ddgs fetch-url --url "https://docs.python.org/3/tutorial/"
 For slow or complex pages:
 
 ```bash
-gakr-ddgs fetch-url \
+data-scout fetch-url \
   --url "https://example.com/heavy-page" \
   --timeout 15
 ```
@@ -233,7 +233,7 @@ gakr-ddgs fetch-url \
 Get raw JSON for processing:
 
 ```bash
-gakr-ddgs fetch-url \
+data-scout fetch-url \
   --url "https://example.com/article" \
   --json > article.json
 ```
@@ -243,7 +243,7 @@ gakr-ddgs fetch-url \
 Extract knowledge base article:
 
 ```bash
-gakr-ddgs fetch-url --url "https://en.wikipedia.org/wiki/Artificial_intelligence"
+data-scout fetch-url --url "https://en.wikipedia.org/wiki/Artificial_intelligence"
 ```
 
 ## Programmatic API
@@ -340,7 +340,7 @@ print(f"\nProcessed {len(results)}/{len(urls)} URLs successfully")
 Extract a specific article for analysis:
 
 ```bash
-gakr-ddgs fetch-url \
+data-scout fetch-url \
   --url "https://example.com/tech-article" \
   --json > analysis.json
 ```
@@ -350,7 +350,7 @@ gakr-ddgs fetch-url \
 Extract research papers or documentation:
 
 ```bash
-gakr-ddgs fetch-url \
+data-scout fetch-url \
   --url "https://arxiv.org/pdf/2306.12345" \
   --timeout 15
 ```
@@ -360,7 +360,7 @@ gakr-ddgs fetch-url \
 Create a local copy of web content:
 
 ```bash
-gakr-ddgs fetch-url \
+data-scout fetch-url \
   --url "https://important-blog.com/article" \
   --json > backup.json
 ```
@@ -371,7 +371,7 @@ Check if a page is still accessible and extractable:
 
 ```bash
 # Run periodically
-gakr-ddgs fetch-url \
+data-scout fetch-url \
   --url "https://critical-page.com" \
   --json > status.json
 ```
@@ -384,7 +384,7 @@ Extract multiple URLs in batch:
 # Read URLs from file
 while IFS= read -r url; do
   echo "Fetching: $url"
-  gakr-ddgs fetch-url --url "$url" --json > "result_${counter}.json"
+  data-scout fetch-url --url "$url" --json > "result_${counter}.json"
   ((counter++))
 done < urls.txt
 ```
@@ -486,7 +486,7 @@ done < urls.txt
 
 ```bash
 # Get JSON output
-gakr-ddgs fetch-url --url "https://example.com/article" --json | \
+data-scout fetch-url --url "https://example.com/article" --json | \
   jq '.result | {title, confidence_score, word_count: .metrics.word_count}'
 ```
 
@@ -494,10 +494,10 @@ gakr-ddgs fetch-url --url "https://example.com/article" --json | \
 
 ```bash
 # Store current version
-gakr-ddgs fetch-url --url "https://example.com" --json > version_1.json
+data-scout fetch-url --url "https://example.com" --json > version_1.json
 
 # Later, check again
-gakr-ddgs fetch-url --url "https://example.com" --json > version_2.json
+data-scout fetch-url --url "https://example.com" --json > version_2.json
 
 # Compare
 diff version_1.json version_2.json
@@ -507,7 +507,7 @@ diff version_1.json version_2.json
 
 ```bash
 # Extract HTML and parse links
-gakr-ddgs fetch-url --url "https://example.com" --json | \
+data-scout fetch-url --url "https://example.com" --json | \
   jq '.result.main_content' | \
   grep -oP 'https?://[^\s)]+' | sort -u
 ```
@@ -517,7 +517,7 @@ gakr-ddgs fetch-url --url "https://example.com" --json | \
 ```bash
 # Check multiple URLs and compare quality
 for url in "https://site1.com/article" "https://site2.com/article"; do
-  gakr-ddgs fetch-url --url "$url" --json | \
+  data-scout fetch-url --url "$url" --json | \
     jq "{url: .url, quality: .result.cleaned_content.quality_score}"
 done
 ```
@@ -526,7 +526,7 @@ done
 
 ```bash
 # Extract sentiment from fetched content
-gakr-ddgs fetch-url --url "https://example.com" --json | \
+data-scout fetch-url --url "https://example.com" --json | \
   jq '.result.cleaned_content.sentiment'
 ```
 
@@ -555,13 +555,13 @@ Extraction may fail or return limited content for:
 
 ```bash
 # For pages with strict size limits
-gakr-ddgs fetch-url --url "https://example.com" --max-chars 5000
+data-scout fetch-url --url "https://example.com" --max-chars 5000
 
 # For problematic sites, increase timeout
-gakr-ddgs fetch-url --url "https://example.com" --timeout 30
+data-scout fetch-url --url "https://example.com" --timeout 30
 
 # Check extraction result metadata
-gakr-ddgs fetch-url --url "https://example.com" --json | \
+data-scout fetch-url --url "https://example.com" --json | \
   jq '.result.extraction_metadata'
 ```
 

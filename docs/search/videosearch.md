@@ -7,7 +7,7 @@ Video search retrieves videos from DuckDuckGo matching your query. Results inclu
 ## Command Syntax
 
 ```bash
-gakr-ddgs video-search [OPTIONS]
+data-scout video-search [OPTIONS]
 ```
 
 ## Required Options
@@ -98,7 +98,7 @@ Location: Full path is displayed in console with 📂 emoji
 Search for Python tutorials:
 
 ```bash
-gakr-ddgs video-search --query "Python tutorial"
+data-scout video-search --query "Python tutorial"
 ```
 
 ### Short Videos Only
@@ -106,7 +106,7 @@ gakr-ddgs video-search --query "Python tutorial"
 Find short-form content (< 5 minutes):
 
 ```bash
-gakr-ddgs video-search --query "motivation" --duration short --max 20
+data-scout video-search --query "motivation" --duration short --max 20
 ```
 
 ### Long-form Content (Courses)
@@ -114,7 +114,7 @@ gakr-ddgs video-search --query "motivation" --duration short --max 20
 Find full courses and lectures:
 
 ```bash
-gakr-ddgs video-search --query "web development" --duration long --max 10
+data-scout video-search --query "web development" --duration long --max 10
 ```
 
 ### High Resolution Videos
@@ -122,7 +122,7 @@ gakr-ddgs video-search --query "web development" --duration long --max 10
 Find HD videos:
 
 ```bash
-gakr-ddgs video-search --query "music" --resolution high --max 15
+data-scout video-search --query "music" --resolution high --max 15
 ```
 
 ### Recent Videos
@@ -130,7 +130,7 @@ gakr-ddgs video-search --query "music" --resolution high --max 15
 Get videos from the past day:
 
 ```bash
-gakr-ddgs video-search --query "breaking news" --timelimit d --max 10
+data-scout video-search --query "breaking news" --timelimit d --max 10
 ```
 
 ### Weekly Videos
@@ -138,7 +138,7 @@ gakr-ddgs video-search --query "breaking news" --timelimit d --max 10
 Get trending videos:
 
 ```bash
-gakr-ddgs video-search --query "trending" --timelimit w --max 30
+data-scout video-search --query "trending" --timelimit w --max 30
 ```
 
 ### Custom Output
@@ -146,7 +146,7 @@ gakr-ddgs video-search --query "trending" --timelimit w --max 30
 Save to specific file:
 
 ```bash
-gakr-ddgs video-search --query "Python" --out ./results/python_videos.json
+data-scout video-search --query "Python" --out ./results/python_videos.json
 ```
 
 ### JSON Output
@@ -154,7 +154,7 @@ gakr-ddgs video-search --query "Python" --out ./results/python_videos.json
 Output to stdout:
 
 ```bash
-gakr-ddgs video-search --query "tutorial" --json
+data-scout video-search --query "tutorial" --json
 ```
 
 ### Comprehensive Video Research
@@ -162,7 +162,7 @@ gakr-ddgs video-search --query "tutorial" --json
 Get detailed video results:
 
 ```bash
-gakr-ddgs video-search \
+data-scout video-search \
   --query "machine learning course" \
   --duration "long" \
   --resolution "high" \
@@ -190,7 +190,7 @@ gakr-ddgs video-search \
 Get 30 videos:
 
 ```bash
-gakr-ddgs video-search --query "yoga exercises" --max 30
+data-scout video-search --query "yoga exercises" --max 30
 ```
 
 ### JSON Output
@@ -198,26 +198,26 @@ gakr-ddgs video-search --query "yoga exercises" --max 30
 Get raw JSON for processing:
 
 ```bash
-gakr-ddgs video-search --query "photography tips" --json > video_results.json
+data-scout video-search --query "photography tips" --json > video_results.json
 ```
 
 ### Different Topics
 
 ```bash
 # Educational
-gakr-ddgs video-search --query "quantum physics explained"
+data-scout video-search --query "quantum physics explained"
 
 # Entertainment
-gakr-ddgs video-search --query "funny cat videos"
+data-scout video-search --query "funny cat videos"
 
 # Gaming
-gakr-ddgs video-search --query "Minecraft building tutorial"
+data-scout video-search --query "Minecraft building tutorial"
 
 # Music
-gakr-ddgs video-search --query "guitar lesson for beginners"
+data-scout video-search --query "guitar lesson for beginners"
 
 # Fitness
-gakr-ddgs video-search --query "30 minute workout"
+data-scout video-search --query "30 minute workout"
 ```
 
 ## Programmatic API
@@ -311,7 +311,7 @@ for platform, videos in sorted(sources.items(), key=lambda x: -len(x[1])):
 Search for tutorial series:
 
 ```bash
-gakr-ddgs video-search \
+data-scout video-search \
   --query "web development bootcamp" \
   --max 15
 ```
@@ -321,7 +321,7 @@ gakr-ddgs video-search \
 Find educational videos:
 
 ```bash
-gakr-ddgs video-search \
+data-scout video-search \
   --query "climate change science" \
   --max 10
 ```
@@ -331,7 +331,7 @@ gakr-ddgs video-search \
 Find music or movies:
 
 ```bash
-gakr-ddgs video-search \
+data-scout video-search \
   --query "trailer science fiction movie 2026" \
   --max 5
 ```
@@ -341,7 +341,7 @@ gakr-ddgs video-search \
 Find code walkthroughs:
 
 ```bash
-gakr-ddgs video-search \
+data-scout video-search \
   --query "React hooks tutorial" \
   --max 20 \
   --json > react_videos.json
@@ -352,7 +352,7 @@ gakr-ddgs video-search \
 Create a list of videos for later:
 
 ```bash
-gakr-ddgs video-search \
+data-scout video-search \
   --query "stand-up comedy special" \
   --max 30 \
   --json > comedy_videos.json
@@ -436,7 +436,7 @@ Search multiple topics:
 topics=("Python" "JavaScript" "Go" "Rust" "Kotlin")
 
 for lang in "${topics[@]}"; do
-  gakr-ddgs video-search \
+  data-scout video-search \
     --query "${lang} tutorial" \
     --max 10 \
     --json > "videos_${lang}.json"
@@ -448,7 +448,7 @@ done
 Get just the URLs for batch downloading:
 
 ```bash
-gakr-ddgs video-search --query "course" --json | \
+data-scout video-search --query "course" --json | \
   jq -r '.results[] | .url' > urls.txt
 
 # Download with youtube-dl
@@ -460,7 +460,7 @@ youtube-dl -a urls.txt
 Extract video URLs in playlist format:
 
 ```bash
-gakr-ddgs video-search --query "music" --json | \
+data-scout video-search --query "music" --json | \
   jq -r '.results[] | .url' > my_playlist.m3u
 ```
 
@@ -469,7 +469,7 @@ gakr-ddgs video-search --query "music" --json | \
 Find which platforms have most content:
 
 ```bash
-gakr-ddgs video-search --query "tutorial" --max 50 --json | \
+data-scout video-search --query "tutorial" --max 50 --json | \
   jq '.results[] | .source' | sort | uniq -c | sort -rn
 ```
 
@@ -478,7 +478,7 @@ gakr-ddgs video-search --query "tutorial" --max 50 --json | \
 ```bash
 # Create a research collection
 for query in "machine learning" "deep learning" "neural networks"; do
-  gakr-ddgs video-search \
+  data-scout video-search \
     --query "$query" \
     --max 20 \
     --json > "research_${query// /_}.json"
@@ -506,16 +506,16 @@ Video search is **rate-limited** by DuckDuckGo. If you encounter zero results:
 sleep 300
 
 # Try basic search without filters
-gakr-ddgs video-search --query "simple keywords" --max 5
+data-scout video-search --query "simple keywords" --max 5
 
 # Try without duration filter
-gakr-ddgs video-search --query "original query" --max 10
+data-scout video-search --query "original query" --max 10
 
 # Try different region
-gakr-ddgs video-search --query "original query" --region "us-en" --max 10
+data-scout video-search --query "original query" --region "us-en" --max 10
 
 # Try with broader query
-gakr-ddgs video-search --query "broad search term" --max 20
+data-scout video-search --query "broad search term" --max 20
 ```
 
 ### Best Practices

@@ -1,4 +1,4 @@
-# 🎉 gakr-ddgs Package Conversion Complete!
+# 🎉 data-scout Package Conversion Complete!
 
 **Date:** June 12, 2026  
 **Status:** ✅ **PRODUCTION READY**  
@@ -12,7 +12,7 @@
 
 Your web search project has been **fully converted into a professional Python package** that is ready for:
 - ✅ Distribution on PyPI
-- ✅ Installation via `pip install gakr-ddgs`
+- ✅ Installation via `pip install data-scout`
 - ✅ Use as a library in other projects
 - ✅ Contribution through GitHub
 - ✅ Production deployment
@@ -35,7 +35,7 @@ Your web search project has been **fully converted into a professional Python pa
 - Migrated all code to proper package structure
 - Created modular architecture with clean separation
 - Set up comprehensive configuration files
-- Added CLI entry point (`gakr-ddgs` command)
+- Added CLI entry point (`data-scout` command)
 
 ### Phase 4: Testing & Quality ✅
 - Fixed import ordering (isort)
@@ -100,7 +100,7 @@ dist/
 | **Imports** | ✅ | All modules import correctly |
 | **Package Structure** | ✅ | 14/14 required files present |
 | **File Organization** | ✅ | Modular and maintainable layout |
-| **CLI Entry Point** | ✅ | `gakr-ddgs` command configured |
+| **CLI Entry Point** | ✅ | `data-scout` command configured |
 | **Dependencies** | ✅ | All requirements specified |
 | **License** | ✅ | MIT License included |
 | **Build (wheel)** | ✅ | `gakr_ddgs-1.0.0-py3-none-any.whl` |
@@ -127,19 +127,19 @@ pip install .
 ### CLI Commands
 ```bash
 # Web search with content extraction
-gakr-ddgs web-search --query "python automation" --max 10
+data-scout web-search --query "python automation" --max 10
 
 # Image search
-gakr-ddgs image-search --query "sunset" --max 20
+data-scout image-search --query "sunset" --max 20
 
 # News search
-gakr-ddgs news-search --query "tech news"
+data-scout news-search --query "tech news"
 
 # Video search
-gakr-ddgs video-search --query "python tutorial"
+data-scout video-search --query "python tutorial"
 
 # Fetch single URL
-gakr-ddgs fetch-url --url "https://example.com"
+data-scout fetch-url --url "https://example.com"
 ```
 
 ### Programmatic Usage
@@ -186,7 +186,7 @@ twine upload dist/*
 
 After uploading, users can install with:
 ```bash
-pip install gakr-ddgs
+pip install data-scout
 ```
 
 ---
@@ -194,7 +194,7 @@ pip install gakr-ddgs
 ## 🔧 Package Metadata
 
 ```
-Name:           gakr-ddgs
+Name:           data-scout
 Version:        1.0.0
 Author:         Ashok-gakr
 License:        MIT
@@ -316,7 +316,7 @@ All documentation is included in the package:
 pip install -e .
 
 # Test CLI
-gakr-ddgs web-search --query "test"
+data-scout web-search --query "test"
 
 # Run tests (optional)
 pytest tests/ -v
@@ -326,8 +326,8 @@ pytest tests/ -v
 ```bash
 git init
 git add .
-git commit -m "Initial release: gakr-ddgs v1.0.0"
-git remote add origin https://github.com/Ashok-gakr/gakr-ddgs.git
+git commit -m "Initial release: data-scout v1.0.0"
+git remote add origin https://github.com/Ashok-gakr/data-scout.git
 git branch -M main
 git push -u origin main
 ```
@@ -341,7 +341,7 @@ pip install twine
 twine upload dist/*
 
 # Users can then install with:
-pip install gakr-ddgs
+pip install data-scout
 ```
 
 ---
@@ -390,7 +390,7 @@ Your project is now a **professional, production-ready Python package** that:
 | Task | Command |
 |------|---------|
 | Test locally | `pip install -e .` |
-| Test CLI | `gakr-ddgs web-search --query "test"` |
+| Test CLI | `data-scout web-search --query "test"` |
 | Build packages | `python -m build` |
 | Verify packages | `twine check dist/*` |
 | Upload to PyPI | `twine upload dist/*` |

@@ -1,1 +1,1 @@
-"""Test suite for gakr-ddgs package."""
+"""Test suite for data-scout package."""

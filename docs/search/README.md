@@ -1,6 +1,6 @@
 # Search Documentation
 
-Comprehensive guides for all gakr-ddgs search types.
+Comprehensive guides for all data-scout search types.
 
 ## Available Search Types
 
@@ -25,27 +25,27 @@ Comprehensive guides for all gakr-ddgs search types.
 
 ### Web Search
 ```bash
-gakr-ddgs web-search --query "your query" --max 10 --timeout 5
+data-scout web-search --query "your query" --max 10 --timeout 5
 ```
 
 ### Image Search
 ```bash
-gakr-ddgs image-search --query "your query" --max 10 --min-width 800 --min-height 600
+data-scout image-search --query "your query" --max 10 --min-width 800 --min-height 600
 ```
 
 ### News Search
 ```bash
-gakr-ddgs news-search --query "your query" --max 10
+data-scout news-search --query "your query" --max 10
 ```
 
 ### Video Search
 ```bash
-gakr-ddgs video-search --query "your query" --max 10
+data-scout video-search --query "your query" --max 10
 ```
 
 ### URL Fetch
 ```bash
-gakr-ddgs fetch-url --url "https://example.com" --timeout 5
+data-scout fetch-url --url "https://example.com" --timeout 5
 ```
 
 ## Common Features
