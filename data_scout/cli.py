@@ -40,7 +40,11 @@ try:
         ExtractionEngine,
         ImageSearchEngine,
         _compact_options,
+        fetch_resilient,
     )
+    from . import github_extract as gh
+    from . import engines as search_engines
+    from . import social
 except Exception as e:
     raise ImportError("Could not import from data_scout modules: " + str(e))
 
@@ -170,6 +174,61 @@ def _ddgs_list_search(
         }
 
 
+def _build_list_attempt_options(base_options: Dict[str, Any], attempt: int) -> Dict[str, Any]:
+    """Relax filters on later retry attempts to maximize the chance of a
+    non-empty result set (mirrors the strategy used by web/image search)."""
+    options = _compact_options(base_options)
+    if attempt > 0:
+        options['timelimit'] = None
+    if attempt > 1 and options.get('safesearch', 'moderate') != 'off':
+        options['safesearch'] = 'off'
+    return options
+
+
+def _ddgs_list_search_with_retry(
+    method_name: str,
+    query: str,
+    max_results: int,
+    options: Optional[Dict[str, Any]] = None,
+    timeout: int = 25,
+    retry_on_zero_success: bool = True,
+    max_zero_success_retries: int = 2,
+    retry_backoff_seconds: float = 1.0,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Retry-on-zero-results wrapper around ``_ddgs_list_search``.
+
+    Used by ``news-search`` and ``video-search`` so they get the same
+    zero-result retry/backoff behavior as ``web-search`` and ``image-search``.
+    DDGS itself is the discovery layer here (there's no meaningful "Playwright
+    fallback" for the search listing itself, since ``ddgs`` already talks to
+    DuckDuckGo's API/HTML backends directly) — the Playwright fallback chain
+    applies one layer down, when fetching each *result's* page content.
+    """
+    retries = max(0, int(max_zero_success_retries))
+    max_attempts = 1 + retries if retry_on_zero_success else 1
+
+    last_results: List[Dict[str, Any]] = []
+    last_stats: Dict[str, Any] = {}
+
+    for attempt in range(max_attempts):
+        attempt_options = _build_list_attempt_options(options or {}, attempt)
+        results, stats = _ddgs_list_search(
+            method_name, query=query, max_results=max_results, options=attempt_options, timeout=timeout,
+        )
+        stats['attempts'] = attempt + 1
+        stats['retries_used'] = attempt
+        last_results, last_stats = results, stats
+
+        if results:
+            break
+
+        if attempt < max_attempts - 1:
+            if retry_backoff_seconds > 0:
+                time.sleep(retry_backoff_seconds * (attempt + 1))
+
+    return last_results, last_stats
+
+
 def web_search(
     query: str,
     max_results: int = 100,
@@ -181,6 +240,8 @@ def web_search(
     safesearch: str = 'moderate',
     timelimit: Optional[str] = None,
     backend: str = 'auto',
+    max_fetch_retries: int = 3,
+    enable_js_fallback: bool = True,
 ):
     """
     Execute web search pipeline: search → extract → clean → filter.
@@ -189,12 +250,20 @@ def web_search(
         query: Search query string
         max_results: Max results to fetch
         workers: Parallel workers
+        max_fetch_retries: Retry attempts per fetch tier (requests, then
+            Playwright) when fetching each result page.
+        enable_js_fallback: Whether to automatically fall back to Playwright
+            when a plain requests fetch fails or looks blocked.
     
     Returns:
         (structured_results, stats) tuple with cleaned and structured content
     """
     # Phase 1: Search and extract
-    engine = EnterpriseSearchEngine(max_workers=workers)
+    engine = EnterpriseSearchEngine(
+        max_workers=workers,
+        max_fetch_retries=max_fetch_retries,
+        enable_js_fallback=enable_js_fallback,
+    )
     search_options = _compact_options({
         'region': region,
         'safesearch': safesearch,
@@ -221,6 +290,56 @@ def web_search(
     combined_stats = {
         'search_engine': engine.stats,
         'cleaner': cleaner_stats
+    }
+    return structured_results, combined_stats
+
+
+def multi_search(
+    query: str,
+    engines: Optional[List[str]] = None,
+    max_results: int = 10,
+    workers: int = 8,
+    max_fetch_retries: int = 3,
+    enable_js_fallback: bool = True,
+    dedupe: bool = True,
+    **engine_kwargs,
+):
+    """Query multiple search engines in parallel, merge/dedupe the results,
+    then run them through the same content-extraction + cleaning pipeline as
+    ``web_search``.
+
+    See ``data_scout.engines`` for what each engine needs (DuckDuckGo works
+    out of the box; Brave/Bing/Google/SerpAPI each need an API key set as an
+    environment variable). Unconfigured engines are skipped, not errored —
+    check the returned ``stats['discovery']['skipped']`` list to see why.
+    """
+    engines = engines or ['duckduckgo']
+
+    discovery = search_engines.multi_engine_search(
+        query, engines=engines, max_results=max_results, max_workers=min(workers, 5), **engine_kwargs
+    )
+
+    if not discovery['merged_results']:
+        return [], {
+            'discovery': discovery['stats'],
+            'search_engine': {'total': 0, 'success': 0, 'execution_time': discovery['stats']['execution_time']},
+            'cleaner': {'total_input': 0, 'successful': 0, 'failed': 0, 'processed': 0},
+        }
+
+    engine = EnterpriseSearchEngine(
+        max_workers=workers,
+        max_fetch_retries=max_fetch_retries,
+        enable_js_fallback=enable_js_fallback,
+    )
+    raw_results = engine.execute_search_from_urls(discovery['merged_results'][:max_results])
+
+    results_dicts = [asdict(r) for r in raw_results]
+    structured_results, cleaner_stats = process_results(results_dicts)
+
+    combined_stats = {
+        'discovery': discovery['stats'],
+        'search_engine': engine.stats,
+        'cleaner': cleaner_stats,
     }
     return structured_results, combined_stats
 
@@ -300,6 +419,8 @@ def news_search(
     safesearch: str = 'moderate',
     timelimit: Optional[str] = None,
     workers: int = 3,
+    max_fetch_retries: int = 3,
+    enable_js_fallback: bool = True,
 ):
     """DuckDuckGo news search with full content extraction and cleaning.
 
@@ -307,8 +428,9 @@ def news_search(
     each result goes through ``ExtractionEngine`` → ``process_results()``
     to produce cleaned content with quality signals and readability metrics.
     """
-    # Phase 1: Get raw DDGS news results
-    raw_results, search_stats = _ddgs_list_search(
+    # Phase 1: Get raw DDGS news results (retried on zero results, relaxing
+    # filters on each subsequent attempt).
+    raw_results, search_stats = _ddgs_list_search_with_retry(
         'news',
         query=query,
         max_results=max_results,
@@ -317,13 +439,22 @@ def news_search(
             'safesearch': safesearch,
             'timelimit': timelimit,
         },
+        retry_on_zero_success=retry_on_zero_success,
+        max_zero_success_retries=retry_attempts,
+        retry_backoff_seconds=retry_backoff,
     )
 
     if not raw_results:
         return [], {'search_engine': search_stats, 'cleaner': {'total_input': 0, 'successful': 0, 'failed': 0, 'processed': 0}}
 
-    # Phase 2: Fetch and extract full article content in parallel
-    enriched_results = _extract_news_content(raw_results, max_workers=workers)
+    # Phase 2: Fetch and extract full article content in parallel, using the
+    # requests -> Playwright -> basic-fallback resilient fetch chain.
+    enriched_results = _extract_news_content(
+        raw_results,
+        max_workers=workers,
+        max_fetch_retries=max_fetch_retries,
+        enable_js_fallback=enable_js_fallback,
+    )
 
     # Phase 3: Clean and structure via process_results
     structured_results, cleaner_stats = process_results(enriched_results)
@@ -345,9 +476,12 @@ def video_search(
     resolution: Optional[str] = None,
     duration: Optional[str] = None,
     license_videos: Optional[str] = None,
+    retry_on_zero_success: bool = True,
+    retry_attempts: int = 2,
+    retry_backoff: float = 1.0,
 ):
-    """DuckDuckGo video search wrapper."""
-    results, stats = _ddgs_list_search(
+    """DuckDuckGo video search wrapper (retried on zero results)."""
+    results, stats = _ddgs_list_search_with_retry(
         'videos',
         query=query,
         max_results=max_results,
@@ -359,6 +493,9 @@ def video_search(
             'duration': duration,
             'license_videos': license_videos,
         },
+        retry_on_zero_success=retry_on_zero_success,
+        max_zero_success_retries=retry_attempts,
+        retry_backoff_seconds=retry_backoff,
     )
     return results, {'search_engine': stats}
 
@@ -381,10 +518,12 @@ def _enhance_video_descriptions(results: List[Dict[str, Any]], max_workers: int 
 
     def _fetch_one(r):
         url = r.get("content", "") or r.get("url", "")
-        if not _YOUTUBE_RE.search(url):
+        match = _YOUTUBE_RE.search(url)
+        if not match:
             return r
         try:
-            meta = _fetch_youtube_metadata(url)
+            # _fetch_youtube_metadata expects a bare video ID, not the full URL.
+            meta = _fetch_youtube_metadata(match.group(1))
             if meta and "error" not in meta and meta.get("description"):
                 r["description"] = meta["description"]
         except Exception:
@@ -396,10 +535,17 @@ def _enhance_video_descriptions(results: List[Dict[str, Any]], max_workers: int 
     return results
 
 
-def _extract_news_content(results: List[Dict[str, Any]], max_workers: int = 3) -> List[Dict[str, Any]]:
+def _extract_news_content(
+    results: List[Dict[str, Any]],
+    max_workers: int = 3,
+    max_fetch_retries: int = 3,
+    enable_js_fallback: bool = True,
+) -> List[Dict[str, Any]]:
     """Fetch and extract full article content for news results in parallel.
 
-    Takes raw DDGS news result dicts, fetches each URL, runs through
+    Takes raw DDGS news result dicts, fetches each URL through the shared
+    ``fetch_resilient`` fallback chain (requests-retries -> Playwright
+    JS-render -> last-resort basic request), runs the HTML through
     ``ExtractionEngine``, and returns enriched dicts compatible with
     ``process_results()`` (i.e. containing ``main_content``,
     ``extraction_status``, ``confidence_score``, etc.).
@@ -408,6 +554,8 @@ def _extract_news_content(results: List[Dict[str, Any]], max_workers: int = 3) -
         return results
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    shared_engine = ExtractionEngine()
+
     def _extract_one(r):
         url = r.get("url", "")
         if not url:
@@ -415,24 +563,28 @@ def _extract_news_content(results: List[Dict[str, Any]], max_workers: int = 3) -
             r["main_content"] = ""
             return r
         try:
-            resp = requests.get(
-                url, timeout=10,
-                headers={"User-Agent": random.choice(ExtractionEngine.USER_AGENTS)},
+            outcome = fetch_resilient(
+                url,
+                session=shared_engine.session,
+                timeout=15,
+                max_retries=max_fetch_retries,
+                enable_js_fallback=enable_js_fallback,
             )
-            if resp.status_code != 200:
+            if outcome["status"] != "success":
                 r["extraction_status"] = "failed"
                 r["main_content"] = ""
+                r["errors"] = outcome["errors"][-3:]
                 return r
-            engine = ExtractionEngine()
-            content, method, confidence = engine.extract_content(url, resp.text)
+            content, method, confidence = shared_engine.extract_content(url, outcome["html"])
             r["main_content"] = content
-            r["extraction_method"] = method
+            r["extraction_method"] = f"{method} ({outcome['tier']})"
             r["confidence_score"] = confidence
             r["extraction_status"] = "success" if content.strip() else "failed"
             r["content_word_count"] = len(content.split())
-        except Exception:
+        except Exception as exc:
             r["extraction_status"] = "failed"
             r["main_content"] = ""
+            r["errors"] = [str(exc)]
         return r
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -452,17 +604,26 @@ _YOUTUBE_RE = re.compile(
 )
 
 
-def _fetch_youtube_metadata(video_id: str) -> Dict[str, Any]:
+def _fetch_youtube_metadata(video_id: str, max_fetch_retries: int = 3, enable_js_fallback: bool = True) -> Dict[str, Any]:
     """Fetch video metadata (title, description, channel, etc.) from YouTube page."""
     url = f"https://www.youtube.com/watch?v={video_id}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
     try:
-        resp = requests.get(url, headers=headers, timeout=15)
-        resp.raise_for_status()
-        html = resp.text
+        outcome = fetch_resilient(
+            url,
+            timeout=15,
+            max_retries=max_fetch_retries,
+            enable_js_fallback=enable_js_fallback,
+        )
+        if outcome["status"] != "success":
+            joined_errors = "; ".join(outcome["errors"][-3:])
+            if "404" in joined_errors:
+                return {"error": "video_not_found", "error_message": "Video not found or has been removed.", "video_id": video_id}
+            return {
+                "error": "network_error",
+                "error_message": f"Failed to fetch YouTube page after {outcome['attempts']} attempts across all fetch tiers: {joined_errors}",
+                "video_id": video_id,
+            }
+        html = outcome["html"]
 
         metadata: Dict[str, Any] = {}
 
@@ -669,7 +830,13 @@ def _fetch_youtube_subtitles(
         return None
 
 
-def video_extract(url: str, subtitle_lang: str = "en", include_segments: bool = False) -> Dict[str, Any]:
+def video_extract(
+    url: str,
+    subtitle_lang: str = "en",
+    include_segments: bool = False,
+    max_fetch_retries: int = 3,
+    enable_js_fallback: bool = True,
+) -> Dict[str, Any]:
     """Extract full details from a video URL.
 
     Supports YouTube URLs. Non-YouTube URLs receive a friendly notice.
@@ -677,6 +844,9 @@ def video_extract(url: str, subtitle_lang: str = "en", include_segments: bool = 
     :param url: The video URL to extract.
     :param subtitle_lang: Preferred subtitle language code (default ``"en"``).
     :param include_segments: If True, include subtitle segment timestamps in output.
+    :param max_fetch_retries: Retry attempts per fetch tier when fetching the
+        YouTube page (requests, then Playwright).
+    :param enable_js_fallback: Whether to fall back to Playwright if requests fails.
     """
     url = str(url or "").strip()
     if not url:
@@ -699,7 +869,7 @@ def video_extract(url: str, subtitle_lang: str = "en", include_segments: bool = 
     video_id = match.group(1)
 
     # Fetch metadata
-    meta = _fetch_youtube_metadata(video_id)
+    meta = _fetch_youtube_metadata(video_id, max_fetch_retries=max_fetch_retries, enable_js_fallback=enable_js_fallback)
     if "error" in meta:
         return meta  # error dict already has proper error classification
 
@@ -812,44 +982,6 @@ def _check_max_size_warning(max_size: Optional[str], main_content: Any) -> Optio
     return None
 
 
-def _fetch_with_playwright(url: str, timeout: int = 25) -> Tuple[str, str, str]:
-    """Fetch a page's rendered HTML using Playwright (headless browser).
-
-    Required: ``pip install data-scout[js-render]`` or ``playwright install chromium``.
-
-    Returns
-    -------
-    (html_text, title, final_url)
-        Fully rendered HTML, page title, and resolved URL after any redirects.
-    """
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        raise ImportError(
-            "The --js-render flag requires Playwright.\n"
-            "  pip install playwright\n"
-            "  playwright install chromium\n"
-            "Or: pip install data-scout[js-render]"
-        )
-
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        try:
-            page = browser.new_page()
-            # Use 'load' instead of 'networkidle' — many sites have persistent
-            # connections (long-polling, websockets) that never fully idle.
-            page.goto(url, wait_until="load", timeout=timeout * 1000)
-            # Give async JS a moment to finish rendering after load.
-            page.wait_for_timeout(2000)
-            html = page.content()
-            title = page.title()
-            final_url = page.url
-        finally:
-            browser.close()
-
-    return html, title, final_url
-
-
 def fetch_url(
     url: str,
     timeout: int = 25,
@@ -857,6 +989,8 @@ def fetch_url(
     max_size: Optional[str] = None,
     raw_html: bool = False,
     js_render: bool = False,
+    no_js_fallback: bool = False,
+    max_retries: int = 3,
 ):
     """
     Fetch a single URL and extract/clean its content.
@@ -874,8 +1008,16 @@ def fetch_url(
     raw_html : bool
         If True, return raw prettified HTML instead of extracted content.
     js_render : bool
-        If True, use Playwright (headless Chromium) to render JavaScript-heavy
-        SPAs before extraction. Requires ``playwright`` and ``playwright install chromium``.
+        If True, skip straight to Playwright (headless Chromium) rendering
+        instead of trying plain ``requests`` first. Requires ``playwright``
+        (``pip install data-scout[js-render]`` + ``playwright install chromium``).
+    no_js_fallback : bool
+        If True, disable the automatic Playwright fallback that normally
+        kicks in when plain ``requests`` fails or looks blocked. Has no
+        effect when ``js_render`` is already set.
+    max_retries : int
+        Retry attempts per tier (requests, then Playwright) before moving on
+        or giving up. Default 3, matching the rest of the toolkit.
 
     Returns a dict containing a single structured result.
     """
@@ -894,38 +1036,47 @@ def fetch_url(
 
     start_time = time.time()
     try:
-        if js_render:
-            response_text, title, final_url = _fetch_with_playwright(url, timeout)
-        else:
-            headers = {
-                "User-Agent": random.choice(ExtractionEngine.USER_AGENTS),
-                "Accept": "text/html,application/xhtml+xml,*/*;q=0.9",
-                "Accept-Language": "en-US,en;q=0.9",
-            }
-            response = requests.get(
-                url,
-                headers=headers,
-                timeout=timeout,
-                allow_redirects=True,
-                stream=True,
-            )
-            response.raise_for_status()
-            final_url = str(response.url)
-
-            # Truncate HTML response if max_size is specified
-            response_text = response.text
-            max_size_bytes = _parse_size_string(max_size)
-            if max_size_bytes and len(response.content) > max_size_bytes:
-                response_text = response.content[:max_size_bytes].decode('utf-8', errors='ignore')
-
-            title = _extract_html_title(response_text) or final_url
-
         extractor = ExtractionEngine()
+        outcome = fetch_resilient(
+            url,
+            timeout=timeout,
+            max_retries=max(1, int(max_retries)),
+            enable_js_fallback=(not no_js_fallback) or js_render,
+            force_js=js_render,
+        )
+
+        if outcome["status"] != "success":
+            joined = "; ".join(outcome["errors"][-3:])
+            status_match = re.search(r'\b([45]\d{2})\b', joined)
+            prefix = f"HTTP {status_match.group(1)} — " if status_match else ""
+            return {
+                "error": (
+                    f"fetch_url failed: {prefix}all fetch tiers exhausted "
+                    f"({outcome['attempts']} attempts).\n"
+                    f"       URL: {url}\n"
+                    "       Details: " + joined
+                )
+            }
+
+        response_text = outcome["html"]
+        final_url = outcome["final_url"]
+        fetch_tier = outcome["tier"]
+
+        # Truncate HTML response if max_size is specified
+        max_size_bytes = _parse_size_string(max_size)
+        if max_size_bytes:
+            encoded = response_text.encode('utf-8', errors='ignore')
+            if len(encoded) > max_size_bytes:
+                response_text = encoded[:max_size_bytes].decode('utf-8', errors='ignore')
+
+        title = _extract_html_title(response_text) or final_url
+
         main_content, method, confidence = extractor.extract_content(
             final_url,
             response_text,
             timeout=timeout,
         )
+        method = f"{method} ({fetch_tier})"
 
         # Apply max_chars constraint if specified
         if max_chars and main_content and len(main_content) > max_chars:
@@ -1063,6 +1214,9 @@ def main():
     web_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries when 0 successful extractions')
     web_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts when 0 successful extractions')
     web_parser.add_argument('--retry-backoff', type=float, default=1.0, help='Backoff seconds between retries')
+    web_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier (requests, then Playwright) when fetching each result page')
+    web_parser.add_argument('--no-js-fallback', dest='enable_js_fallback', action='store_false', help='Disable automatic Playwright fallback when a page fetch fails or looks blocked')
+    web_parser.set_defaults(enable_js_fallback=True)
     
     # Image search subcommand
     img_parser = subparsers.add_parser(
@@ -1115,6 +1269,9 @@ def main():
     news_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries on zero results')
     news_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts on zero results')
     news_parser.add_argument('--retry-backoff', type=float, default=1.0, help='Backoff seconds between retries')
+    news_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier (requests, then Playwright) when fetching each article page')
+    news_parser.add_argument('--no-js-fallback', dest='enable_js_fallback', action='store_false', help='Disable automatic Playwright fallback when an article fetch fails or looks blocked')
+    news_parser.set_defaults(enable_js_fallback=True)
 
     # Video search subcommand
     video_parser = subparsers.add_parser(
@@ -1134,6 +1291,10 @@ def main():
     video_parser.add_argument('--resolution', default=None, help='Video resolution filter (high, standard)')
     video_parser.add_argument('--duration', default=None, help='Video duration filter (short, medium, long)')
     video_parser.add_argument('--license-videos', default=None, help='Video license filter')
+    video_parser.set_defaults(retry_on_zero=True)
+    video_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries when 0 results are found')
+    video_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts when 0 results are found')
+    video_parser.add_argument('--retry-backoff', type=float, default=1.0, help='Backoff seconds between retries')
     
     # URL fetch subcommand
     url_parser = subparsers.add_parser(
@@ -1151,7 +1312,9 @@ def main():
     url_parser.add_argument('--out', '-o', default='url_fetch_result.json', help='Output file')
     url_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
     url_parser.add_argument('--raw-html', action='store_true', help='Return raw HTML (prettified) instead of extracted/cleaned content')
-    url_parser.add_argument('--js-render', action='store_true', help='Render JavaScript-heavy SPAs with Playwright before extraction')
+    url_parser.add_argument('--js-render', action='store_true', help='Skip straight to Playwright rendering instead of trying requests first')
+    url_parser.add_argument('--no-js-fallback', action='store_true', help='Disable automatic Playwright fallback when requests fails or looks blocked')
+    url_parser.add_argument('--max-retries', type=int, default=3, help='Retry attempts per fetch tier (requests, then Playwright)')
 
     # ======================================================================
     # video-extract subcommand
@@ -1164,11 +1327,11 @@ def main():
             'Currently supports YouTube. Other platforms coming soon.'
         ),
         epilog=(
-            'Examples:\\n'
-            '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\\n'
-            '  data-scout video-extract --url "https://youtu.be/dQw4w9WgXcQ"\\n'
-            '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --subtitle-lang fr\\n'
-            '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --segments\\n'
+            'Examples:\n'
+            '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\n'
+            '  data-scout video-extract --url "https://youtu.be/dQw4w9WgXcQ"\n'
+            '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --subtitle-lang fr\n'
+            '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --segments\n'
         '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1178,6 +1341,156 @@ def main():
     video_extract_parser.add_argument('--segments', action='store_true', help='Include subtitle segments with timestamps (default: off)')
     video_extract_parser.add_argument('--out', '-o', default='video_extract_results.json', help='Output file (default: video_extract_results.json)')
     video_extract_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+    video_extract_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier (requests, then Playwright) when fetching the video page')
+    video_extract_parser.add_argument('--no-js-fallback', dest='enable_js_fallback', action='store_false', help='Disable automatic Playwright fallback when the page fetch fails or looks blocked')
+    video_extract_parser.set_defaults(enable_js_fallback=True)
+
+    # ======================================================================
+    # multi-search subcommand — search across multiple engines in parallel
+    # ======================================================================
+    multi_parser = subparsers.add_parser(
+        'multi-search',
+        help='Search across multiple engines (DuckDuckGo + optional Brave/Bing/Google/SerpAPI) in parallel',
+        description=(
+            'Query several search engines in parallel, merge/dedupe the results, then run the '
+            'same content-extraction pipeline as web-search. DuckDuckGo works with no setup. '
+            'Brave/Bing/Google/SerpAPI each need an API key (env var) — see `data-scout list-engines`. '
+            'Unconfigured engines are skipped, not treated as errors.'
+        ),
+        epilog=(
+            'Examples:\n'
+            '  data-scout multi-search --query "rust vs go" --engines duckduckgo\n'
+            '  data-scout multi-search --query "rust vs go" --engines duckduckgo,brave,google --max 15\n'
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    multi_parser.add_argument('--query', '-q', required=True, help='Search query')
+    multi_parser.add_argument('--engines', default='duckduckgo', help='Comma-separated engine names (duckduckgo,brave,bing,google,serpapi)')
+    multi_parser.add_argument('--max', '-m', type=int, default=10, help='Max merged results')
+    multi_parser.add_argument('--workers', '-w', type=int, default=8, help='Parallel content-extraction workers')
+    multi_parser.add_argument('--serpapi-engine', default='google', help='Underlying engine for SerpAPI (google/bing/yahoo/baidu/yandex/...)')
+    multi_parser.add_argument('--no-dedupe', dest='dedupe', action='store_false', help='Keep duplicate URLs across engines instead of deduping')
+    multi_parser.set_defaults(dedupe=True)
+    multi_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier when fetching each result page')
+    multi_parser.add_argument('--no-js-fallback', dest='enable_js_fallback', action='store_false', help='Disable automatic Playwright fallback')
+    multi_parser.set_defaults(enable_js_fallback=True)
+    multi_parser.add_argument('--out', '-o', default='multi_search_results.json', help='Output file')
+    multi_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    # list-engines subcommand — show configuration status of every engine
+    subparsers.add_parser('list-engines', help='List available search engines and whether each is configured')
+
+    # ======================================================================
+    # GitHub extraction subcommands
+    # ======================================================================
+    gh_repo_parser = subparsers.add_parser('github-repo', help='Get GitHub repository metadata')
+    gh_repo_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
+    gh_repo_parser.add_argument('--out', '-o', default='github_repo_results.json', help='Output file')
+    gh_repo_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    gh_commits_parser = subparsers.add_parser('github-commits', help='List commits in a GitHub repo')
+    gh_commits_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
+    gh_commits_parser.add_argument('--branch', default=None, help='Branch/tag/SHA to list commits from (default: repo default branch)')
+    gh_commits_parser.add_argument('--path', default=None, help='Only commits touching this file/path')
+    gh_commits_parser.add_argument('--author', default=None, help='Filter by author username or email')
+    gh_commits_parser.add_argument('--since', default=None, help='ISO8601 date — only commits after this')
+    gh_commits_parser.add_argument('--until', default=None, help='ISO8601 date — only commits before this')
+    gh_commits_parser.add_argument('--max', '-m', type=int, default=30, help='Max commits to list')
+    gh_commits_parser.add_argument('--out', '-o', default='github_commits_results.json', help='Output file')
+    gh_commits_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    gh_commit_parser = subparsers.add_parser('github-commit', help='Full details for ONE commit: stats, changed files, and unified diff patches')
+    gh_commit_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
+    gh_commit_parser.add_argument('--sha', required=True, help='Commit SHA (full or short)')
+    gh_commit_parser.add_argument('--no-patch', dest='include_patch', action='store_false', help="Omit each file's unified diff patch text (metadata only)")
+    gh_commit_parser.set_defaults(include_patch=True)
+    gh_commit_parser.add_argument('--out', '-o', default='github_commit_results.json', help='Output file')
+    gh_commit_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    gh_pr_parser = subparsers.add_parser('github-pr', help='Get a pull request, including its full diff and changed files')
+    gh_pr_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
+    gh_pr_parser.add_argument('--number', '-n', type=int, required=True, help='Pull request number')
+    gh_pr_parser.add_argument('--no-diff', dest='include_diff', action='store_false', help='Omit the changed-files/diff list (metadata only)')
+    gh_pr_parser.set_defaults(include_diff=True)
+    gh_pr_parser.add_argument('--out', '-o', default='github_pr_results.json', help='Output file')
+    gh_pr_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    gh_issues_parser = subparsers.add_parser('github-issues', help='List issues in a GitHub repo')
+    gh_issues_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
+    gh_issues_parser.add_argument('--state', default='open', choices=['open', 'closed', 'all'], help='Issue state filter')
+    gh_issues_parser.add_argument('--labels', default=None, help='Comma-separated label filter')
+    gh_issues_parser.add_argument('--max', '-m', type=int, default=30, help='Max issues to list')
+    gh_issues_parser.add_argument('--include-prs', dest='include_pull_requests', action='store_true', help="Include pull requests (GitHub's issues API returns PRs too by default)")
+    gh_issues_parser.add_argument('--out', '-o', default='github_issues_results.json', help='Output file')
+    gh_issues_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    gh_issue_parser = subparsers.add_parser('github-issue', help='Get one issue, including its full body and comments')
+    gh_issue_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
+    gh_issue_parser.add_argument('--number', '-n', type=int, required=True, help='Issue number')
+    gh_issue_parser.add_argument('--no-comments', dest='include_comments', action='store_false', help='Omit comments')
+    gh_issue_parser.set_defaults(include_comments=True)
+    gh_issue_parser.add_argument('--out', '-o', default='github_issue_results.json', help='Output file')
+    gh_issue_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    gh_file_parser = subparsers.add_parser('github-file', help='Fetch a single file\'s contents from a GitHub repo')
+    gh_file_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
+    gh_file_parser.add_argument('--path', required=True, help='File path within the repo, e.g. src/main.py')
+    gh_file_parser.add_argument('--ref', default=None, help='Branch/tag/SHA (default: repo default branch)')
+    gh_file_parser.add_argument('--out', '-o', default='github_file_results.json', help='Output file')
+    gh_file_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    gh_search_code_parser = subparsers.add_parser('github-search-code', help='Search code across GitHub (requires GITHUB_TOKEN)')
+    gh_search_code_parser.add_argument('--query', '-q', required=True, help="GitHub code search query, e.g. 'fetch_resilient language:python'")
+    gh_search_code_parser.add_argument('--max', '-m', type=int, default=20, help='Max results')
+    gh_search_code_parser.add_argument('--out', '-o', default='github_search_code_results.json', help='Output file')
+    gh_search_code_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    gh_search_repos_parser = subparsers.add_parser('github-search-repos', help='Search GitHub repositories')
+    gh_search_repos_parser.add_argument('--query', '-q', required=True, help="e.g. 'language:python topic:llm stars:>1000'")
+    gh_search_repos_parser.add_argument('--sort', default='stars', choices=['stars', 'forks', 'help-wanted-issues', 'updated'], help='Sort order')
+    gh_search_repos_parser.add_argument('--max', '-m', type=int, default=20, help='Max results')
+    gh_search_repos_parser.add_argument('--out', '-o', default='github_search_repos_results.json', help='Output file')
+    gh_search_repos_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    gh_discussions_parser = subparsers.add_parser('github-discussions', help='List GitHub Discussions for a repo (requires GITHUB_TOKEN)')
+    gh_discussions_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
+    gh_discussions_parser.add_argument('--max', '-m', type=int, default=20, help='Max discussions')
+    gh_discussions_parser.add_argument('--out', '-o', default='github_discussions_results.json', help='Output file')
+    gh_discussions_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    # ======================================================================
+    # Social/platform subcommands
+    # ======================================================================
+    telegram_parser = subparsers.add_parser('telegram-channel', help='Fetch recent posts from a PUBLIC Telegram channel (no auth needed)')
+    telegram_parser.add_argument('--channel', required=True, help="Channel username, e.g. 'durov' (or a t.me URL)")
+    telegram_parser.add_argument('--max', '-m', type=int, default=20, help='Max posts to return')
+    telegram_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier')
+    telegram_parser.add_argument('--out', '-o', default='telegram_results.json', help='Output file')
+    telegram_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    discord_parser = subparsers.add_parser('discord-channel', help='Fetch recent messages from a Discord channel (requires DISCORD_BOT_TOKEN)')
+    discord_parser.add_argument('--channel-id', required=True, help='Numeric Discord channel ID')
+    discord_parser.add_argument('--max', '-m', type=int, default=50, help='Max messages to return')
+    discord_parser.add_argument('--before', default=None, help='Only messages before this message ID (pagination)')
+    discord_parser.add_argument('--out', '-o', default='discord_results.json', help='Output file')
+    discord_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    reddit_parser = subparsers.add_parser(
+        'reddit-search',
+        help='Best-effort Reddit search (unreliable as of 2026 — see --help)',
+        description=(
+            'Best-effort only: Reddit blocks most anonymous requests as of 2026 and has no '
+            'reliable zero-config API path. This command tries anyway and reports the real '
+            'failure reason on a 403 rather than pretending to succeed. Set REDDIT_COOKIE '
+            "(a logged-in session's Cookie header) to improve your odds."
+        ),
+    )
+    reddit_parser.add_argument('--query', '-q', required=True, help='Search query')
+    reddit_parser.add_argument('--subreddit', default=None, help='Restrict search to one subreddit')
+    reddit_parser.add_argument('--sort', default='relevance', choices=['relevance', 'hot', 'top', 'new', 'comments'], help='Sort order')
+    reddit_parser.add_argument('--max', '-m', type=int, default=20, help='Max results')
+    reddit_parser.add_argument('--out', '-o', default='reddit_results.json', help='Output file')
+    reddit_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     args = parser.parse_args()
     
@@ -1205,6 +1518,8 @@ def main():
             safesearch=args.safesearch,
             timelimit=args.timelimit,
             backend=args.backend,
+            max_fetch_retries=args.max_fetch_retries,
+            enable_js_fallback=args.enable_js_fallback,
         )
         
         output = {
@@ -1220,6 +1535,8 @@ def main():
                 'retry_on_zero_success': args.retry_on_zero,
                 'retry_attempts': args.retry_attempts,
                 'retry_backoff': args.retry_backoff,
+                'max_fetch_retries': args.max_fetch_retries,
+                'enable_js_fallback': args.enable_js_fallback,
             },
             'stats': stats,
             'structured_results': structured_results
@@ -1318,6 +1635,8 @@ def main():
             safesearch=args.safesearch,
             timelimit=args.timelimit,
             workers=getattr(args, 'workers', 3),
+            max_fetch_retries=args.max_fetch_retries,
+            enable_js_fallback=args.enable_js_fallback,
         )
 
         output = {
@@ -1332,6 +1651,8 @@ def main():
                 'retry_on_zero_success': args.retry_on_zero,
                 'retry_attempts': args.retry_attempts,
                 'retry_backoff': args.retry_backoff,
+                'max_fetch_retries': args.max_fetch_retries,
+                'enable_js_fallback': args.enable_js_fallback,
             },
             'stats': stats,
             'structured_results': news_results,
@@ -1361,6 +1682,9 @@ def main():
             resolution=args.resolution,
             duration=args.duration,
             license_videos=args.license_videos,
+            retry_on_zero_success=args.retry_on_zero,
+            retry_attempts=args.retry_attempts,
+            retry_backoff=args.retry_backoff,
         )
 
         # Enhance truncated DDGS descriptions with full YouTube descriptions
@@ -1377,6 +1701,9 @@ def main():
                 'resolution': args.resolution,
                 'duration': args.duration,
                 'license_videos': args.license_videos,
+                'retry_on_zero_success': args.retry_on_zero,
+                'retry_attempts': args.retry_attempts,
+                'retry_backoff': args.retry_backoff,
             },
             'stats': stats,
             'video_results': video_results,
@@ -1398,7 +1725,13 @@ def main():
 
         lang = getattr(args, 'subtitle_lang', 'en') or 'en'
         include_segments = getattr(args, 'segments', False)
-        result = video_extract(args.url, subtitle_lang=lang, include_segments=include_segments)
+        result = video_extract(
+            args.url,
+            subtitle_lang=lang,
+            include_segments=include_segments,
+            max_fetch_retries=args.max_fetch_retries,
+            enable_js_fallback=args.enable_js_fallback,
+        )
 
         # Handle error cases
         if "error" in result:
@@ -1483,6 +1816,8 @@ def main():
             max_size=args.max_size,
             raw_html=args.raw_html,
             js_render=args.js_render,
+            no_js_fallback=args.no_js_fallback,
+            max_retries=args.max_retries,
         )
 
         output = {
@@ -1494,6 +1829,8 @@ def main():
                 'max_size': args.max_size,
                 'raw_html': args.raw_html,
                 'js_render': args.js_render,
+                'no_js_fallback': args.no_js_fallback,
+                'max_retries': args.max_retries,
             },
             'result': result
         }
@@ -1514,6 +1851,225 @@ def main():
             if args.raw_html:
                 print(f'   🔧 Mode: raw-html (cleaner pipeline skipped)')
             print(f'   📂 Results saved to: {out_path.resolve()}\n')
+
+    # ==========================================================================
+    # multi-search
+    # ==========================================================================
+    elif args.command == 'multi-search':
+        engine_list = [e.strip() for e in args.engines.split(',') if e.strip()]
+        print(f"\n🌐 Multi-engine search: '{args.query}' across {engine_list}\n")
+        structured_results, stats = multi_search(
+            args.query,
+            engines=engine_list,
+            max_results=args.max,
+            workers=args.workers,
+            max_fetch_retries=args.max_fetch_retries,
+            enable_js_fallback=args.enable_js_fallback,
+            dedupe=args.dedupe,
+            serpapi_engine=args.serpapi_engine,
+        )
+        output = {
+            'query': args.query,
+            'search_type': 'multi-engine',
+            'parameters': {'engines': engine_list, 'max_results': args.max, 'workers': args.workers},
+            'stats': stats,
+            'structured_results': structured_results,
+        }
+        out_path = Path(args.out)
+        _write_output(out_path, output)
+        if args.json:
+            print(json.dumps(output, indent=2, ensure_ascii=False))
+        else:
+            skipped = stats['discovery'].get('skipped', [])
+            print(f"✅ MULTI-SEARCH COMPLETE!")
+            print(f"   🔎 Engines run: {stats['discovery'].get('engines_run', [])}")
+            if skipped:
+                print(f"   ⏭️  Skipped: {[s['engine'] for s in skipped]} (run `data-scout list-engines` for setup hints)")
+            print(f"   📊 Results: {len(structured_results)}")
+            print(f'   📂 Results saved to: {out_path.resolve()}\n')
+
+    # ==========================================================================
+    # list-engines
+    # ==========================================================================
+    elif args.command == 'list-engines':
+        print("\n🌐 SEARCH ENGINES\n")
+        for info in search_engines.list_engines():
+            status = "✅ configured" if info['configured'] else "⚪ not configured"
+            tier_tag = "zero-config" if info['tier'] == 0 else "needs API key"
+            print(f"  {info['name']:<12} [{tier_tag:<14}] {status}")
+            if not info['configured']:
+                print(f"      → {info['setup_hint']}")
+        print(
+            "\nNote: Google/Bing/Yahoo/Opera search-result *pages* can't be scraped directly "
+            "(anti-bot + ToS). The engines above use each provider's official API instead — "
+            "SerpAPI additionally proxies Yahoo/Baidu/Yandex/etc. via --serpapi-engine.\n"
+        )
+
+    # ==========================================================================
+    # GitHub extraction commands
+    # ==========================================================================
+    elif args.command == 'github-repo':
+        result = gh.github_repo(args.repo)
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ {result['full_name']} — ⭐ {result['stars']} stars, 🍴 {result['forks']} forks, lang: {result['language']}")
+            print(f"   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'github-commits':
+        result = gh.github_commits(
+            args.repo, branch=args.branch, path=args.path, author=args.author,
+            since=args.since, until=args.until, max_results=args.max,
+        )
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ {result['commit_count']} commits found\n   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'github-commit':
+        result = gh.github_commit(args.repo, args.sha, include_patch=args.include_patch)
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            stats = result.get('stats', {})
+            print(f"✅ Commit {result['short_sha']}: {result['files_changed']} files changed "
+                  f"(+{stats.get('additions', 0)}/-{stats.get('deletions', 0)})")
+            print(f"   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'github-pr':
+        result = gh.github_pull_request(args.repo, args.number, include_diff=args.include_diff)
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ PR #{result['number']}: {result['title']} [{result['state']}]"
+                  f"{' (merged)' if result.get('is_merged') else ''}")
+            print(f"   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'github-issues':
+        result = gh.github_issues(
+            args.repo, state=args.state, labels=args.labels, max_results=args.max,
+            include_pull_requests=args.include_pull_requests,
+        )
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ {result['issue_count']} issues found\n   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'github-issue':
+        result = gh.github_issue(args.repo, args.number, include_comments=args.include_comments)
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ Issue #{result['number']}: {result['title']} [{result['state']}], "
+                  f"{len(result.get('comments', []))} comments loaded")
+            print(f"   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'github-file':
+        result = gh.github_file_content(args.repo, args.path, ref=args.ref)
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ {result['path']} ({result['size_bytes']} bytes)\n   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'github-search-code':
+        result = gh.github_search_code(args.query, max_results=args.max)
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ {result['total_count']} total matches ({len(result['results'])} returned)\n"
+                  f"   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'github-search-repos':
+        result = gh.github_search_repos(args.query, sort=args.sort, max_results=args.max)
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ {result['total_count']} total matches ({len(result['results'])} returned)\n"
+                  f"   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'github-discussions':
+        result = gh.github_discussions(args.repo, max_results=args.max)
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ {result['total_count']} discussions found\n   📂 Results saved to: {out_path.resolve()}\n")
+
+    # ==========================================================================
+    # Social/platform commands
+    # ==========================================================================
+    elif args.command == 'telegram-channel':
+        result = social.telegram_channel(args.channel, max_results=args.max, max_fetch_retries=args.max_fetch_retries)
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ {result['post_count_returned']} posts from @{result['channel']}\n"
+                  f"   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'discord-channel':
+        result = social.discord_channel_messages(args.channel_id, max_results=args.max, before_message_id=args.before)
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ {result['message_count']} messages\n   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'reddit-search':
+        result = social.reddit_search(args.query, subreddit=args.subreddit, max_results=args.max, sort=args.sort)
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ {result['result_count']} posts found\n   📂 Results saved to: {out_path.resolve()}\n")
 
 
 if __name__ == '__main__':

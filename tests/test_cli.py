@@ -90,8 +90,9 @@ class TestWebSearch:
                 
                 web_search("query", max_results=50, workers=4)
 
-                # Verify engine was instantiated with correct workers
-                mock_engine.assert_called_once_with(max_workers=4)
+                # Verify engine was instantiated with correct workers (plus the
+                # new resilient-fetch config, which defaults to 3 retries / JS fallback on)
+                mock_engine.assert_called_once_with(max_workers=4, max_fetch_retries=3, enable_js_fallback=True)
                 # Verify execute_search was called
                 assert mock_instance.execute_search.called
 
@@ -810,10 +811,11 @@ class TestAdvancedSearchFeatures:
 
         mock_response = mock.Mock()
         mock_response.url = 'https://example.com'
+        mock_response.status_code = 200
         mock_response.text = '<html><body>Empty</body></html>'
         mock_response.raise_for_status.return_value = None
 
-        engine = EnterpriseSearchEngine(max_workers=1)
+        engine = EnterpriseSearchEngine(max_workers=1, enable_js_fallback=False)
         engine.extractor.session.get = mock.Mock(return_value=mock_response)
         engine.extractor.extract_content = mock.Mock(return_value=('', 'trafilatura', 0.9))
 
@@ -1094,6 +1096,10 @@ class TestEnhanceVideoDescriptions:
         results = [{"content": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "description": "short"}]
         out = _enhance_video_descriptions(results)
         mock_fetch.assert_called_once()
+        # Regression guard: must be called with the bare 11-char video ID,
+        # not the full URL (the function builds the watch URL itself).
+        called_arg = mock_fetch.call_args[0][0]
+        assert called_arg == "dQw4w9WgXcQ", f"expected bare video ID, got {called_arg!r}"
         assert out[0]["description"] == "full " * 100
 
     @mock.patch('data_scout.cli._fetch_youtube_metadata')
@@ -1115,16 +1121,15 @@ class TestExtractNewsContent:
         assert _extract_news_content([]) == []
 
     @mock.patch('data_scout.cli.ExtractionEngine')
-    @mock.patch('data_scout.cli.requests')
-    def test_enriches_result(self, mock_requests, mock_engine_cls):
+    @mock.patch('data_scout.cli.fetch_resilient')
+    def test_enriches_result(self, mock_fetch, mock_engine_cls):
         """article URL is fetched, extracted, and enriched with process_results-compatible keys"""
         from data_scout.cli import _extract_news_content
 
-        mock_engine_cls.USER_AGENTS = ["TestAgent/1.0"]
-        mock_resp = mock.MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.text = "<html>full article</html>"
-        mock_requests.get.return_value = mock_resp
+        mock_fetch.return_value = {
+            "html": "<html>full article</html>", "final_url": "https://example.com/article",
+            "status": "success", "tier": "requests", "attempts": 1, "errors": [],
+        }
 
         mock_engine = mock.MagicMock()
         mock_engine.extract_content.return_value = ("full " * 100, "trafilatura", 0.95)
@@ -1135,12 +1140,12 @@ class TestExtractNewsContent:
         assert out[0]["main_content"] == "full " * 100
         assert out[0]["extraction_status"] == "success"
         assert out[0]["confidence_score"] == 0.95
-        assert out[0]["extraction_method"] == "trafilatura"
+        assert out[0]["extraction_method"] == "trafilatura (requests)"
         assert out[0]["content_word_count"] == 100
 
     @mock.patch('data_scout.cli.ExtractionEngine')
-    @mock.patch('data_scout.cli.requests')
-    def test_empty_url_failed(self, mock_requests, mock_engine_cls):
+    @mock.patch('data_scout.cli.fetch_resilient')
+    def test_empty_url_failed(self, mock_fetch, mock_engine_cls):
         """empty URL results in extraction_status failed"""
         from data_scout.cli import _extract_news_content
 
@@ -1148,34 +1153,36 @@ class TestExtractNewsContent:
         out = _extract_news_content(results)
         assert out[0]["extraction_status"] == "failed"
         assert out[0]["main_content"] == ""
+        mock_fetch.assert_not_called()
 
     @mock.patch('data_scout.cli.ExtractionEngine')
-    @mock.patch('data_scout.cli.requests')
-    def test_http_error_failed(self, mock_requests, mock_engine_cls):
-        """non-200 status results in extraction_status failed"""
+    @mock.patch('data_scout.cli.fetch_resilient')
+    def test_http_error_failed(self, mock_fetch, mock_engine_cls):
+        """all fetch tiers exhausted results in extraction_status failed"""
         from data_scout.cli import _extract_news_content
 
-        mock_engine_cls.USER_AGENTS = ["TestAgent/1.0"]
-        mock_resp = mock.MagicMock()
-        mock_resp.status_code = 403
-        mock_requests.get.return_value = mock_resp
+        mock_fetch.return_value = {
+            "html": "", "final_url": "https://example.com/article",
+            "status": "failed", "tier": "none", "attempts": 7,
+            "errors": ["requests attempt 1: HTTP 403 (blocked-looking response)"],
+        }
 
         results = [{"url": "https://example.com/article"}]
         out = _extract_news_content(results)
         assert out[0]["extraction_status"] == "failed"
         assert out[0]["main_content"] == ""
+        assert "errors" in out[0]
 
     @mock.patch('data_scout.cli.ExtractionEngine')
-    @mock.patch('data_scout.cli.requests')
-    def test_preserves_original_order(self, mock_requests, mock_engine_cls):
+    @mock.patch('data_scout.cli.fetch_resilient')
+    def test_preserves_original_order(self, mock_fetch, mock_engine_cls):
         """output list preserves the order of input results"""
         from data_scout.cli import _extract_news_content
 
-        mock_engine_cls.USER_AGENTS = ["TestAgent/1.0"]
-        mock_resp = mock.MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.text = "<html>content</html>"
-        mock_requests.get.return_value = mock_resp
+        mock_fetch.return_value = {
+            "html": "<html>content</html>", "final_url": "https://example.com",
+            "status": "success", "tier": "requests", "attempts": 1, "errors": [],
+        }
 
         mock_engine = mock.MagicMock()
         mock_engine.extract_content.return_value = ("article body", "trafilatura", 0.9)

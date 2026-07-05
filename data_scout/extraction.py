@@ -14,6 +14,7 @@ import re
 import sys
 import time
 import warnings
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -263,6 +264,174 @@ class ExtractionEngine:
         return main_para
 
 
+def fetch_resilient(
+    url: str,
+    session: Optional[Any] = None,
+    timeout: int = 25,
+    max_retries: int = 3,
+    enable_js_fallback: bool = True,
+    retry_backoff: float = 1.5,
+    console: Optional[Any] = None,
+    force_js: bool = False,
+) -> Dict[str, Any]:
+    """Multi-tier resilient HTML fetch used across every search/extraction path.
+
+    Tier 1 - requests (up to *max_retries* attempts, UA rotation, exponential
+    backoff). Handles most sites and is fast/cheap.
+
+    Tier 2 - Playwright headless Chromium render (up to *max_retries* attempts),
+    only attempted when tier 1 fails outright OR the response looks blocked
+    (403/429/503, or a very small "please enable JavaScript" style body).
+    Silently skipped when Playwright isn't installed.
+
+    Tier 3 - Last-resort minimal requests attempt with a bare-bones,
+    non-fingerprinted header set (some anti-bot setups only block "normal"
+    browser-shaped requests, or block Playwright's Chromium signature but
+    not a generic client).
+
+    Returns a dict:
+        {
+            "html": str,
+            "final_url": str,
+            "status": "success" | "failed",
+            "tier": "requests" | "playwright" | "basic-fallback" | "none",
+            "attempts": int,
+            "errors": List[str],
+        }
+    """
+    errs: List[str] = []
+    total_attempts = 0
+    sess = session or requests
+    got_any_http_response = False
+
+    def _looks_blocked(resp_text: str, status: int) -> bool:
+        if status in (403, 429, 503):
+            return True
+        if resp_text and len(resp_text.strip()) < 200:
+            lowered = resp_text.lower()
+            if any(marker in lowered for marker in (
+                "enable javascript", "captcha", "access denied", "are you a robot",
+                "cloudflare", "just a moment",
+            )):
+                return True
+        return False
+
+    # ---------------- Tier 1: requests ----------------
+    if not force_js:
+        for attempt in range(max(1, max_retries)):
+            total_attempts += 1
+            try:
+                headers = {
+                    'User-Agent': random.choice(ExtractionEngine.USER_AGENTS),
+                    'Accept': 'text/html,application/xhtml+xml,*/*;q=0.9',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                }
+                resp = sess.get(url, headers=headers, timeout=timeout, allow_redirects=True, stream=True)
+                got_any_http_response = True  # server was reachable; a browser can plausibly do better
+                status = resp.status_code
+                text = resp.text
+                if status < 400 and not _looks_blocked(text, status):
+                    return {
+                        "html": text,
+                        "final_url": str(resp.url),
+                        "status": "success",
+                        "tier": "requests",
+                        "attempts": total_attempts,
+                        "errors": errs,
+                    }
+                errs.append(f"requests attempt {attempt + 1}: HTTP {status} (blocked-looking response)")
+            except Exception as e:
+                errs.append(f"requests attempt {attempt + 1}: {type(e).__name__}: {e}")
+
+            if attempt < max_retries - 1:
+                time.sleep(retry_backoff * (attempt + 1))
+    else:
+        errs.append("tier 1 (requests) skipped: force_js=True")
+
+    # ---------------- Tier 2: Playwright ----------------
+    # Skip the (expensive) browser tier when requests never even reached the
+    # server (pure DNS/connection-refused/timeout failures) -- a browser
+    # navigation would hit the exact same network path and fail identically,
+    # so there's no point burning 3x browser launches on it. Still attempted
+    # when force_js was explicitly requested, or when at least one attempt
+    # DID get a response (i.e. the server is up but something looked
+    # bot-blocked, which JS-rendering can plausibly get past).
+    should_try_js = enable_js_fallback and (force_js or got_any_http_response)
+    if enable_js_fallback and not should_try_js:
+        errs.append("skipping Playwright tier: no tier-1 attempt reached the server (pure connection/DNS-level failure)")
+
+    if should_try_js:
+        try:
+            from playwright.sync_api import sync_playwright
+            playwright_available = True
+        except ImportError:
+            playwright_available = False
+            errs.append("playwright not installed; skipping JS-render fallback")
+
+        if playwright_available:
+            for attempt in range(max(1, max_retries)):
+                total_attempts += 1
+                try:
+                    with sync_playwright() as pw:
+                        browser = pw.chromium.launch(headless=True)
+                        try:
+                            page = browser.new_page()
+                            page.goto(url, wait_until="load", timeout=timeout * 1000)
+                            page.wait_for_timeout(1500)
+                            html = page.content()
+                            final_url = page.url
+                        finally:
+                            browser.close()
+                    if html and len(html.strip()) > 200:
+                        return {
+                            "html": html,
+                            "final_url": final_url,
+                            "status": "success",
+                            "tier": "playwright",
+                            "attempts": total_attempts,
+                            "errors": errs,
+                        }
+                    errs.append(f"playwright attempt {attempt + 1}: page rendered but content too small")
+                except Exception as e:
+                    errs.append(f"playwright attempt {attempt + 1}: {type(e).__name__}: {e}")
+
+                if attempt < max_retries - 1:
+                    time.sleep(retry_backoff * (attempt + 1))
+
+    # ---------------- Tier 3: last-resort basic request ----------------
+    total_attempts += 1
+    try:
+        basic_headers = {'User-Agent': 'curl/8.0', 'Accept': '*/*'}
+        resp = sess.get(url, headers=basic_headers, timeout=timeout, allow_redirects=True)
+        if resp.status_code < 400 and resp.text:
+            return {
+                "html": resp.text,
+                "final_url": str(resp.url),
+                "status": "success",
+                "tier": "basic-fallback",
+                "attempts": total_attempts,
+                "errors": errs,
+            }
+        errs.append(f"basic-fallback: HTTP {resp.status_code}")
+    except Exception as e:
+        errs.append(f"basic-fallback: {type(e).__name__}: {e}")
+
+    if console is not None:
+        try:
+            console.print(f"[red]fetch_resilient exhausted all tiers for {url}:[/red] {errs[-1] if errs else ''}")
+        except Exception:
+            pass
+
+    return {
+        "html": "",
+        "final_url": url,
+        "status": "failed",
+        "tier": "none",
+        "attempts": total_attempts,
+        "errors": errs,
+    }
+
+
 def _compact_options(options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Filter a dict to remove None-valued and blank-string entries."""
     compacted: Dict[str, Any] = {}
@@ -278,16 +447,20 @@ def _compact_options(options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 class EnterpriseSearchEngine:
     """Complete enterprise search + extraction pipeline"""
 
-    def __init__(self, max_workers: int = 8, timeout: int = 25):
+    def __init__(self, max_workers: int = 8, timeout: int = 25, max_fetch_retries: int = 3, enable_js_fallback: bool = True):
         self.max_workers = min(max_workers, 12)  # CPU-aware
         self.timeout = timeout
+        self.max_fetch_retries = max(1, int(max_fetch_retries))
+        self.enable_js_fallback = enable_js_fallback
         self.console = Console()
         self.extractor = ExtractionEngine()
         self.results: List[EnterpriseResult] = []
+        self._stats_lock = threading.Lock()
         self.stats = {
             'total': 0, 'success': 0, 'high_quality': 0,
             'avg_confidence': 0.0, 'total_words': 0,
-            'attempts': 0, 'retries_used': 0
+            'attempts': 0, 'retries_used': 0,
+            'fetch_tiers': {'requests': 0, 'playwright': 0, 'basic-fallback': 0, 'none': 0},
         }
 
     @staticmethod
@@ -368,7 +541,14 @@ class EnterpriseSearchEngine:
         max_zero_success_retries: int = 2,
         retry_backoff_seconds: float = 1.0,
     ) -> List[EnterpriseResult]:
-        """Full enterprise pipeline"""
+        """Full enterprise pipeline.
+
+        Search retries (``max_zero_success_retries``) rotate DDGS backend/filter
+        options across attempts. Independently, every individual page fetch
+        inside ``_phase_content_extraction`` goes through ``fetch_resilient``,
+        which layers requests-retries -> Playwright JS-render -> a last-resort
+        basic request (see ``self.max_fetch_retries`` / ``self.enable_js_fallback``).
+        """
         start_time = time.time()
 
         retries = max(0, int(max_zero_success_retries))
@@ -409,6 +589,38 @@ class EnterpriseSearchEngine:
                     time.sleep(retry_backoff_seconds * (attempt + 1))
 
         return self.results
+
+    def execute_search_from_urls(self, seed_results: List[Dict[str, Any]]) -> List[EnterpriseResult]:
+        """Run the extraction + quality-analysis phases against a pre-supplied
+        list of ``{title, url, snippet, source}`` dicts, bypassing DDGS search.
+
+        Used by multi-engine search (``data_scout.engines``), where discovery
+        happens across several search engines (DuckDuckGo, Brave, Bing,
+        Google CSE, SerpAPI, ...) and only the content-extraction/cleaning
+        pipeline is shared with the regular ``web-search`` flow.
+        """
+        start_time = time.time()
+        self.results = []
+        self._reset_stats()
+
+        for i, r in enumerate(seed_results, 1):
+            self.results.append(EnterpriseResult(
+                position=i,
+                title=r.get('title') or 'No title',
+                url=r.get('url') or r.get('href') or '',
+                snippet=(r.get('snippet') or r.get('body') or '')[:400],
+                source=r.get('source', 'unknown'),
+            ))
+
+        if self.results:
+            self._phase_content_extraction()
+        if self.results:
+            self._phase_quality_analysis()
+
+        self._calculate_metrics(start_time)
+        self.stats['attempts'] = 1
+        self.stats['retries_used'] = 0
+        return self.results
     
     def _phase_search(self, query: str, max_results: int, search_options: Optional[Dict[str, Any]] = None):
         """Advanced search phase"""
@@ -439,28 +651,34 @@ class EnterpriseSearchEngine:
         def extract_worker(result: EnterpriseResult) -> EnterpriseResult:
             start_time = time.time()
             try:
-                headers = {
-                    'User-Agent': random.choice(ExtractionEngine.USER_AGENTS),
-                    'Accept': 'text/html,application/xhtml+xml,*/*;q=0.9',
-                    'Accept-Language': 'en-US,en;q=0.9'
-                }
-                
-                resp = self.extractor.session.get(
-                    result.url, headers=headers, timeout=self.timeout,
-                    allow_redirects=True, stream=True
+                fetch_outcome = fetch_resilient(
+                    result.url,
+                    session=self.extractor.session,
+                    timeout=self.timeout,
+                    max_retries=self.max_fetch_retries,
+                    enable_js_fallback=self.enable_js_fallback,
                 )
-                resp.raise_for_status()
-                
-                result.final_url = str(resp.url)
-                
+                with self._stats_lock:
+                    self.stats['fetch_tiers'][fetch_outcome['tier']] = (
+                        self.stats['fetch_tiers'].get(fetch_outcome['tier'], 0) + 1
+                    )
+
+                if fetch_outcome['status'] != 'success':
+                    result.errors.extend(fetch_outcome['errors'][-3:])
+                    result.extraction_status = "failed"
+                    result.fetch_time = time.time() - start_time
+                    return result
+
+                result.final_url = fetch_outcome['final_url']
+
                 # Multi-strategy extraction
                 main_content, method, confidence = self.extractor.extract_content(
-                    result.url, resp.text
+                    result.url, fetch_outcome['html']
                 )
                 
                 result.main_content = main_content
                 result.content_word_count = len(main_content.split())
-                result.extraction_method = method
+                result.extraction_method = f"{method} ({fetch_outcome['tier']})"
                 result.confidence_score = confidence
                 result.extraction_status = "success" if main_content.strip() else "failed"
                 result.fetch_time = time.time() - start_time
@@ -811,47 +1029,55 @@ class ImageSearchEngine:
         
         return self.results
     
-    def download_images(self, output_dir: str = "downloaded_images", max_downloads: int = 10):
-        """Download images to local directory"""
-        import urllib.request
-        
+    def download_images(self, output_dir: str = "downloaded_images", max_downloads: int = 10, max_retries: int = 3, max_workers: int = 5):
+        """Download images to local directory with retries and parallel workers."""
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True)
-        
-        self.console.print(f"\n📥 Downloading {min(max_downloads, len(self.results))} images to {output_path}...")
-        
-        downloaded = 0
-        for result in self.results[:max_downloads]:
-            if not result.image_url:
-                continue
-                
-            try:
-                # Create safe filename
-                safe_title = re.sub(r'[^\w\s-]', '', result.title)[:50]
-                ext = '.jpg'
-                if '.png' in result.image_url.lower():
-                    ext = '.png'
-                elif '.gif' in result.image_url.lower():
-                    ext = '.gif'
-                
-                filename = f"{result.position:03d}_{safe_title}{ext}"
-                filepath = output_path / filename
-                
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-                req = urllib.request.Request(result.image_url, headers=headers)
-                
-                with urllib.request.urlopen(req, timeout=self.timeout) as response:
+
+        targets = [r for r in self.results[:max_downloads] if r.image_url]
+        self.console.print(f"\n📥 Downloading {len(targets)} images to {output_path} ({max_workers} workers)...")
+
+        def _download_one(result: "ImageSearchResult") -> bool:
+            safe_title = re.sub(r'[^\w\s-]', '', result.title)[:50] or "image"
+            ext = '.jpg'
+            lowered = result.image_url.lower()
+            if '.png' in lowered:
+                ext = '.png'
+            elif '.gif' in lowered:
+                ext = '.gif'
+            elif '.webp' in lowered:
+                ext = '.webp'
+
+            filename = f"{result.position:03d}_{safe_title}{ext}"
+            filepath = output_path / filename
+
+            last_error = None
+            for attempt in range(max(1, max_retries)):
+                try:
+                    headers = {'User-Agent': random.choice(ExtractionEngine.USER_AGENTS)}
+                    resp = requests.get(result.image_url, headers=headers, timeout=self.timeout, stream=True)
+                    resp.raise_for_status()
                     with open(filepath, 'wb') as f:
-                        f.write(response.read())
-                
-                self.console.print(f"✅ Downloaded: {filename}")
-                downloaded += 1
-                
-            except Exception as e:
-                self.console.print(f"[yellow]⚠️  Failed to download {result.title}:[/yellow] {e}")
-        
+                        for chunk in resp.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                    self.console.print(f"✅ Downloaded: {filename}")
+                    return True
+                except Exception as e:
+                    last_error = e
+                    if attempt < max_retries - 1:
+                        time.sleep(1.0 * (attempt + 1))
+
+            self.console.print(f"[yellow]⚠️  Failed to download {result.title} after {max_retries} attempts:[/yellow] {last_error}")
+            return False
+
+        downloaded = 0
+        with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
+            futures = [executor.submit(_download_one, result) for result in targets]
+            for future in as_completed(futures):
+                if future.result():
+                    downloaded += 1
+
         self.console.print(f"\n✅ Successfully downloaded {downloaded} images to {output_path}")
         return downloaded
     

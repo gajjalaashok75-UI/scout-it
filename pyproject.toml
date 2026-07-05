@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "data-scout"
-version = "1.0.0"
+version = "1.2.0"
 description = "Enterprise-grade DuckDuckGo search toolkit with content extraction, cleaning, and structured JSON output"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -32,7 +32,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "duckduckgo-search>=3.9.0",
+    "ddgs>=9.0.0",
     "requests>=2.28.0",
     "beautifulsoup4>=4.11.0",
     "trafilatura>=1.6.0",
@@ -40,6 +40,7 @@ dependencies = [
     "boilerpy3>=1.0.0",
     "rich>=13.0.0",
     "urllib3>=1.26.0",
+    "youtube-transcript-api>=0.6.2",
 ]
 
 [project.optional-dependencies]
@@ -52,6 +53,14 @@ dev = [
     "isort>=5.11.0",
 ]
 js-render = [
+    "playwright>=1.40.0",
+]
+legacy-ddgs = [
+    # Fallback for environments still pinned to the old package name;
+    # data_scout tries `ddgs` first and falls back to this automatically.
+    "duckduckgo-search>=3.9.0",
+]
+all = [
     "playwright>=1.40.0",
 ]
 

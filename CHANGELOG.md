@@ -7,28 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.0] - 2026-07-05 16:00:00 UTC
-
-### 🎉 Added
-
-#### JS Rendering via Playwright
-- **`--js-render` flag for `fetch-url`**: New optional flag that uses Playwright (headless Chromium) to render JavaScript-heavy SPAs before content extraction. Requires `playwright install chromium`. Controlled via `js_render=True` parameter in `fetch_url()` API. Imports Playwright lazily — raises a clear `ImportError` with install instructions if the dependency is missing.
-- **`_fetch_with_playwright()` helper**: Dedicated function using `playwright.sync_api` with a 2-second post-load render delay. Uses `wait_until="load"` (not `networkidle`) to avoid hanging on sites with persistent connections (long-polling, WebSockets).
-- **`js-render` extras in pyproject.toml**: New optional dependency group (`pip install data-scout[js-render]`) installs `playwright>=1.40.0`.
-
-#### Content Cleaning — Table/Data Row Exemption
-- **`_is_table_row()` heuristics**: New function that distinguishes markdown-like table rows from pipe-separated navigation bars. Checks: 3+ non-empty columns, average cell length > 5 chars, presence of URLs/code backticks/long cells, and separator rows (`---|---|---`). Single-word all-cells rows are classified as nav and remain filtered.
-
-### 🚀 Improved
-
-#### Extraction Pipeline
-- **Default timeout raised to 25s**: `fetch-url --timeout` default changed from 5 to 25 seconds, reducing failures on slow sites and JS-rendered pages.
-- **`extract_content_sections()` — No more section overwrites**: Repeated headings (e.g., multiple "References" sections) now append content instead of overwriting. All three heading-detection paths (`# prefix`, ALL-CAPS, generic) updated to use `if current_section not in sections` guard.
-- **`_is_nav_paragraph()` — '/' removed from breadcrumb detection**: Forward slash caused false positives on URLs (`https://host/path`) and file paths (`./dist/bundles/anime.js`). Breadcrumb detection now only checks `•·>»` characters.
-
----
-
 ## [Unreleased]
+
+## [1.2.0] - 2026-07-05 16:00:00 UTC
+
+### 🚀 Added — Multi-engine search + new data sources (GitHub, Telegram, Discord, Reddit)
+
+**Honesty policy applied throughout**: every new source is labeled by tier —
+0 = works with zero setup, 1 = needs a free/paid API key you configure via
+an env var, 2 = best-effort only because no reliable path currently exists.
+Nothing here pretends to scrape Google/Bing/Yahoo/Twitter/Reddit's normal
+pages directly; those are heavily anti-bot-protected and doing so would
+violate their Terms of Service. Where a *legitimate* API exists, it's used.
+
+- **`multi-search` command + `data_scout.engines`**: query several search
+  engines in parallel and merge/dedupe results, then run them through the
+  same content-extraction pipeline as `web-search`.
+  - `duckduckgo` (tier 0, existing) · `brave` (tier 1, `BRAVE_API_KEY`) ·
+    `bing` (tier 1, `BING_API_KEY`) · `google` (tier 1, `GOOGLE_API_KEY` +
+    `GOOGLE_CSE_ID`) · `serpapi` (tier 1, `SERPAPI_KEY` — proxies real
+    Google/Bing/Yahoo/Baidu/Yandex results via `--serpapi-engine`).
+  - New `list-engines` command reports each engine's configured/not-configured
+    status and setup hint.
+  - **Note on "20 popular engines" / Yahoo / Opera**: Yahoo's web results have
+    been powered by Bing since 2019, and Opera has no search index of its
+    own (delegates to Google/Bing/Yandex) — neither has an independent public
+    API, so rather than ship a fake `YahooEngine`/`OperaEngine` that would
+    just fail, SerpAPI's `engine=yahoo` proxy is offered as the legitimate
+    route to real Yahoo-branded results.
+
+- **`data_scout.github_extract` + 10 new `github-*` commands** (tier 0
+  unauthenticated at 60 req/hr, tier 0.5 with `GITHUB_TOKEN` at 5,000 req/hr):
+  `github-repo`, `github-commits`, `github-commit` (full unified diff patches
+  per changed file, +/- line counts, add/modify/delete/rename status),
+  `github-pr` (diff + changed files), `github-issues`, `github-issue` (+ all
+  comments), `github-file` (base64-decoded file contents at any ref),
+  `github-search-code`, `github-search-repos`, and `github-discussions`
+  (GraphQL — **requires `GITHUB_TOKEN`**, a GitHub platform requirement for
+  all GraphQL access, not a limitation added here). Rate-limit responses are
+  detected and explained clearly rather than surfacing as a generic error.
+
+- **`telegram-channel` command** (tier 0, `data_scout.social`): fetches
+  recent posts from a **public** Telegram channel via its official
+  `t.me/s/<channel>` web preview — no login needed, no ToS issue (this is
+  the same preview Telegram itself serves to logged-out browsers/search
+  engines).
+
+- **`discord-channel` command** (tier 1, needs `DISCORD_BOT_TOKEN`): reads
+  channel message history via the real Discord Bot REST API. Requires the
+  bot to already be a member of the target server with message-history
+  permission — Discord has no anonymous/public read API by design.
+
+- **`reddit-search` command** (tier 2, best-effort): Reddit's anonymous
+  `.json` endpoints return 403 for the large majority of requests as of
+  2026, and the official API closed self-service registration. This command
+  tries anyway and — importantly — surfaces the *real* 403/blocked reason
+  instead of returning an empty list that looks like "no results found".
+  Set `REDDIT_COOKIE` (a logged-in session's Cookie header) to improve the
+  odds. Twitter/X, Instagram, TikTok, and similar platforms are not
+  implemented for the same reason — no working zero-config or cheap-API path
+  exists for any of them right now.
+
+### 🛡️ Added — Multi-tier resilient fetch fallback chain (requests → Playwright → basic fallback)
+
+- **New `fetch_resilient()` helper (`extraction.py`)**: a single shared fetch function now used by every content-fetching path in the toolkit (`web-search` page extraction, `news-search` article extraction, `fetch-url`, and `video-extract`'s YouTube page fetch). It layers three tiers:
+  1. **Tier 1 — `requests`**: up to `--max-fetch-retries` attempts (default 3) with UA rotation and exponential backoff. A response is treated as failed (not just a raised exception) if it looks bot-blocked (HTTP 403/429/503, or a tiny "enable JavaScript"/"captcha"/"cloudflare" style body).
+  2. **Tier 2 — Playwright headless Chromium**: only engaged when tier 1 is exhausted, retried up to `--max-fetch-retries` times. Silently skipped (with a note in the outcome's `errors`) when Playwright isn't installed.
+  3. **Tier 3 — last-resort basic request**: one final attempt with a minimal, non-browser-fingerprinted header set, since some anti-bot rules only block "normal" browser-shaped traffic.
+  - Every fetch now reports which tier actually succeeded (`requests` / `playwright` / `basic-fallback` / `none`) in `extraction_method`, e.g. `"trafilatura (playwright)"`.
+- **New flags across all commands**: `--max-fetch-retries` (retries per tier) and `--no-js-fallback` (disable the automatic Playwright escalation) on `web-search`, `news-search`, and `video-extract`. `fetch-url` gained `--no-js-fallback` and `--max-retries`; `--js-render` now means "skip straight to Playwright" instead of being the only way to use it.
+- **`news-search` and `video-search` retry-on-zero-results parity**: previously only `web-search`/`image-search` retried when DDGS returned zero results. `news-search` made exactly one attempt and `video-search` had *no* retry logic or `--retry-*` flags at all. Both now share `_ddgs_list_search_with_retry()`, which relaxes `timelimit`/`safesearch` across attempts exactly like web/image search, and `video-search` gained `--retry-attempts`, `--retry-backoff`, and `--no-retry-on-zero` flags to match the others.
+- **`ImageSearchEngine.download_images()` — retries + parallel workers**: previously downloaded one image at a time via `urllib.request` with no retry. Now uses `requests` with UA rotation, up to 3 retries per image, and parallel downloads via `ThreadPoolExecutor` (default 5 workers).
+
+### 🐛 Fixed
+
+- **`_enhance_video_descriptions()` YouTube ID bug**: was calling `_fetch_youtube_metadata(url)` with the *full video URL*, but that function expects a bare 11-character video ID and builds `https://www.youtube.com/watch?v={video_id}` itself — so every enhancement request built a malformed double-URL and silently failed (always falling back to DuckDuckGo's truncated description). Fixed to extract the ID via `_YOUTUBE_RE` first.
+- **`data_scout/__init__.py` quick-start docstring** referenced non-existent functions (`search_web`, `search_images`, `search_news`, `search_videos`); the real names are `web_search`, `image_search`, `news_search`, `video_search`. Docstring corrected and these functions (plus `fetch_url`, `video_extract`) are now actually exported from the package's top level, matching the docstring's promise.
+- **Removed stale, unreferenced `_fetch_with_playwright()`** in `cli.py`, superseded by the shared `fetch_resilient()`.
+- Thread-safety: fetch-tier stat counters in `EnterpriseSearchEngine` are now updated under a lock since extraction runs on a `ThreadPoolExecutor`.
 
 ### 🎉 Added
 

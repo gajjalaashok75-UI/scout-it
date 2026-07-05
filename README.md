@@ -132,14 +132,15 @@ data-scout/
 
 Python packages used by the project:
 
-- `ddgs`
-- `duckduckgo_search`
+- `ddgs` (falls back to `duckduckgo_search` automatically if unavailable)
 - `trafilatura`
 - `requests`
 - `beautifulsoup4`
 - `justext`
 - `boilerpy3`
 - `rich`
+- `youtube-transcript-api` (for `video-extract` subtitles)
+- `playwright` — *optional*, only needed for the Tier-2 JS-render fallback. Install with `pip install data-scout[js-render]` then `playwright install chromium`.
 - `pytest` (for tests)
 
 ## Installation
@@ -234,13 +235,19 @@ data-scout web-search --query "<text>" [options]
 Options:
 
 - `--query, -q` (required): search query
-- `--max-results, -m` (default: `10`): number of results to fetch
+- `--max, -m` (default: `10`): number of results to fetch
+- `--workers` (default: `8`): parallel content-extraction workers
+- `--region`, `--safesearch`, `--timelimit`, `--backend`: DDGS search parameters
+- `--retry-on-zero` / `--no-retry-on-zero` (default: on): retry the DDGS search itself if it comes back with 0 results
+- `--retry-attempts` (default: `2`), `--retry-backoff` (default: `1.0`): tuning for the above
+- `--max-fetch-retries` (default: `3`): retry attempts *per tier* (requests, then Playwright) when fetching each result's page content
+- `--no-js-fallback`: disable the automatic Playwright fallback for blocked/failed page fetches
 - `--json`: output as JSON to stdout
-- `--timeout` (default: `5`): extraction timeout in seconds
 
 **Example:**
 ```bash
-data-scout web-search --query "machine learning" --max-results 5
+data-scout web-search --query "machine learning" --max 5
+data-scout web-search --query "site behind cloudflare" --max-fetch-retries 4
 ```
 
 ### image-search
@@ -252,14 +259,15 @@ data-scout image-search --query "<text>" [options]
 Options:
 
 - `--query, -q` (required): search query
-- `--max-results, -m` (default: `10`): number of images
+- `--max, -m` (default: `10`): number of images
+- `--min-width`, `--min-height`, `--max-width`, `--max-height`: dimension filters
+- `--color`, `--type-image`, `--layout`, `--license-images`: DDGS image filters
+- `--retry-on-zero` / `--no-retry-on-zero`, `--retry-attempts`, `--retry-backoff`: zero-result retry tuning
 - `--json`: output as JSON to stdout
-- `--min-width` (default: `0`): minimum image width
-- `--min-height` (default: `0`): minimum image height
 
 **Example:**
 ```bash
-data-scout image-search --query "landscape" --max-results 10 --min-width 1024 --min-height 768
+data-scout image-search --query "landscape" --max 10 --min-width 1024 --min-height 768
 ```
 
 ### news-search
@@ -271,12 +279,15 @@ data-scout news-search --query "<text>" [options]
 Options:
 
 - `--query, -q` (required): search query
-- `--max-results, -m` (default: `10`): number of articles
+- `--max, -m` (default: `10`): number of articles
+- `--region`, `--safesearch`, `--timelimit`: DDGS search parameters
+- `--retry-on-zero` / `--no-retry-on-zero`, `--retry-attempts`, `--retry-backoff`: zero-result retry tuning (previously news-search made only a single DDGS attempt; it now has the same retry parity as web-search/image-search)
+- `--max-fetch-retries` (default: `3`), `--no-js-fallback`: same resilient-fetch controls as web-search, applied to fetching each article's full text
 - `--json`: output as JSON to stdout
 
 **Example:**
 ```bash
-data-scout news-search --query "artificial intelligence" --max-results 5
+data-scout news-search --query "artificial intelligence" --max 5
 ```
 
 ### video-search
@@ -288,13 +299,38 @@ data-scout video-search --query "<text>" [options]
 Options:
 
 - `--query, -q` (required): search query
-- `--max-results, -m` (default: `10`): number of videos
+- `--max, -m` (default: `10`): number of videos
+- `--region`, `--safesearch`, `--timelimit`, `--resolution`, `--duration`, `--license-videos`: DDGS video filters
+- `--retry-on-zero` / `--no-retry-on-zero`, `--retry-attempts`, `--retry-backoff`: zero-result retry tuning (previously video-search had no retry logic at all)
 - `--json`: output as JSON to stdout
 
 **Example:**
 ```bash
-data-scout video-search --query "python tutorial" --max-results 5
+data-scout video-search --query "python tutorial" --max 5
 ```
+
+### video-extract
+
+```bash
+data-scout video-extract --url "<youtube-url>" [options]
+```
+
+Extracts full metadata (title, channel, view/like counts, description, upload date) and, where available, subtitles/transcript for a YouTube video.
+
+Options:
+
+- `--url` (required): YouTube video URL (`youtube.com/watch?v=...` or `youtu.be/...`)
+- `--subtitle-lang` (default: `en`): preferred subtitle language code
+- `--segments`: include timestamped subtitle segments in the output
+- `--max-fetch-retries` (default: `3`), `--no-js-fallback`: resilient-fetch controls for the underlying YouTube page fetch
+- `--json`: output as JSON to stdout
+
+**Example:**
+```bash
+data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --segments
+```
+
+Only YouTube is currently supported; other platforms return a clear `unsupported_platform` error rather than failing silently.
 
 ### fetch-url
 
@@ -305,13 +341,86 @@ data-scout fetch-url --url "https://example.com" [options]
 Options:
 
 - `--url, -u` (required): URL to fetch and extract
+- `--timeout` (default: `25`): fetch timeout in seconds, applied per attempt/tier
+- `--max-chars`: truncate extracted content to N characters (mutually exclusive with `--max-size`)
+- `--max-size`: cap the raw response size, e.g. `5mb`, `500kb` (mutually exclusive with `--max-chars`)
+- `--raw-html`: return prettified raw HTML instead of extracted main content
+- `--js-render`: skip straight to Playwright rendering instead of trying `requests` first
+- `--no-js-fallback`: disable the automatic Playwright fallback that normally kicks in when `requests` fails or looks blocked
+- `--max-retries` (default: `3`): retry attempts per tier (requests, then Playwright)
 - `--json`: output as JSON to stdout
-- `--timeout` (default: `5`): request timeout in seconds
 
 **Example:**
 ```bash
 data-scout fetch-url --url "https://example.com/article"
+data-scout fetch-url --url "https://spa-heavy-site.com" --js-render
 ```
+
+### multi-search — search across multiple engines
+
+```bash
+data-scout multi-search --query "<text>" --engines duckduckgo,brave,google [options]
+```
+
+Queries several search engines **in parallel**, merges/dedupes by URL, then runs the same
+content-extraction pipeline as `web-search`. `duckduckgo` needs no setup; the others need a
+free/paid API key set as an environment variable — run `data-scout list-engines` to see what's
+configured and what each one needs.
+
+Options: `--query/-q`, `--engines` (comma-separated), `--max/-m`, `--workers/-w`,
+`--serpapi-engine` (google/bing/yahoo/baidu/yandex/... when `serpapi` is in `--engines`),
+`--no-dedupe`, `--max-fetch-retries`, `--no-js-fallback`, `--json`.
+
+```bash
+data-scout multi-search --query "rust vs go performance" --engines duckduckgo,brave --max 15
+BRAVE_API_KEY=xxx data-scout list-engines   # check what's configured
+```
+
+### GitHub extraction
+
+Uses GitHub's official REST + GraphQL APIs (no scraping). Works unauthenticated at 60
+requests/hour; set `GITHUB_TOKEN` (a personal access token, no special scopes needed for public
+repos) for 5,000/hour. GitHub Discussions specifically **requires** `GITHUB_TOKEN` — GraphQL has
+no anonymous access at all, even for public repos, which is a GitHub platform rule.
+
+| Command | What it does |
+|---|---|
+| `github-repo --repo owner/repo` | Full repo metadata: stars, forks, language, topics, license |
+| `github-commits --repo owner/repo [--branch][--path][--author][--since][--until][--max]` | List commits |
+| `github-commit --repo owner/repo --sha SHA` | **Full diff**: every changed file, +/- counts, unified patch text |
+| `github-pr --repo owner/repo --number N` | PR metadata + full diff/changed files |
+| `github-issues --repo owner/repo [--state][--labels][--max]` | List issues |
+| `github-issue --repo owner/repo --number N` | Full issue body + all comments |
+| `github-file --repo owner/repo --path PATH [--ref REF]` | Fetch & decode one file's contents |
+| `github-search-code --query "..."` | Code search (needs `GITHUB_TOKEN`, 10 req/min) |
+| `github-search-repos --query "language:python stars:>1000"` | Repo search |
+| `github-discussions --repo owner/repo` | List discussions (**requires** `GITHUB_TOKEN`) |
+
+```bash
+data-scout github-commit --repo psf/requests --sha <sha>   # full diff for one commit
+data-scout github-issue --repo psf/requests --number 1234  # issue + all comments
+GITHUB_TOKEN=ghp_xxx data-scout github-discussions --repo pytorch/pytorch
+```
+
+### Social / platform commands
+
+| Command | Tier | Needs |
+|---|---|---|
+| `telegram-channel --channel NAME [--max]` | 0 — works now | nothing (public `t.me/s/` preview) |
+| `discord-channel --channel-id ID [--max]` | 1 — needs a key | `DISCORD_BOT_TOKEN` (bot must be in the server) |
+| `reddit-search --query "..." [--subreddit][--max]` | 2 — best-effort | Reddit blocks most anonymous requests as of 2026; optionally set `REDDIT_COOKIE` |
+
+```bash
+data-scout telegram-channel --channel durov --max 10
+DISCORD_BOT_TOKEN=xxx data-scout discord-channel --channel-id 123456789012345678
+data-scout reddit-search --query "python" --subreddit programming   # best-effort, see --help
+```
+
+Twitter/X, Instagram, TikTok, and similar platforms are **not implemented** — none of them
+currently offer a working zero-config or affordable-API path (all require either a paid official
+API or a logged-in browser session with cookie management, which is out of scope for this
+library). Adding one for real would mean either paying for API access or building an
+authenticated Playwright session manager — happy to scope that separately if you need it.
 
 ## Detailed Search Documentation
 
@@ -477,25 +586,47 @@ Each image item includes:
 
 ## Retry and Fallback Behavior
 
-### Web Search Retry
+data-scout retries and falls back at **two independent layers**, and it's worth understanding the difference:
 
-Web search retries when extraction success count is 0:
+1. **Search/discovery layer** — did DDGS return any results at all?
+2. **Content-fetch layer** — for each individual result URL, can we actually download and extract its page content?
 
-- Attempt 1 uses your configured options
-- Later attempts relax restrictive options (for higher chance of results)
-- Stops early after first successful extraction set
+### 1. Search-layer retry (zero-results retry)
 
-### Image Search Retry
+`web-search`, `image-search`, `news-search`, and `video-search` all share the same retry-on-zero-results behavior (via `_ddgs_list_search_with_retry`):
 
-Image search retries when valid image count is 0:
+- Attempt 1 uses your configured options (`region`, `safesearch`, `timelimit`, etc.)
+- If DDGS returns 0 results, later attempts progressively relax filters (drop `timelimit`, then relax `safesearch`) to maximize the chance of a non-empty result set
+- Stops as soon as an attempt returns results
+- Controlled by `--retry-on-zero/--no-retry-on-zero`, `--retry-attempts` (default `2`), `--retry-backoff` (default `1.0`s)
+- **Previously**, only `web-search`/`image-search` had this. `news-search` made exactly one DDGS attempt and `video-search` had no retry logic or flags at all — both now have full parity.
 
-- Applies filters and counts valid images
-- Retries up to configured attempts
-- Stops early on first non-zero valid set
+### 2. Content-fetch layer: the `fetch_resilient()` fallback chain
+
+Every individual page fetch — web-search result extraction, news-search article extraction, `fetch-url`, and the YouTube page fetch behind `video-extract` — goes through a shared **three-tier fallback chain**:
+
+```
+Tier 1: requests            (up to --max-fetch-retries attempts, UA rotation, backoff)
+   │  fails / looks bot-blocked (403/429/503, captcha, "enable JS", tiny body, etc.)
+   ▼
+Tier 2: Playwright (headless Chromium)   (up to --max-fetch-retries attempts)
+   │  fails, or Playwright isn't installed, or the failure was a pure
+   │  connection/DNS-level error where a browser can't do any better
+   ▼
+Tier 3: last-resort basic request        (one attempt, minimal non-fingerprinted headers)
+```
+
+Notes on the design:
+
+- **Tier 2 is skipped automatically** when every Tier 1 attempt failed at the connection level (DNS failure, connection refused, timeout) rather than getting an actual HTTP response — a browser hitting the same broken network path won't succeed either, so this avoids wasting 3× browser launches (~tens of seconds) on an unreachable host. It's still tried whenever at least one Tier 1 attempt *did* get a response (e.g. a 403 or a bot-check page), since that's exactly the case Playwright is good at getting past.
+- Every result records which tier actually succeeded, e.g. `extraction_method: "trafilatura (playwright)"`, so you can see in the output how much the fallback chain is being used.
+- `--no-js-fallback` disables Tier 2 entirely (useful if Playwright/Chromium isn't installed in your environment, or you want fast-fail behavior).
+- Playwright is optional: `pip install data-scout[js-render] && playwright install chromium`. If it isn't installed, Tier 2 is skipped with a note in the diagnostics and the chain still falls through to Tier 3.
+- `fetch-url --js-render` skips straight to Tier 2 instead of trying `requests` first (useful when you already know a page needs JS).
 
 ### DDGS Signature Compatibility
 
-The project attempts multiple call signatures for DDGS methods to support version differences between `ddgs` and `duckduckgo_search` implementations.
+The project prefers the `ddgs` package and falls back to the older `duckduckgo_search` package name automatically, and attempts multiple call signatures for DDGS methods to support version differences between them.
 
 ## Image Dimension Filtering Rules
 
