@@ -9,7 +9,171 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.3.0] - 2026-07-05 16:00:00 UTC
+## [1.4.0] - 2026-07-05 16:00:00 UTC
+
+### 🔴 Fixed — 13KB+ single-line content, now safely chunked (still valid JSON)
+
+Long field values (a `main_content` blob, a diff patch, an article body)
+were being written as one giant single-line JSON string with no readability
+handling at all. `_write_output` now runs every output through
+`data_scout.output.write_json_output`, which breaks any string over 500
+characters into an array of `<=500`-char chunks at word boundaries — a
+plain, valid JSON array (one element per line under `indent=2`), not the
+control-character-injecting hack from the previous fix. URLs and a few
+other fields are deliberately left unchunked (see `_NO_CHUNK_KEYS`) since
+splitting them would make them useless.
+
+### 🚀 Added — `.data-scout/` as the default output directory, everywhere
+
+Every command's default `--out` path now lives under `.data-scout/` (created
+automatically) instead of dropping a file directly in the current directory,
+e.g. `.data-scout/github_repo_results.json`. An explicit `--out some/path.json`
+is still honored exactly as given; only bare filenames or the built-in
+defaults get the `.data-scout/` treatment.
+
+### 🚀 Added — `--markdown` on every command that writes output
+
+Every command with an `--out` flag now also has `--markdown`, which renders
+the same result data as a Markdown document instead of JSON (tables for
+uniform lists, fenced code blocks for file/diff content, headers for nested
+sections). `--out foo.md` works the same way without needing `--markdown`
+explicitly. Combining `--markdown` with an explicit `--out ....json` is
+rejected with a clear error rather than silently picking one.
+
+### 🚀 Added — diff line numbers
+
+`github-commit`/`github-pr`'s `patch_lines` now include `old_line`/`new_line`
+for every entry (parsed from each hunk's `@@ -a,b +c,d @@` header and tracked
+per line), so you can tell exactly which file line was added/removed instead
+of just the +/- text. The Markdown rendering shows these as a line-numbered
+table (a fenced ` ```diff ` block can't carry a number gutter without
+breaking the leading +/-/space character syntax highlighters rely on).
+
+### 🚀 Added — github-repo: opt-in, uncapped file tree with size limits
+
+The file tree is no longer included by default (it was a fixed 200-entry
+preview before) — pass `--file-tree` for the complete, untruncated tree, and
+optionally `--max-chars`/`--max-size` (mutually exclusive, same validation
+as `fetch-url`) to cap its output size for huge repos.
+
+### 🔧 Fixed — github-folder argument-combination race conditions
+
+- `--max-files` without `--include-content` is now a clear error (it used
+  to be silently accepted and silently ignored).
+  `--save-path-dir` without `--include-content` is the same.
+- `--include-content` **without** `--max-files` now fetches **all** matching
+  files (previously silently capped at 20) — `--max-files` is opt-in, not a
+  hidden default.
+- Added `--max-chars`/`--max-size` (mutually exclusive) to cap each fetched
+  file's content.
+- Added `detected_type` per fetched file (python/markdown/json/yaml/etc. by
+  extension) for downstream formatting.
+- Added `--save-path-dir`: writes every fetched file to disk under that
+  directory, preserving the repo-relative path structure.
+
+### 🚀 Added — Telegram retry-then-fallback-parser architecture
+
+`telegram-channel` now retries the fetch+parse cycle up to `--max-fetch-retries`
+times, and if the primary parser still finds 0 posts despite a successful
+fetch, falls back to a second, more thorough parser (field set and approach
+inspired by [PythonicCafe/tchan](https://github.com/PythonicCafe/tchan),
+adapted to BeautifulSoup) over the same public `t.me/s/` page before giving
+up. Both parsers work from the same underlying public preview page (there's
+only one to scrape) — the fallback's value is a different, more defensive
+parsing strategy, not a different data source. Every response now reports
+`parser_used`.
+
+### 🚀 Added — consistent phase-status terminal logging
+
+GitHub/social/multi-search commands (which didn't already have Rich-powered
+progress UI the way `web-search`/`image-search` do) now print a consistent
+started/completed line with timing and key result counts, e.g.
+`🔄 github-commit x/y@abc123` ... `✅ github-commit x/y@abc123 (seconds=0.82,
+files_changed=3)`.
+
+### 🔴 Fixed — 13KB+ single-line output content (line-length-safe JSON)
+
+Long text fields (a `main_content` blob, an article body, a diff patch)
+were being written as one giant single-line JSON string with no readable
+line-wrapping. New shared `data_scout/output.py` module: any string over
+500 characters is now broken into an array of <=500-char chunks at word
+boundaries — fully valid, standard JSON the whole time (an array simply
+serializes one element per line under `indent=2`; this doesn't touch
+escaping rules the way a raw-newline hack would). Diff `patch` text is
+deliberately left alone since it already has a proper structured
+`patch_lines` breakdown instead.
+
+### 🚀 Added — `.data-scout/` as the default output directory, for every command
+
+Every command's default `--out` path now lives under `.data-scout/`
+(created automatically) instead of dropping a `*_results.json` file
+directly in the current directory. An explicit `--out some/path.json` is
+still honored exactly as given; a bare filename with no directory
+component (`--out foo.json`) still lands under `.data-scout/` too, for
+consistency.
+
+### 🚀 Added — `--markdown` on every command, with `--out`/`--markdown` validation
+
+Every command that writes output now supports `--markdown` to save as a
+readable `.md` file instead of JSON (tables for lists of uniform records,
+fenced code blocks for file/diff content, headers for nested sections).
+`--out path/to/file.md` also works without needing `--markdown` explicitly.
+Combining `--markdown` with an explicit `--out ....json` is rejected with a
+clear error rather than silently picking one — same mutual-exclusion
+pattern as `fetch-url`'s existing `--max-chars`/`--max-size`.
+
+### 🚀 Added — diff line numbers (github-commit, github-pr)
+
+Every entry in `patch_lines` now carries `old_line`/`new_line` (parsed from
+each hunk's `@@ -a,b +c,d @@` header and tracked per line): `removed` lines
+get `old_line` only, `added` lines get `new_line` only, `context` lines get
+both, `hunk_header` gets neither. The Markdown rendering shows these as a
+proper `Old # | New # | Line` table instead of a plain diff block, since a
+`\`\`\`diff` fenced block can't carry a line-number gutter without breaking
+the leading `+`/`-`/space character syntax highlighters key off of.
+
+### 🔧 Fixed — github-repo: file tree is now opt-in and untruncated
+
+The file-tree preview used to be always-on and capped at `--tree-limit`
+entries. It's now off by default (`--file-tree` to include it), and when
+included it's the **full, untruncated** tree — cap its size instead with
+`--max-chars`/`--max-size` (mutually exclusive, same validation as
+`fetch-url`) if the repo is huge.
+
+### 🔧 Fixed — github-folder: validation race conditions, per-file limits, disk export
+
+- `--max-files` without `--include-content` is now a clear error (it did
+  nothing silently before). `--include-content` without `--max-files` now
+  fetches **all** files found, not a hidden default cap of 20.
+- Added `--max-chars`/`--max-size` (mutually exclusive) to cap each fetched
+  file's content.
+- Added `--save-path-dir` (requires `--include-content`; errors clearly
+  without it) to also write every fetched file to disk, preserving the
+  repo-relative path structure (a file at `src/utils/a.py` lands at
+  `{save-path-dir}/src/utils/a.py`).
+- Every fetched file now includes a `detected_type` field (python/markdown/
+  json/yaml/dockerfile/etc., by extension) for downstream formatting.
+
+### 🚀 Added — Telegram enhanced-parser fallback
+
+`telegram-channel` now retries its fetch+parse cycle (default 3 attempts)
+and, if the primary parser still finds 0 posts despite a successful fetch,
+falls back to a richer parser (broader message detection, plus author/
+edited/message-type/forwarded-from/og:meta fields) before giving up.
+Parsing approach adapted from
+[PythonicCafe/tchan](https://github.com/PythonicCafe/tchan) — note this is
+a second, more thorough *parse* of the same public `t.me/s/` page, not an
+independent data source (Telegram only exposes the one public preview
+page). Every response now reports which parser actually produced the
+result via `parser_used`.
+
+### 🚀 Added — consistent phase-status terminal logging
+
+`multi-search`, `github-repo`, `github-commit`, `github-pr`, `github-folder`,
+`telegram-channel`, `discord-channel`, and `reddit-search` now print a
+`🔄 started` line and a timed `✅ completed` (or `❌ failed`) line with
+relevant counts, matching the style `web-search`/`image-search` already had
+via their Rich-powered progress UI.
 
 ### 🔴 Fixed — critical: _write_output was producing invalid, corrupted JSON
 

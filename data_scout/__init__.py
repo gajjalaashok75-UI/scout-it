@@ -63,8 +63,9 @@ from .config import (
     credential_status,
     run_config_wizard,
 )
+from .output import render_markdown, resolve_output_path, write_json_output
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 __author__ = "Ashok-gakr"
 __license__ = "MIT"
 
@@ -108,4 +109,7 @@ __all__ = [
     "run_config_wizard",
     "clear_credential",
     "clear_all_credentials",
+    "render_markdown",
+    "resolve_output_path",
+    "write_json_output",
 ]

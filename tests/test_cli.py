@@ -1048,16 +1048,32 @@ class TestWriteOutputProducesValidJson:
         finally:
             out.unlink(missing_ok=True)
 
-    def test_long_single_line_string_is_not_mangled(self):
+    def test_long_single_line_string_is_chunked_but_content_preserved(self):
+        """Long strings are now intentionally chunked into a JSON array of
+        <=500-char pieces (word-boundary safe) so no single line in the
+        output file is unreasonably long -- while staying fully valid,
+        round-trippable JSON. Short strings are left as plain strings."""
         from data_scout.cli import _write_output
-        long_str = " ".join(["word"] * 200)  # previously would have been wrapped/corrupted
+        long_str = " ".join(["word"] * 200)  # ~1000 chars
         data = {"title": long_str}
         out = self._tmp_json_path()
         try:
             _write_output(out, data)
             loaded = json.loads(out.read_text(encoding="utf-8"))
-            assert loaded["title"] == long_str
-            assert "\n" not in loaded["title"]
+            assert isinstance(loaded["title"], list)
+            assert all(len(chunk) <= 500 for chunk in loaded["title"])
+            assert " ".join(loaded["title"]) == long_str
+        finally:
+            out.unlink(missing_ok=True)
+
+    def test_short_string_is_not_chunked(self):
+        from data_scout.cli import _write_output
+        data = {"title": "a short title"}
+        out = self._tmp_json_path()
+        try:
+            _write_output(out, data)
+            loaded = json.loads(out.read_text(encoding="utf-8"))
+            assert loaded["title"] == "a short title"
         finally:
             out.unlink(missing_ok=True)
 

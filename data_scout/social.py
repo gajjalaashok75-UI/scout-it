@@ -50,38 +50,9 @@ _USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHT
 # Telegram — public channel preview (t.me/s/<channel>), tier 0
 # =====================================================================
 
-def telegram_channel(
-    channel: str,
-    max_results: int = 20,
-    max_fetch_retries: int = 3,
-) -> Dict[str, Any]:
-    """Fetch recent posts from a **public** Telegram channel via its official
-    web preview (``https://t.me/s/<channel>``) — no login required. Only
-    works for public channels that have previews enabled (the vast
-    majority do); private channels and DMs are out of scope entirely
-    (Telegram doesn't expose those without the MTProto client API + login).
-    """
-    from .extraction import fetch_resilient  # local import avoids a cycle at module load
-
-    channel = str(channel or "").strip().lstrip("@")
-    channel = channel.split("t.me/")[-1].split("t.me/s/")[-1].strip("/")
-    if not channel:
-        return {"error": "invalid_channel", "error_message": "Provide a channel username, e.g. 'durov' or 't.me/durov'."}
-
-    url = f"https://t.me/s/{channel}"
-    outcome = fetch_resilient(url, timeout=15, max_retries=max_fetch_retries)
-    if outcome["status"] != "success":
-        return {
-            "error": "fetch_failed",
-            "error_message": f"Could not load {url}: " + "; ".join(outcome["errors"][-3:]),
-        }
-
-    soup = BeautifulSoup(outcome["html"], "html.parser")
-
-    if soup.select_one(".tgme_page_context_link") is None and "tgme_channel_info" not in outcome["html"]:
-        # Heuristic: the public preview page has a distinct wrapper class;
-        # its total absence usually means the channel is private/nonexistent.
-        pass  # not fatal on its own — fall through and report 0 posts if genuinely empty
+def _parse_telegram_primary(html: str, max_results: int) -> Dict[str, Any]:
+    """Primary parser: fast, covers the common case."""
+    soup = BeautifulSoup(html, "html.parser")
 
     posts = []
     for wrap in soup.select(".tgme_widget_message_wrap")[-max_results:]:
@@ -106,11 +77,160 @@ def telegram_channel(
     channel_desc_el = soup.select_one(".tgme_channel_info_description")
 
     return {
-        "channel": channel,
         "title": channel_title_el.get_text(strip=True) if channel_title_el else None,
         "description": channel_desc_el.get_text(strip=True) if channel_desc_el else None,
-        "post_count_returned": len(posts),
-        "posts": list(reversed(posts)),  # newest first
+        "posts": list(reversed(posts)),
+    }
+
+
+def _parse_telegram_enhanced(html: str, max_results: int) -> Dict[str, Any]:
+    """Alternate, more thorough parser used as a fallback when the primary
+    parser finds 0 posts despite a successful fetch. Selector approach and
+    field set (author, edited flag, message type, forwarded-from, og:meta
+    channel info) inspired by PythonicCafe/tchan
+    (https://github.com/PythonicCafe/tchan), adapted to BeautifulSoup so no
+    new dependency (lxml) is required. Same public data source
+    (``t.me/s/<channel>``) as the primary parser -- this is a second,
+    richer opinion on parsing the same HTML, not an independent network
+    source, since Telegram itself only exposes one public preview page."""
+    soup = BeautifulSoup(html, "html.parser")
+
+    seen_ids = set()
+    posts = []
+    candidates = soup.select(".tgme_widget_message_wrap .tgme_widget_message, .tgme_widget_message[data-post]")
+    for msg in candidates:
+        post_link = msg.get("data-post")
+        if post_link in seen_ids:
+            continue
+        seen_ids.add(post_link)
+
+        meta_el = msg.select_one(".tgme_widget_message_meta")
+        edited = bool(meta_el and "edited" in meta_el.get_text(strip=True).lower())
+
+        author_el = msg.select_one(".tgme_widget_message_from_author")
+        forwarded_el = msg.select_one(".tgme_widget_message_forwarded_from_name")
+
+        text_el = msg.select_one(".tgme_widget_message_text")
+        text = text_el.get_text("\n", strip=True) if text_el else None
+
+        msg_type = "text"
+        if msg.select_one(".tgme_widget_message_poll"):
+            msg_type = "poll"
+        elif msg.select_one(".tgme_widget_message_sticker_wrap"):
+            msg_type = "sticker"
+        elif msg.select_one(".tgme_widget_message_roundvideo"):
+            msg_type = "round-video"
+        elif msg.select_one(".tgme_widget_message_video_wrap"):
+            msg_type = "video"
+        elif msg.select_one(".tgme_widget_message_photo_wrap"):
+            msg_type = "photo"
+        elif msg.select_one(".tgme_widget_message_document"):
+            msg_type = "document"
+        elif msg.select_one("audio"):
+            msg_type = "audio"
+        elif msg.select_one(".tgme_widget_message_location_wrap"):
+            msg_type = "location"
+        elif not text:
+            msg_type = "service"
+
+        date_el = msg.select_one("time")
+        views_el = msg.select_one(".tgme_widget_message_views")
+
+        preview_link_el = msg.select_one(".tgme_widget_message_link_preview")
+
+        posts.append({
+            "id": post_link,
+            "url": f"https://t.me/{post_link}" if post_link else None,
+            "type": msg_type,
+            "text": text,
+            "date": date_el.get("datetime") if date_el else None,
+            "views": views_el.get_text(strip=True) if views_el else None,
+            "edited": edited,
+            "author": author_el.get_text(strip=True) if author_el else None,
+            "forwarded_from": forwarded_el.get_text(strip=True) if forwarded_el else None,
+            "preview_url": preview_link_el.get("href") if preview_link_el else None,
+            "has_photo": bool(msg.select_one(".tgme_widget_message_photo_wrap")),
+            "has_video": bool(msg.select_one(".tgme_widget_message_video_wrap")),
+        })
+
+    def _meta(prop: str) -> Optional[str]:
+        tag = soup.select_one(f"meta[property='{prop}']")
+        return tag.get("content") if tag else None
+
+    return {
+        "title": _meta("og:title"),
+        "description": _meta("og:description"),
+        "image_url": _meta("og:image"),
+        "posts": list(reversed(posts))[-max_results:] if max_results else list(reversed(posts)),
+    }
+
+
+def telegram_channel(
+    channel: str,
+    max_results: int = 20,
+    max_fetch_retries: int = 3,
+) -> Dict[str, Any]:
+    """Fetch recent posts from a **public** Telegram channel via its official
+    web preview (``https://t.me/s/<channel>``) — no login required. Only
+    works for public channels that have previews enabled (the vast
+    majority do); private channels and DMs are out of scope entirely
+    (Telegram doesn't expose those without the MTProto client API + login).
+
+    Retries the fetch+parse cycle up to *max_fetch_retries* times (some
+    pages transiently render a "no messages" placeholder under load). If
+    every attempt's primary parse still comes back with 0 posts despite a
+    successful fetch, one more attempt re-parses the same HTML with a
+    richer, more defensive parser (see ``_parse_telegram_enhanced``) before
+    giving up — different selector strategy, same underlying public page.
+    """
+    from .extraction import fetch_resilient  # local import avoids a cycle at module load
+
+    channel = str(channel or "").strip().lstrip("@")
+    channel = channel.split("t.me/")[-1].split("t.me/s/")[-1].strip("/")
+    if not channel:
+        return {"error": "invalid_channel", "error_message": "Provide a channel username, e.g. 'durov' or 't.me/durov'."}
+
+    url = f"https://t.me/s/{channel}"
+    last_html = None
+    last_errors: List[str] = []
+
+    for attempt in range(max(1, max_fetch_retries)):
+        outcome = fetch_resilient(url, timeout=15, max_retries=1)
+        if outcome["status"] != "success":
+            last_errors = outcome["errors"]
+            continue
+
+        last_html = outcome["html"]
+        parsed = _parse_telegram_primary(last_html, max_results)
+        if parsed["posts"]:
+            return {
+                "channel": channel,
+                "title": parsed["title"],
+                "description": parsed["description"],
+                "post_count_returned": len(parsed["posts"]),
+                "posts": parsed["posts"],
+                "parser_used": "primary",
+            }
+        # 0 posts but fetch succeeded -- retry the fetch (page may have
+        # transiently rendered a placeholder) before giving up on this tier.
+        time.sleep(0.5 * (attempt + 1))
+
+    if last_html is None:
+        return {
+            "error": "fetch_failed",
+            "error_message": f"Could not load {url} after {max_fetch_retries} attempts: " + "; ".join(last_errors[-3:]),
+        }
+
+    # Primary parser found 0 posts across every retry -- fall back to the
+    # richer parser on the last HTML we did successfully fetch.
+    enhanced = _parse_telegram_enhanced(last_html, max_results)
+    return {
+        "channel": channel,
+        "title": enhanced["title"],
+        "description": enhanced["description"],
+        "post_count_returned": len(enhanced["posts"]),
+        "posts": enhanced["posts"],
+        "parser_used": "enhanced_fallback" if enhanced["posts"] else "none_found",
     }
 
 

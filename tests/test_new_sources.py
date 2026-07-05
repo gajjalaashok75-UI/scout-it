@@ -92,7 +92,7 @@ class TestGithubRepo:
             return _FakeResp(404, {})
 
         mock_request.side_effect = side_effect
-        out = gh.github_repo("psf/requests", full=True)
+        out = gh.github_repo("psf/requests", full=True, include_file_tree=True)
         assert out["languages"] == {"Python": 12345}
         assert out["branches"] == ["main", "dev"]
         assert out["branch_count"] == 2
@@ -100,7 +100,25 @@ class TestGithubRepo:
         assert out["open_pull_requests"] == 3
         assert out["top_contributors"][0]["login"] == "alice"
         assert out["latest_release"]["tag_name"] == "v1.0"
-        assert out["file_tree_preview"][0]["path"] == "a.py"
+        assert out["file_tree"][0]["path"] == "a.py"
+        assert out["file_tree_truncated"] is False
+
+    @mock.patch("data_scout.github_extract.requests.request")
+    def test_file_tree_not_included_by_default(self, mock_request):
+        base = {
+            "full_name": "psf/requests", "description": "d", "html_url": "u", "stargazers_count": 1,
+            "forks_count": 1, "subscribers_count": 1, "open_issues_count": 1, "default_branch": "main",
+            "language": "Python", "topics": [], "license": None, "fork": False, "archived": False,
+            "created_at": "x", "updated_at": "x", "pushed_at": "x", "size": 1,
+            "owner": {"login": "psf", "type": "Organization"},
+        }
+        mock_request.return_value = _FakeResp(200, base)
+        out = gh.github_repo("psf/requests", full=False)
+        assert "file_tree" not in out
+
+    def test_file_tree_rejects_both_max_chars_and_max_size(self):
+        out = gh.github_repo("psf/requests", full=False, include_file_tree=True, max_chars=100, max_size="5mb")
+        assert out["error"] == "invalid_arguments"
 
     @mock.patch("data_scout.github_extract.requests.request")
     def test_rate_limited(self, mock_request):
@@ -228,6 +246,7 @@ class TestTelegramChannel:
             assert out["post_count_returned"] == 1
             assert out["posts"][0]["text"] == "Hello world post"
             assert out["title"] == "Test Channel"
+            assert out["parser_used"] == "primary"
 
     def test_fetch_failure_reported(self):
         with mock.patch("data_scout.extraction.fetch_resilient", return_value={
@@ -239,6 +258,39 @@ class TestTelegramChannel:
     def test_empty_channel_name(self):
         out = social.telegram_channel("")
         assert out["error"] == "invalid_channel"
+
+    def test_reports_none_found_when_channel_page_has_no_messages(self):
+        # Both parsers rely on the same underlying t.me/s/ page structure to
+        # even detect that a message exists -- if the page genuinely has no
+        # messages, there's nothing for either parser to recover.
+        fake_html = """
+        <meta property="og:title" content="Empty Channel" />
+        <div class="tgme_channel_info_header_title">Empty Channel</div>
+        """
+        with mock.patch("data_scout.extraction.fetch_resilient", return_value={
+            "html": fake_html, "final_url": "u", "status": "success", "tier": "requests", "attempts": 1, "errors": [],
+        }):
+            out = social.telegram_channel("chan", max_fetch_retries=1)
+            assert out["post_count_returned"] == 0
+            assert out["parser_used"] == "none_found"
+
+    def test_parse_telegram_enhanced_extracts_rich_fields(self):
+        fake_html = """
+        <meta property="og:title" content="Chan" />
+        <div class="tgme_widget_message_wrap">
+          <div class="tgme_widget_message" data-post="chan/5">
+            <span class="tgme_widget_message_from_author">Alice</span>
+            <span class="tgme_widget_message_meta">12:00, edited</span>
+            <div class="tgme_widget_message_text">hello</div>
+            <time datetime="2026-01-01T00:00:00+00:00"></time>
+          </div>
+        </div>
+        """
+        result = social._parse_telegram_enhanced(fake_html, max_results=10)
+        assert result["posts"][0]["author"] == "Alice"
+        assert result["posts"][0]["edited"] is True
+        assert result["posts"][0]["text"] == "hello"
+        assert result["title"] == "Chan"
 
 
 class TestDiscordChannel:
@@ -300,6 +352,25 @@ class TestGithubPatchLines:
         assert lines[1]["text"] == "old line"
         assert lines[2]["text"] == "new line one"
 
+    def test_tracks_old_and_new_line_numbers(self):
+        # Hunk starts at old line 10, new line 10. One line removed, two added, one context.
+        patch = "@@ -10,2 +10,3 @@\n-removed at old 10\n+added at new 10\n+added at new 11\n context at old11/new12"
+        lines = gh._parse_patch_lines(patch)
+        removed = lines[1]
+        added1, added2 = lines[2], lines[3]
+        context = lines[4]
+
+        assert removed["type"] == "removed" and removed["old_line"] == 10 and removed["new_line"] is None
+        assert added1["type"] == "added" and added1["new_line"] == 10 and added1["old_line"] is None
+        assert added2["type"] == "added" and added2["new_line"] == 11
+        # after 1 removed (old: 10->11) and context not yet counted, context should be old=11
+        assert context["old_line"] == 11
+        assert context["new_line"] == 12
+
+    def test_hunk_header_has_no_line_numbers(self):
+        lines = gh._parse_patch_lines("@@ -1,2 +1,3 @@\n context")
+        assert lines[0]["old_line"] is None and lines[0]["new_line"] is None
+
     def test_empty_patch_returns_empty_list(self):
         assert gh._parse_patch_lines(None) == []
         assert gh._parse_patch_lines("") == []
@@ -315,6 +386,8 @@ class TestGithubPatchLines:
         out = gh.github_commit("x/y", "abc")
         assert out["files"][0]["patch_lines"][1]["type"] == "removed"
         assert out["files"][0]["patch_lines"][2]["type"] == "added"
+        assert out["files"][0]["patch_lines"][1]["old_line"] == 1
+        assert out["files"][0]["patch_lines"][2]["new_line"] == 1
 
 
 class TestGithubPrs:
@@ -361,6 +434,101 @@ class TestGithubFolder:
         ])
         out = gh.github_folder("x/y", path="src", recursive=False)
         assert out["entry_count"] == 2
+
+    def test_max_files_without_include_content_is_an_error(self):
+        out = gh.github_folder("x/y", path="src/", include_content=False, max_files=5)
+        assert out["error"] == "invalid_arguments"
+
+    def test_save_path_dir_without_include_content_is_an_error(self):
+        out = gh.github_folder("x/y", path="src/", include_content=False, save_path_dir="/tmp/x")
+        assert out["error"] == "invalid_arguments"
+
+    def test_max_chars_and_max_size_together_is_an_error(self):
+        out = gh.github_folder("x/y", path="src/", include_content=True, max_chars=100, max_size="1kb")
+        assert out["error"] == "invalid_arguments"
+
+    @mock.patch("data_scout.github_extract.requests.request")
+    def test_include_content_without_max_files_fetches_all(self, mock_request):
+        def side_effect(method, url, headers=None, params=None, timeout=None):
+            if url.endswith("/repos/x/y"):
+                return _FakeResp(200, {"default_branch": "main"})
+            if "/git/trees/" in url:
+                return _FakeResp(200, {"tree": [
+                    {"path": "src/a.py", "type": "blob", "size": 10},
+                    {"path": "src/b.py", "type": "blob", "size": 10},
+                    {"path": "src/c.py", "type": "blob", "size": 10},
+                ]})
+            if "/contents/" in url:
+                return _FakeResp(200, {"encoding": "base64", "content": base64.b64encode(b"x").decode(),
+                                        "path": "src/a.py", "sha": "s", "size": 1, "download_url": "u", "html_url": "u"})
+            return _FakeResp(404, {})
+        mock_request.side_effect = side_effect
+        out = gh.github_folder("x/y", path="src/", include_content=True)  # no max_files given
+        assert out["files_fetched"] == 3  # all files, no default cap
+        assert out["files_truncated"] is False
+
+    @mock.patch("data_scout.github_extract.requests.request")
+    def test_max_chars_truncates_content(self, mock_request):
+        def side_effect(method, url, headers=None, params=None, timeout=None):
+            if url.endswith("/repos/x/y"):
+                return _FakeResp(200, {"default_branch": "main"})
+            if "/git/trees/" in url:
+                return _FakeResp(200, {"tree": [{"path": "src/a.py", "type": "blob", "size": 100}]})
+            if "/contents/" in url:
+                long_content = "x" * 1000
+                return _FakeResp(200, {"encoding": "base64", "content": base64.b64encode(long_content.encode()).decode(),
+                                        "path": "src/a.py", "sha": "s", "size": 1000, "download_url": "u", "html_url": "u"})
+            return _FakeResp(404, {})
+        mock_request.side_effect = side_effect
+        out = gh.github_folder("x/y", path="src/", include_content=True, max_chars=50)
+        assert len(out["files"][0]["content"]) == 50
+        assert out["files"][0]["content_truncated"] is True
+
+    @mock.patch("data_scout.github_extract.requests.request")
+    def test_detected_file_type(self, mock_request):
+        def side_effect(method, url, headers=None, params=None, timeout=None):
+            if url.endswith("/repos/x/y"):
+                return _FakeResp(200, {"default_branch": "main"})
+            if "/git/trees/" in url:
+                return _FakeResp(200, {"tree": [{"path": "src/a.py", "type": "blob", "size": 10}]})
+            if "/contents/" in url:
+                return _FakeResp(200, {"encoding": "base64", "content": base64.b64encode(b"x").decode(),
+                                        "path": "src/a.py", "sha": "s", "size": 1, "download_url": "u", "html_url": "u"})
+            return _FakeResp(404, {})
+        mock_request.side_effect = side_effect
+        out = gh.github_folder("x/y", path="src/", include_content=True)
+        assert out["files"][0]["detected_type"] == "python"
+
+    def test_detect_file_type_helper(self):
+        assert gh._detect_file_type("a.py") == "python"
+        assert gh._detect_file_type("README.md") == "markdown"
+        assert gh._detect_file_type("config.yaml") == "yaml"
+        assert gh._detect_file_type("data.json") == "json"
+        assert gh._detect_file_type("Dockerfile") == "dockerfile"
+        assert gh._detect_file_type("noextension") == "unknown"
+
+    @mock.patch("data_scout.github_extract.requests.request")
+    def test_save_path_dir_writes_files_preserving_tree(self, mock_request):
+        import tempfile, shutil
+        tmpdir = tempfile.mkdtemp()
+        try:
+            def side_effect(method, url, headers=None, params=None, timeout=None):
+                if url.endswith("/repos/x/y"):
+                    return _FakeResp(200, {"default_branch": "main"})
+                if "/git/trees/" in url:
+                    return _FakeResp(200, {"tree": [{"path": "src/a.py", "type": "blob", "size": 5}]})
+                if "/contents/" in url:
+                    return _FakeResp(200, {"encoding": "base64", "content": base64.b64encode(b"hello").decode(),
+                                            "path": "src/a.py", "sha": "s", "size": 5, "download_url": "u", "html_url": "u"})
+                return _FakeResp(404, {})
+            mock_request.side_effect = side_effect
+            out = gh.github_folder("x/y", path="src/", include_content=True, save_path_dir=tmpdir)
+            assert out["files_saved_to_disk"] == 1
+            saved_file = Path(tmpdir) / "src" / "a.py"
+            assert saved_file.exists()
+            assert saved_file.read_text() == "hello"
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 class TestTelegramSearch:

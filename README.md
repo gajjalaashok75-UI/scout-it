@@ -403,7 +403,7 @@ no anonymous access at all, even for public repos, which is a GitHub platform ru
 
 | Command | What it does |
 |---|---|
-| `github-repo --repo owner/repo` | **Full repo overview by default**: metadata, branches, ~commit count, accurately-split open issue/PR counts, top contributors, latest release, language breakdown, file-tree preview. Pass `--quick` for just the fast single-call metadata. |
+| `github-repo --repo owner/repo` | **Full repo overview by default**: metadata, branches, ~commit count, accurately-split open issue/PR counts, top contributors, latest release, language breakdown. Pass `--quick` for just the fast single-call metadata. Pass `--file-tree` for the full, untruncated file tree (capped by `--max-chars`/`--max-size` if the repo is huge — mutually exclusive, error if both given). |
 | `github-commits --repo owner/repo [--branch][--path][--author][--since][--until][--max]` | List commits (full, untruncated commit messages) |
 | `github-commit --repo owner/repo --sha SHA` | **Full diff**: every changed file, +/- counts, raw unified `patch` text AND a structured `patch_lines` array (each line tagged `added`/`removed`/`context`/`hunk_header`) |
 | `github-pr --repo owner/repo --number N` | PR metadata + full diff/changed files (same `patch_lines` structuring) |
@@ -411,7 +411,7 @@ no anonymous access at all, even for public repos, which is a GitHub platform ru
 | `github-issues --repo owner/repo [--state][--labels][--max]` | List issues |
 | `github-issue --repo owner/repo --number N` | Full issue body + all comments |
 | `github-file --repo owner/repo --path PATH [--ref REF]` | Fetch & decode one file's contents |
-| `github-folder --repo owner/repo --path src/ [--no-recursive][--include-content]` | List (and optionally fetch) every file under a folder |
+| `github-folder --repo owner/repo --path src/ [--no-recursive][--include-content][--max-files][--max-chars/--max-size][--save-path-dir]` | List (and optionally fetch) every file under a folder. `--max-files` requires `--include-content` (error otherwise); without `--max-files`, `--include-content` fetches ALL files found. `--save-path-dir` (requires `--include-content`) also writes fetched files to disk, preserving the repo-relative tree. Each fetched file gets a `detected_type` (python/markdown/json/yaml/etc.) |
 | `github-search-code --query "..."` | Code search (needs `GITHUB_TOKEN`, 10 req/min) |
 | `github-search-repos --query "language:python stars:>1000"` | Repo search — each hit carries the same full metadata as `github-repo` |
 | `github-discussions --repo owner/repo` | List discussions (**requires** `GITHUB_TOKEN`) |
@@ -427,7 +427,7 @@ GITHUB_TOKEN=ghp_xxx data-scout github-discussions --repo pytorch/pytorch
 
 | Command | Tier | Needs |
 |---|---|---|
-| `telegram-channel --channel NAME [--max]` | 0 — works now | nothing (public `t.me/s/` preview) |
+| `telegram-channel --channel NAME [--max]` | 0 — works now | nothing (public `t.me/s/` preview; retries 3x then falls back to a richer parser if 0 posts found) |
 | `telegram-channel --query "..." [--max][--posts-per-channel]` | 0 — works now | nothing (finds public channels via a `site:t.me` search) |
 | `discord-channel --channel-id ID [--max]` | 1 — needs a key | `DISCORD_BOT_TOKEN` (bot must be in the server) |
 | `reddit-search --query "..." [--subreddit][--max]` | 2 — best-effort | Reddit blocks most anonymous requests as of 2026; optionally set `REDDIT_COOKIE` |
@@ -553,6 +553,29 @@ print(cleaned)  # Output: "Hello world with extra spaces"
 ```
 
 ## Output Files and JSON Shapes
+
+### Where output goes, and in what format
+
+Every command's default `--out` path lives under `.data-scout/` (created automatically next to
+wherever you run the command), e.g. `.data-scout/web_search_results.json` — an explicit
+`--out some/path.json` is always honored exactly as given instead.
+
+**Line-length-safe JSON**: any string field over 500 characters (a long article body, extracted
+page content, etc.) is broken into an array of <=500-char chunks at word boundaries instead of
+one giant single-line value — still fully standard, valid JSON (an array just serializes one
+element per line). Diff `patch` text is left as-is since it already has a structured `patch_lines`
+breakdown for readability instead.
+
+**Markdown export**: add `--markdown` to any command to save a readable `.md` file instead of
+JSON (tables for lists of uniform records, fenced code blocks for file/diff content). `--out
+file.md` also works without `--markdown`. Combining `--markdown` with an explicit `--out
+....json` is rejected with a clear error.
+
+```bash
+data-scout github-repo --repo psf/requests --markdown          # .data-scout/github_repo_results.md
+data-scout web-search --query "rust vs go" --out report.md     # markdown, no --markdown flag needed
+data-scout web-search --query "x" --markdown --out result.json # ERROR: conflicting formats
+```
 
 ### Web Search Output (`results.json`)
 

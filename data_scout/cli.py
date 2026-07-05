@@ -48,6 +48,7 @@ try:
     from . import engines as search_engines
     from . import social
     from . import config as ds_config
+    from . import output as output_mod
 except Exception as e:
     raise ImportError("Could not import from data_scout modules: " + str(e))
 
@@ -56,27 +57,88 @@ except Exception as e:
 # Output helpers
 # ---------------------------------------------------------------------------
 
-def _write_output(out_path: Path, data: Any) -> None:
-    """Write *data* as clean, valid, standard JSON to *out_path*.
+def _log_phase(label: str, phase: str, **details: Any) -> None:
+    """Consistent one-line phase status for commands that don't already have
+    a Rich-powered progress UI (web-search/image-search do, via
+    EnterpriseSearchEngine/ImageSearchEngine). Prints e.g.:
 
-    Previous versions tried to "pretty print" long strings (diff patches,
-    commit messages, article bodies) by word-wrapping them and then
-    blindly replacing every escaped ``\\n`` in the whole serialized JSON
-    with a raw newline character. That corrupted the file two ways: (1)
-    word-wrapping collapsed real embedded newlines (e.g. every line of a
-    diff patch) into single spaces before re-wrapping at an arbitrary
-    character width, destroying the original line structure; (2) the
-    blind replace injected raw, unescaped control characters into JSON
-    string literals, which is invalid per the JSON spec (RFC 8259) and
-    broke ``json.load`` downstream with "Invalid control character"
-    errors. Multi-line text is still fully preserved and human-readable
-    here — ``json.dumps`` properly escapes real newlines as the standard
-    ``\\n`` sequence, which every JSON parser/viewer renders as a line
-    break; this file just no longer *lies* about being valid JSON.
+        🔄 github-commit: fetching psf/requests@abc123...
+        ✅ github-commit: done in 0.8s (3 files changed)
     """
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    json_str = json.dumps(data, indent=2, ensure_ascii=False)
-    out_path.write_text(json_str, encoding="utf-8")
+    icon = {"started": "🔄", "completed": "✅", "failed": "❌"}.get(phase, "•")
+    extra = " (" + ", ".join(f"{k}={v}" for k, v in details.items()) + ")" if details else ""
+    print(f"{icon} {label}{extra}")
+
+
+class _PhaseTimer:
+    """Context manager pairing a 'started' log line with a timed
+    'completed'/'failed' one, for the simpler (non-Rich-UI) commands."""
+
+    def __init__(self, label: str, **start_details: Any):
+        self.label = label
+        self.start_details = start_details
+        self.start_time = None
+
+    def __enter__(self):
+        self.start_time = time.time()
+        _log_phase(self.label, "started", **self.start_details)
+        return self
+
+    def done(self, **details: Any) -> None:
+        elapsed = time.time() - self.start_time
+        _log_phase(self.label, "completed", seconds=f"{elapsed:.2f}", **details)
+
+    def failed(self, **details: Any) -> None:
+        elapsed = time.time() - self.start_time
+        _log_phase(self.label, "failed", seconds=f"{elapsed:.2f}", **details)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+
+def _write_output(out_path: Path, data: Any) -> None:
+    """Write *data* to *out_path* as either line-length-safe JSON (default)
+    or Markdown, based on the resolved extension. Path/format resolution
+    itself (honoring --out/--markdown together, defaulting bare filenames
+    under .data-scout/) happens once, centrally, right after argument
+    parsing in main() -- see COMMAND_OUTPUT_STUBS and its use below.
+    """
+    if out_path.suffix.lower() == ".md":
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        title = out_path.stem.replace("_", " ").replace("-", " ").title()
+        out_path.write_text(output_mod.render_markdown(data, title), encoding="utf-8")
+    else:
+        output_mod.write_json_output(out_path, data)
+
+
+# Maps each command to the base filename (no extension, no directory) its
+# --out default is built from, e.g. 'web-search' -> '.data-scout/struct_format_results.json'.
+# Centralizes --out/--markdown resolution in one place instead of duplicating
+# it in every dispatch block.
+COMMAND_OUTPUT_STUBS: Dict[str, str] = {
+    'web-search': 'struct_format_results',
+    'image-search': 'image_search_results',
+    'news-search': 'news_search_results',
+    'video-search': 'video_search_results',
+    'fetch-url': 'url_fetch_result',
+    'video-extract': 'video_extract_results',
+    'multi-search': 'multi_search_results',
+    'github-repo': 'github_repo_results',
+    'github-commits': 'github_commits_results',
+    'github-commit': 'github_commit_results',
+    'github-pr': 'github_pr_results',
+    'github-prs': 'github_prs_results',
+    'github-folder': 'github_folder_results',
+    'github-issues': 'github_issues_results',
+    'github-issue': 'github_issue_results',
+    'github-file': 'github_file_results',
+    'github-search-code': 'github_search_code_results',
+    'github-search-repos': 'github_search_repos_results',
+    'github-discussions': 'github_discussions_results',
+    'telegram-channel': 'telegram_results',
+    'discord-channel': 'discord_results',
+    'reddit-search': 'reddit_results',
+}
 
 
 def web_search(
@@ -1057,7 +1119,8 @@ def main():
     web_parser.add_argument('--query', '-q', required=True, help='Search query')
     web_parser.add_argument('--max', '-m', type=int, default=5, help='Max results (1-100)')
     web_parser.add_argument('--workers', '-w', type=int, default=8, help='Parallel workers')
-    web_parser.add_argument('--out', '-o', default='struct_format_results.json', help='Output file')
+    web_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/struct_format_results.json)')
+    web_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     web_parser.add_argument('--region', default=None, help='DuckDuckGo region (example: us-en, wt-wt)')
     web_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     web_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
@@ -1081,7 +1144,8 @@ def main():
     )
     img_parser.add_argument('--query', '-q', required=True, help='Search query')
     img_parser.add_argument('--max', '-m', type=int, default=5, help='Max images (1-50)')
-    img_parser.add_argument('--out', '-o', default='image_search_results.json', help='Output file')
+    img_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/image_search_results.json)')
+    img_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     img_parser.add_argument('--download', '-d', action='store_true', help='Download images')
     img_parser.add_argument('--download-dir', default='downloaded_images', help='Download directory')
     img_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
@@ -1112,7 +1176,8 @@ def main():
     )
     news_parser.add_argument('--query', '-q', required=True, help='Search query')
     news_parser.add_argument('--max', '-m', type=int, default=5, help='Max news items (1-50)')
-    news_parser.add_argument('--out', '-o', default='news_search_results.json', help='Output file')
+    news_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/news_search_results.json)')
+    news_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     news_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
     news_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     news_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
@@ -1136,7 +1201,8 @@ def main():
     )
     video_parser.add_argument('--query', '-q', required=True, help='Search query')
     video_parser.add_argument('--max', '-m', type=int, default=5, help='Max videos (1-50)')
-    video_parser.add_argument('--out', '-o', default='video_search_results.json', help='Output file')
+    video_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/video_search_results.json)')
+    video_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     video_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
     video_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     video_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
@@ -1161,7 +1227,8 @@ def main():
     url_parser.add_argument('--timeout', type=int, default=25, help='Extraction timeout in seconds (increase for JS-rendered SPAs)')
     url_parser.add_argument('--max-chars', type=int, default=None, help='Maximum characters to extract (e.g., 10000)')
     url_parser.add_argument('--max-size', type=str, default=None, help='Maximum response size (e.g., 100kb, 1mb, 500mb)')
-    url_parser.add_argument('--out', '-o', default='url_fetch_result.json', help='Output file')
+    url_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/url_fetch_result.json)')
+    url_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     url_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
     url_parser.add_argument('--raw-html', action='store_true', help='Return raw HTML (prettified) instead of extracted/cleaned content')
     url_parser.add_argument('--js-render', action='store_true', help='Skip straight to Playwright rendering instead of trying requests first')
@@ -1191,7 +1258,8 @@ def main():
     video_extract_parser.add_argument('--url', required=True, help='Video URL to extract (e.g., https://www.youtube.com/watch?v=VIDEO_ID)')
     video_extract_parser.add_argument('--subtitle-lang', default='en', help='Preferred subtitle language code (default: en)')
     video_extract_parser.add_argument('--segments', action='store_true', help='Include subtitle segments with timestamps (default: off)')
-    video_extract_parser.add_argument('--out', '-o', default='video_extract_results.json', help='Output file (default: video_extract_results.json)')
+    video_extract_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/video_extract_results.json)')
+    video_extract_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     video_extract_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
     video_extract_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier (requests, then Playwright) when fetching the video page')
     video_extract_parser.add_argument('--no-js-fallback', dest='enable_js_fallback', action='store_false', help='Disable automatic Playwright fallback when the page fetch fails or looks blocked')
@@ -1226,7 +1294,8 @@ def main():
     multi_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier when fetching each result page')
     multi_parser.add_argument('--no-js-fallback', dest='enable_js_fallback', action='store_false', help='Disable automatic Playwright fallback')
     multi_parser.set_defaults(enable_js_fallback=True)
-    multi_parser.add_argument('--out', '-o', default='multi_search_results.json', help='Output file')
+    multi_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/multi_search_results.json)')
+    multi_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     multi_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     # list-engines subcommand — show configuration status of every engine
@@ -1263,10 +1332,13 @@ def main():
         ),
     )
     gh_repo_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
-    gh_repo_parser.add_argument('--quick', dest='full', action='store_false', help='Fast single-call basic metadata only (skip branches/contributors/releases/tree/etc.)')
+    gh_repo_parser.add_argument('--quick', dest='full', action='store_false', help='Fast single-call basic metadata only (skip branches/contributors/releases/etc.)')
     gh_repo_parser.set_defaults(full=True)
-    gh_repo_parser.add_argument('--tree-limit', type=int, default=200, help='Max file-tree entries to include in the preview')
-    gh_repo_parser.add_argument('--out', '-o', default='github_repo_results.json', help='Output file')
+    gh_repo_parser.add_argument('--file-tree', action='store_true', help='Include the FULL, untruncated file tree (not included by default -- can be huge)')
+    gh_repo_parser.add_argument('--max-chars', type=int, default=None, help='(--file-tree only) cap the tree output by character count -- mutually exclusive with --max-size')
+    gh_repo_parser.add_argument('--max-size', default=None, help='(--file-tree only) cap the tree output by size, e.g. 5mb -- mutually exclusive with --max-chars')
+    gh_repo_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_repo_results.json)')
+    gh_repo_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_repo_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_commits_parser = subparsers.add_parser('github-commits', help='List commits in a GitHub repo')
@@ -1277,7 +1349,8 @@ def main():
     gh_commits_parser.add_argument('--since', default=None, help='ISO8601 date — only commits after this')
     gh_commits_parser.add_argument('--until', default=None, help='ISO8601 date — only commits before this')
     gh_commits_parser.add_argument('--max', '-m', type=int, default=30, help='Max commits to list')
-    gh_commits_parser.add_argument('--out', '-o', default='github_commits_results.json', help='Output file')
+    gh_commits_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_commits_results.json)')
+    gh_commits_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_commits_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_commit_parser = subparsers.add_parser('github-commit', help='Full details for ONE commit: stats, changed files, and unified diff patches')
@@ -1285,7 +1358,8 @@ def main():
     gh_commit_parser.add_argument('--sha', required=True, help='Commit SHA (full or short)')
     gh_commit_parser.add_argument('--no-patch', dest='include_patch', action='store_false', help="Omit each file's unified diff patch text (metadata only)")
     gh_commit_parser.set_defaults(include_patch=True)
-    gh_commit_parser.add_argument('--out', '-o', default='github_commit_results.json', help='Output file')
+    gh_commit_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_commit_results.json)')
+    gh_commit_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_commit_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_pr_parser = subparsers.add_parser('github-pr', help='Get a pull request, including its full diff and changed files')
@@ -1293,7 +1367,8 @@ def main():
     gh_pr_parser.add_argument('--number', '-n', type=int, required=True, help='Pull request number')
     gh_pr_parser.add_argument('--no-diff', dest='include_diff', action='store_false', help='Omit the changed-files/diff list (metadata only)')
     gh_pr_parser.set_defaults(include_diff=True)
-    gh_pr_parser.add_argument('--out', '-o', default='github_pr_results.json', help='Output file')
+    gh_pr_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_pr_results.json)')
+    gh_pr_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_pr_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_prs_parser = subparsers.add_parser('github-prs', help='List pull requests in a GitHub repo (PR-specific fields, unlike github-issues)')
@@ -1301,7 +1376,8 @@ def main():
     gh_prs_parser.add_argument('--state', default='open', choices=['open', 'closed', 'all'], help='PR state filter')
     gh_prs_parser.add_argument('--sort', default='created', choices=['created', 'updated', 'popularity', 'long-running'], help='Sort order')
     gh_prs_parser.add_argument('--max', '-m', type=int, default=30, help='Max PRs to list')
-    gh_prs_parser.add_argument('--out', '-o', default='github_prs_results.json', help='Output file')
+    gh_prs_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_prs_results.json)')
+    gh_prs_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_prs_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_folder_parser = subparsers.add_parser('github-folder', help="List (and optionally fetch) every file under a repo folder, e.g. 'src/'")
@@ -1310,9 +1386,13 @@ def main():
     gh_folder_parser.add_argument('--ref', default=None, help='Branch/tag/SHA (default: repo default branch)')
     gh_folder_parser.add_argument('--no-recursive', dest='recursive', action='store_false', help='List only immediate children instead of walking the whole subtree')
     gh_folder_parser.set_defaults(recursive=True)
-    gh_folder_parser.add_argument('--include-content', action='store_true', help="Also fetch each file's contents (capped by --max-files)")
-    gh_folder_parser.add_argument('--max-files', type=int, default=20, help='Cap on how many files to fetch content for (only with --include-content)')
-    gh_folder_parser.add_argument('--out', '-o', default='github_folder_results.json', help='Output file')
+    gh_folder_parser.add_argument('--include-content', action='store_true', help="Also fetch each file's contents")
+    gh_folder_parser.add_argument('--max-files', type=int, default=None, help='(--include-content only) cap how many files get their content fetched; omit to fetch ALL of them. Error if given without --include-content.')
+    gh_folder_parser.add_argument('--max-chars', type=int, default=None, help="(--include-content only) cap each file's content by character count -- mutually exclusive with --max-size")
+    gh_folder_parser.add_argument('--max-size', default=None, help="(--include-content only) cap each file's content by size, e.g. 500kb -- mutually exclusive with --max-chars")
+    gh_folder_parser.add_argument('--save-path-dir', default=None, help='(--include-content only) also write every fetched file to disk under this directory, preserving the repo-relative path structure. Error if given without --include-content.')
+    gh_folder_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_folder_results.json)')
+    gh_folder_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_folder_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_issues_parser = subparsers.add_parser('github-issues', help='List issues in a GitHub repo')
@@ -1321,7 +1401,8 @@ def main():
     gh_issues_parser.add_argument('--labels', default=None, help='Comma-separated label filter')
     gh_issues_parser.add_argument('--max', '-m', type=int, default=30, help='Max issues to list')
     gh_issues_parser.add_argument('--include-prs', dest='include_pull_requests', action='store_true', help="Include pull requests (GitHub's issues API returns PRs too by default)")
-    gh_issues_parser.add_argument('--out', '-o', default='github_issues_results.json', help='Output file')
+    gh_issues_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_issues_results.json)')
+    gh_issues_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_issues_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_issue_parser = subparsers.add_parser('github-issue', help='Get one issue, including its full body and comments')
@@ -1329,33 +1410,38 @@ def main():
     gh_issue_parser.add_argument('--number', '-n', type=int, required=True, help='Issue number')
     gh_issue_parser.add_argument('--no-comments', dest='include_comments', action='store_false', help='Omit comments')
     gh_issue_parser.set_defaults(include_comments=True)
-    gh_issue_parser.add_argument('--out', '-o', default='github_issue_results.json', help='Output file')
+    gh_issue_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_issue_results.json)')
+    gh_issue_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_issue_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_file_parser = subparsers.add_parser('github-file', help='Fetch a single file\'s contents from a GitHub repo')
     gh_file_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
     gh_file_parser.add_argument('--path', required=True, help='File path within the repo, e.g. src/main.py')
     gh_file_parser.add_argument('--ref', default=None, help='Branch/tag/SHA (default: repo default branch)')
-    gh_file_parser.add_argument('--out', '-o', default='github_file_results.json', help='Output file')
+    gh_file_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_file_results.json)')
+    gh_file_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_file_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_search_code_parser = subparsers.add_parser('github-search-code', help='Search code across GitHub (requires GITHUB_TOKEN)')
     gh_search_code_parser.add_argument('--query', '-q', required=True, help="GitHub code search query, e.g. 'fetch_resilient language:python'")
     gh_search_code_parser.add_argument('--max', '-m', type=int, default=20, help='Max results')
-    gh_search_code_parser.add_argument('--out', '-o', default='github_search_code_results.json', help='Output file')
+    gh_search_code_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_search_code_results.json)')
+    gh_search_code_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_search_code_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_search_repos_parser = subparsers.add_parser('github-search-repos', help='Search GitHub repositories')
     gh_search_repos_parser.add_argument('--query', '-q', required=True, help="e.g. 'language:python topic:llm stars:>1000'")
     gh_search_repos_parser.add_argument('--sort', default='stars', choices=['stars', 'forks', 'help-wanted-issues', 'updated'], help='Sort order')
     gh_search_repos_parser.add_argument('--max', '-m', type=int, default=20, help='Max results')
-    gh_search_repos_parser.add_argument('--out', '-o', default='github_search_repos_results.json', help='Output file')
+    gh_search_repos_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_search_repos_results.json)')
+    gh_search_repos_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_search_repos_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_discussions_parser = subparsers.add_parser('github-discussions', help='List GitHub Discussions for a repo (requires GITHUB_TOKEN)')
     gh_discussions_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
     gh_discussions_parser.add_argument('--max', '-m', type=int, default=20, help='Max discussions')
-    gh_discussions_parser.add_argument('--out', '-o', default='github_discussions_results.json', help='Output file')
+    gh_discussions_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_discussions_results.json)')
+    gh_discussions_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_discussions_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     # ======================================================================
@@ -1376,7 +1462,8 @@ def main():
     telegram_parser.add_argument('--max', '-m', type=int, default=20, help='Max posts to return (--channel mode) or max channels (--query mode)')
     telegram_parser.add_argument('--posts-per-channel', type=int, default=3, help='(--query mode) posts to preview per matched channel')
     telegram_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier')
-    telegram_parser.add_argument('--out', '-o', default='telegram_results.json', help='Output file')
+    telegram_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/telegram_results.json)')
+    telegram_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     telegram_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     discord_parser = subparsers.add_parser(
@@ -1393,7 +1480,8 @@ def main():
     discord_parser.add_argument('--channel-id', required=True, help='Numeric Discord channel ID')
     discord_parser.add_argument('--max', '-m', type=int, default=50, help='Max messages to return')
     discord_parser.add_argument('--before', default=None, help='Only messages before this message ID (pagination)')
-    discord_parser.add_argument('--out', '-o', default='discord_results.json', help='Output file')
+    discord_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/discord_results.json)')
+    discord_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     discord_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     reddit_parser = subparsers.add_parser(
@@ -1410,7 +1498,8 @@ def main():
     reddit_parser.add_argument('--subreddit', default=None, help='Restrict search to one subreddit')
     reddit_parser.add_argument('--sort', default='relevance', choices=['relevance', 'hot', 'top', 'new', 'comments'], help='Sort order')
     reddit_parser.add_argument('--max', '-m', type=int, default=20, help='Max results')
-    reddit_parser.add_argument('--out', '-o', default='reddit_results.json', help='Output file')
+    reddit_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/reddit_results.json)')
+    reddit_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     reddit_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     args = parser.parse_args()
@@ -1418,6 +1507,18 @@ def main():
     if not args.command:
         parser.print_help()
         return
+
+    # Centralized --out / --markdown resolution: honors an explicit --out,
+    # falls back to the command's default filename under .data-scout/, and
+    # rejects the --markdown + explicit --out-ending-in-.json combination.
+    if args.command in COMMAND_OUTPUT_STUBS and hasattr(args, 'out'):
+        stub = COMMAND_OUTPUT_STUBS[args.command]
+        out_arg = args.out if args.out is not None else f'{output_mod.DEFAULT_OUTPUT_DIR}/{stub}.json'
+        resolved = output_mod.resolve_output_path(out_arg, getattr(args, 'markdown', False), stub)
+        if 'error' in resolved:
+            print(f"❌ Error: {resolved['error']}\n")
+            return
+        args.out = str(resolved['path'])
 
     if args.command == 'image-search':
         if args.min_width is not None and args.max_width is not None and args.min_width > args.max_width:
@@ -1777,17 +1878,19 @@ def main():
     # ==========================================================================
     elif args.command == 'multi-search':
         engine_list = [e.strip() for e in args.engines.split(',') if e.strip()]
-        print(f"\n🌐 Multi-engine search: '{args.query}' across {engine_list}\n")
-        structured_results, stats = multi_search(
-            args.query,
-            engines=engine_list,
-            max_results=args.max,
-            workers=args.workers,
-            max_fetch_retries=args.max_fetch_retries,
-            enable_js_fallback=args.enable_js_fallback,
-            dedupe=args.dedupe,
-            serpapi_engine=args.serpapi_engine,
-        )
+        _cmd_timer = _PhaseTimer(f"multi-search '{args.query}'", engines=engine_list)
+        with _cmd_timer:
+            _log_phase(f"multi-search '{args.query}'", "started", phase="discovering across engines")
+            structured_results, stats = multi_search(
+                args.query,
+                engines=engine_list,
+                max_results=args.max,
+                workers=args.workers,
+                max_fetch_retries=args.max_fetch_retries,
+                enable_js_fallback=args.enable_js_fallback,
+                dedupe=args.dedupe,
+                serpapi_engine=args.serpapi_engine,
+            )
         output = {
             'query': args.query,
             'search_type': 'multi-engine',
@@ -1801,11 +1904,9 @@ def main():
             print(json.dumps(output, indent=2, ensure_ascii=False))
         else:
             skipped = stats['discovery'].get('skipped', [])
-            print(f"✅ MULTI-SEARCH COMPLETE!")
-            print(f"   🔎 Engines run: {stats['discovery'].get('engines_run', [])}")
+            _cmd_timer.done(engines_run=stats['discovery'].get('engines_run', []), results=len(structured_results))
             if skipped:
                 print(f"   ⏭️  Skipped: {[s['engine'] for s in skipped]} (run `data-scout list-engines` for setup hints)")
-            print(f"   📊 Results: {len(structured_results)}")
             print(f'   📂 Results saved to: {out_path.resolve()}\n')
 
     # ==========================================================================
@@ -1847,18 +1948,27 @@ def main():
     # GitHub extraction commands
     # ==========================================================================
     elif args.command == 'github-repo':
-        result = gh.github_repo(args.repo, full=args.full, tree_limit=args.tree_limit)
+        _cmd_timer = _PhaseTimer(f"github-repo {args.repo}", mode="full" if args.full else "quick")
+        with _cmd_timer:
+            result = gh.github_repo(
+                args.repo, full=args.full, include_file_tree=args.file_tree,
+                max_chars=args.max_chars, max_size=args.max_size,
+            )
         out_path = Path(args.out)
         _write_output(out_path, result)
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False))
         elif "error" in result:
+            _cmd_timer.failed(reason=result['error'])
             print(f"❌ Error: {result['error_message']}\n")
         else:
-            print(f"✅ {result['full_name']} — ⭐ {result['stars']} stars, 🍴 {result['forks']} forks, lang: {result['language']}")
+            _cmd_timer.done(stars=result['stars'], forks=result['forks'])
             if args.full:
                 print(f"   {result.get('branch_count', '?')} branches, ~{result.get('commit_count_approx', '?')} commits, "
                       f"{result.get('open_issues_only', '?')} open issues, {result.get('open_pull_requests', '?')} open PRs")
+            if args.file_tree and isinstance(result.get('file_tree'), list):
+                trunc_note = " (truncated by --max-chars/--max-size)" if result.get('file_tree_truncated') else ""
+                print(f"   🌳 File tree: {result.get('file_tree_entries_returned', 0)}/{result.get('file_tree_total_entries', 0)} entries{trunc_note}")
             print(f"   📂 Results saved to: {out_path.resolve()}\n")
 
     elif args.command == 'github-commits':
@@ -1876,30 +1986,34 @@ def main():
             print(f"✅ {result['commit_count']} commits found\n   📂 Results saved to: {out_path.resolve()}\n")
 
     elif args.command == 'github-commit':
-        result = gh.github_commit(args.repo, args.sha, include_patch=args.include_patch)
+        _cmd_timer = _PhaseTimer(f"github-commit {args.repo}@{args.sha[:12]}")
+        with _cmd_timer:
+            result = gh.github_commit(args.repo, args.sha, include_patch=args.include_patch)
         out_path = Path(args.out)
         _write_output(out_path, result)
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False))
         elif "error" in result:
+            _cmd_timer.failed(reason=result['error'])
             print(f"❌ Error: {result['error_message']}\n")
         else:
             stats = result.get('stats', {})
-            print(f"✅ Commit {result['short_sha']}: {result['files_changed']} files changed "
-                  f"(+{stats.get('additions', 0)}/-{stats.get('deletions', 0)})")
+            _cmd_timer.done(files_changed=result['files_changed'], additions=stats.get('additions', 0), deletions=stats.get('deletions', 0))
             print(f"   📂 Results saved to: {out_path.resolve()}\n")
 
     elif args.command == 'github-pr':
-        result = gh.github_pull_request(args.repo, args.number, include_diff=args.include_diff)
+        _cmd_timer = _PhaseTimer(f"github-pr {args.repo}#{args.number}")
+        with _cmd_timer:
+            result = gh.github_pull_request(args.repo, args.number, include_diff=args.include_diff)
         out_path = Path(args.out)
         _write_output(out_path, result)
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False))
         elif "error" in result:
+            _cmd_timer.failed(reason=result['error'])
             print(f"❌ Error: {result['error_message']}\n")
         else:
-            print(f"✅ PR #{result['number']}: {result['title']} [{result['state']}]"
-                  f"{' (merged)' if result.get('is_merged') else ''}")
+            _cmd_timer.done(state=result['state'], merged=result.get('is_merged', False))
             print(f"   📂 Results saved to: {out_path.resolve()}\n")
 
     elif args.command == 'github-prs':
@@ -1914,19 +2028,26 @@ def main():
             print(f"✅ {result['pr_count']} pull requests found\n   📂 Results saved to: {out_path.resolve()}\n")
 
     elif args.command == 'github-folder':
-        result = gh.github_folder(
-            args.repo, path=args.path, ref=args.ref, recursive=args.recursive,
-            include_content=args.include_content, max_files=args.max_files,
-        )
+        _cmd_timer = _PhaseTimer(f"github-folder {args.repo}:{args.path or '/'}", recursive=args.recursive)
+        with _cmd_timer:
+            result = gh.github_folder(
+                args.repo, path=args.path, ref=args.ref, recursive=args.recursive,
+                include_content=args.include_content, max_files=args.max_files,
+                max_chars=args.max_chars, max_size=args.max_size, save_path_dir=args.save_path_dir,
+            )
         out_path = Path(args.out)
         _write_output(out_path, result)
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False))
         elif "error" in result:
+            _cmd_timer.failed(reason=result['error'])
             print(f"❌ Error: {result['error_message']}\n")
         else:
-            print(f"✅ {result['entry_count']} entries under '{result['path']}'"
-                  + (f", {result.get('files_fetched', 0)} files' content fetched" if args.include_content else ""))
+            _cmd_timer.done(entries=result['entry_count'], files_fetched=result.get('files_fetched', 0) if args.include_content else 'n/a')
+            if args.save_path_dir and "files_saved_to_disk" in result:
+                print(f"   💾 {result['files_saved_to_disk']} files written to: {Path(args.save_path_dir).resolve()}")
+                if result.get("save_errors"):
+                    print(f"   ⚠️  {len(result['save_errors'])} files failed to save (see 'save_errors' in output)")
             print(f"   📂 Results saved to: {out_path.resolve()}\n")
 
     elif args.command == 'github-issues':
@@ -2009,52 +2130,66 @@ def main():
         if not args.channel and not args.query:
             print("❌ Error: provide either --channel NAME (direct mode) or --query \"...\" (search mode)\n")
         elif args.query:
-            result = social.telegram_search(
-                args.query, max_channels=args.max, posts_per_channel=args.posts_per_channel,
-                max_fetch_retries=args.max_fetch_retries,
-            )
+            _cmd_timer = _PhaseTimer(f"telegram search '{args.query}'")
+            with _cmd_timer:
+                result = social.telegram_search(
+                    args.query, max_channels=args.max, posts_per_channel=args.posts_per_channel,
+                    max_fetch_retries=args.max_fetch_retries,
+                )
             out_path = Path(args.out)
             _write_output(out_path, result)
             if args.json:
                 print(json.dumps(result, indent=2, ensure_ascii=False))
             elif "error" in result:
+                _cmd_timer.failed(reason=result['error'])
                 print(f"❌ Error: {result['error_message']}\n")
             else:
-                print(f"✅ {result['channel_count']} public channels found matching '{args.query}'\n"
-                      f"   📂 Results saved to: {out_path.resolve()}\n")
+                _cmd_timer.done(channels_found=result['channel_count'])
+                print(f"   📂 Results saved to: {out_path.resolve()}\n")
         else:
-            result = social.telegram_channel(args.channel, max_results=args.max, max_fetch_retries=args.max_fetch_retries)
+            _cmd_timer = _PhaseTimer(f"telegram-channel @{args.channel}")
+            with _cmd_timer:
+                result = social.telegram_channel(args.channel, max_results=args.max, max_fetch_retries=args.max_fetch_retries)
             out_path = Path(args.out)
             _write_output(out_path, result)
             if args.json:
                 print(json.dumps(result, indent=2, ensure_ascii=False))
             elif "error" in result:
+                _cmd_timer.failed(reason=result['error'])
                 print(f"❌ Error: {result['error_message']}\n")
             else:
-                print(f"✅ {result['post_count_returned']} posts from @{result['channel']}\n"
-                      f"   📂 Results saved to: {out_path.resolve()}\n")
+                _cmd_timer.done(posts=result['post_count_returned'], parser=result.get('parser_used', '?'))
+                print(f"   📂 Results saved to: {out_path.resolve()}\n")
 
     elif args.command == 'discord-channel':
-        result = social.discord_channel_messages(args.channel_id, max_results=args.max, before_message_id=args.before)
+        _cmd_timer = _PhaseTimer(f"discord-channel {args.channel_id}")
+        with _cmd_timer:
+            result = social.discord_channel_messages(args.channel_id, max_results=args.max, before_message_id=args.before)
         out_path = Path(args.out)
         _write_output(out_path, result)
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False))
         elif "error" in result:
+            _cmd_timer.failed(reason=result['error'])
             print(f"❌ Error: {result['error_message']}\n")
         else:
-            print(f"✅ {result['message_count']} messages\n   📂 Results saved to: {out_path.resolve()}\n")
+            _cmd_timer.done(messages=result['message_count'])
+            print(f"   📂 Results saved to: {out_path.resolve()}\n")
 
     elif args.command == 'reddit-search':
-        result = social.reddit_search(args.query, subreddit=args.subreddit, max_results=args.max, sort=args.sort)
+        _cmd_timer = _PhaseTimer(f"reddit-search '{args.query}'", subreddit=args.subreddit or "all")
+        with _cmd_timer:
+            result = social.reddit_search(args.query, subreddit=args.subreddit, max_results=args.max, sort=args.sort)
         out_path = Path(args.out)
         _write_output(out_path, result)
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False))
         elif "error" in result:
+            _cmd_timer.failed(reason=result['error'])
             print(f"❌ Error: {result['error_message']}\n")
         else:
-            print(f"✅ {result['result_count']} posts found\n   📂 Results saved to: {out_path.resolve()}\n")
+            _cmd_timer.done(posts=result['result_count'])
+            print(f"   📂 Results saved to: {out_path.resolve()}\n")
 
 
 if __name__ == '__main__':
