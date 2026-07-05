@@ -40,193 +40,43 @@ try:
         ExtractionEngine,
         ImageSearchEngine,
         _compact_options,
+        _ddgs_list_search,
+        _ddgs_list_search_with_retry,
         fetch_resilient,
     )
     from . import github_extract as gh
     from . import engines as search_engines
     from . import social
+    from . import config as ds_config
 except Exception as e:
     raise ImportError("Could not import from data_scout modules: " + str(e))
 
 
 # ---------------------------------------------------------------------------
-# Output helpers — ensure no single JSON line exceeds 400 characters
+# Output helpers
 # ---------------------------------------------------------------------------
 
-def _word_wrap_string(value: str, max_line: int = 360) -> str:
-    """Word-wrap a string at word boundaries so no line exceeds *max_line* chars."""
-    if len(value) <= max_line:
-        return value
-    words = value.split()
-    lines: List[str] = []
-    current = ""
-    for word in words:
-        if not current:
-            current = word
-        elif len(current) + 1 + len(word) > max_line:
-            lines.append(current)
-            current = word
-        else:
-            current += " " + word
-    if current:
-        lines.append(current)
-    return "\n".join(lines)
-
-
-def _wrap_long_strings(data: Any, max_line: int = 360, skip_keys: Optional[set] = None) -> Any:
-    """Recursively word-wrap long string values in a JSON-serialisable structure.
-
-    String values under keys listed in *skip_keys* are returned verbatim
-    (useful for preserving HTML, long descriptions, or other structured text).
-    """
-    if isinstance(data, str):
-        return _word_wrap_string(data, max_line)
-    if isinstance(data, dict):
-        skip_keys = skip_keys or set()
-        return {
-            k: v if k in skip_keys else _wrap_long_strings(v, max_line, skip_keys)
-            for k, v in data.items()
-        }
-    if isinstance(data, list):
-        return [_wrap_long_strings(item, max_line, skip_keys) for item in data]
-    return data
-
-
-_MAX_LINE = 400
-
-
 def _write_output(out_path: Path, data: Any) -> None:
-    """Write JSON to *out_path*, wrapping lines so no line exceeds 400 chars.
+    """Write *data* as clean, valid, standard JSON to *out_path*.
 
-    Long string values are word-wrapped *before* serialisation so the
-    resulting JSON file stays readable and no single line exceeds 400
-    characters.
-
-    The following fields are preserved verbatim (not word-wrapped):
-    - ``raw_html``  (prettified HTML — wrapping would break tag structure)
-    - ``description``  (video descriptions / metadata — can be very long)
-    - ``body``         (news article body — long-form text)
+    Previous versions tried to "pretty print" long strings (diff patches,
+    commit messages, article bodies) by word-wrapping them and then
+    blindly replacing every escaped ``\\n`` in the whole serialized JSON
+    with a raw newline character. That corrupted the file two ways: (1)
+    word-wrapping collapsed real embedded newlines (e.g. every line of a
+    diff patch) into single spaces before re-wrapping at an arbitrary
+    character width, destroying the original line structure; (2) the
+    blind replace injected raw, unescaped control characters into JSON
+    string literals, which is invalid per the JSON spec (RFC 8259) and
+    broke ``json.load`` downstream with "Invalid control character"
+    errors. Multi-line text is still fully preserved and human-readable
+    here — ``json.dumps`` properly escapes real newlines as the standard
+    ``\\n`` sequence, which every JSON parser/viewer renders as a line
+    break; this file just no longer *lies* about being valid JSON.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    skip_keys = {"raw_html", "description", "body"}
-    wrapped = _wrap_long_strings(data, _MAX_LINE - 60, skip_keys)
-    json_str = json.dumps(wrapped, indent=2, ensure_ascii=False)
-    # Turn escaped newlines (inserted by _wrap_long_strings) into real newlines
-    json_str = json_str.replace("\\n", "\n")
+    json_str = json.dumps(data, indent=2, ensure_ascii=False)
     out_path.write_text(json_str, encoding="utf-8")
-
-
-def _ddgs_list_search(
-    method_name: str,
-    query: str,
-    max_results: int,
-    options: Optional[Dict[str, Any]] = None,
-    timeout: int = 25,
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """Run DDGS method with compatibility fallbacks across package versions."""
-    start_time = time.time()
-    params = _compact_options(options or {})
-    params['max_results'] = max_results
-
-    try:
-        with DDGS(timeout=timeout) as ddgs:
-            method = getattr(ddgs, method_name, None)
-            if not callable(method):
-                return [], {
-                    'total': 0,
-                    'success': 0,
-                    'execution_time': time.time() - start_time,
-                    'error': f"DDGS method '{method_name}' is unavailable in this installed version",
-                }
-
-            call_patterns = [
-                lambda: list(method(keywords=query, **params)),
-                lambda: list(method(query, **params)),
-                lambda: list(method(query, max_results=max_results)),
-                lambda: list(method(keywords=query, max_results=max_results)),
-                lambda: list(method(query, max_results)),
-                lambda: list(method(query))[:max_results],
-            ]
-
-            for call in call_patterns:
-                try:
-                    results = call()
-                    return results, {
-                        'total': len(results),
-                        'success': len(results),
-                        'execution_time': time.time() - start_time,
-                    }
-                except TypeError:
-                    continue
-
-            return [], {
-                'total': 0,
-                'success': 0,
-                'execution_time': time.time() - start_time,
-                'error': f"No compatible DDGS call signature worked for '{method_name}'",
-            }
-    except Exception as exc:
-        return [], {
-            'total': 0,
-            'success': 0,
-            'execution_time': time.time() - start_time,
-            'error': 'DuckDuckGo request failed',
-        }
-
-
-def _build_list_attempt_options(base_options: Dict[str, Any], attempt: int) -> Dict[str, Any]:
-    """Relax filters on later retry attempts to maximize the chance of a
-    non-empty result set (mirrors the strategy used by web/image search)."""
-    options = _compact_options(base_options)
-    if attempt > 0:
-        options['timelimit'] = None
-    if attempt > 1 and options.get('safesearch', 'moderate') != 'off':
-        options['safesearch'] = 'off'
-    return options
-
-
-def _ddgs_list_search_with_retry(
-    method_name: str,
-    query: str,
-    max_results: int,
-    options: Optional[Dict[str, Any]] = None,
-    timeout: int = 25,
-    retry_on_zero_success: bool = True,
-    max_zero_success_retries: int = 2,
-    retry_backoff_seconds: float = 1.0,
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """Retry-on-zero-results wrapper around ``_ddgs_list_search``.
-
-    Used by ``news-search`` and ``video-search`` so they get the same
-    zero-result retry/backoff behavior as ``web-search`` and ``image-search``.
-    DDGS itself is the discovery layer here (there's no meaningful "Playwright
-    fallback" for the search listing itself, since ``ddgs`` already talks to
-    DuckDuckGo's API/HTML backends directly) — the Playwright fallback chain
-    applies one layer down, when fetching each *result's* page content.
-    """
-    retries = max(0, int(max_zero_success_retries))
-    max_attempts = 1 + retries if retry_on_zero_success else 1
-
-    last_results: List[Dict[str, Any]] = []
-    last_stats: Dict[str, Any] = {}
-
-    for attempt in range(max_attempts):
-        attempt_options = _build_list_attempt_options(options or {}, attempt)
-        results, stats = _ddgs_list_search(
-            method_name, query=query, max_results=max_results, options=attempt_options, timeout=timeout,
-        )
-        stats['attempts'] = attempt + 1
-        stats['retries_used'] = attempt
-        last_results, last_stats = results, stats
-
-        if results:
-            break
-
-        if attempt < max_attempts - 1:
-            if retry_backoff_seconds > 0:
-                time.sleep(retry_backoff_seconds * (attempt + 1))
-
-    return last_results, last_stats
 
 
 def web_search(
@@ -1186,6 +1036,8 @@ def fatchurl(url: str, timeout: int = 25):
 
 
 def main():
+    ds_config.load_stored_credentials_into_env()
+
     parser = argparse.ArgumentParser(
         description='Complete search pipeline: web, image, news, video search + URL fetch'
     )
@@ -1380,11 +1232,40 @@ def main():
     # list-engines subcommand — show configuration status of every engine
     subparsers.add_parser('list-engines', help='List available search engines and whether each is configured')
 
+    # config subcommand — interactive credential setup, stored at ~/.data-scout/
+    config_parser = subparsers.add_parser(
+        'config',
+        help='Set up API keys/tokens (GitHub, Brave, Bing, Google, SerpAPI, Discord, Reddit) -- stored at ~/.data-scout/',
+        description=(
+            "Run with no flags for an interactive wizard that asks for each supported API key/token "
+            "one at a time (Enter to skip). Values are stored at ~/.data-scout/credentials.json "
+            "(owner-only file permissions) and loaded automatically on every future run -- a real "
+            "environment variable always takes precedence over a stored value."
+        ),
+    )
+    config_parser.add_argument('--show', action='store_true', help='Show configuration status for every known key (no secrets printed) instead of running the wizard')
+    config_parser.add_argument('--clear', default=None, metavar='KEY', help='Remove one stored key, e.g. --clear GITHUB_TOKEN')
+    config_parser.add_argument('--clear-all', action='store_true', help='Remove all stored keys')
+
     # ======================================================================
     # GitHub extraction subcommands
     # ======================================================================
-    gh_repo_parser = subparsers.add_parser('github-repo', help='Get GitHub repository metadata')
+    gh_repo_parser = subparsers.add_parser(
+        'github-repo',
+        help='Get comprehensive GitHub repository details (metadata + branches + commit/PR/issue counts + contributors + releases + languages + file tree)',
+        description=(
+            "By default this aggregates a full overview: base metadata, all branches, an "
+            "approximate commit count, accurately split open-issue/open-PR counts, top "
+            "contributors, latest release, per-language byte breakdown, and a file-tree "
+            "preview -- everything several separate github-* commands would otherwise need. "
+            "That costs ~7 API calls instead of 1; pass --quick for just the fast base metadata "
+            "if you're conserving rate limit (60/hr unauthenticated, 5,000/hr with GITHUB_TOKEN)."
+        ),
+    )
     gh_repo_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
+    gh_repo_parser.add_argument('--quick', dest='full', action='store_false', help='Fast single-call basic metadata only (skip branches/contributors/releases/tree/etc.)')
+    gh_repo_parser.set_defaults(full=True)
+    gh_repo_parser.add_argument('--tree-limit', type=int, default=200, help='Max file-tree entries to include in the preview')
     gh_repo_parser.add_argument('--out', '-o', default='github_repo_results.json', help='Output file')
     gh_repo_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1414,6 +1295,25 @@ def main():
     gh_pr_parser.set_defaults(include_diff=True)
     gh_pr_parser.add_argument('--out', '-o', default='github_pr_results.json', help='Output file')
     gh_pr_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    gh_prs_parser = subparsers.add_parser('github-prs', help='List pull requests in a GitHub repo (PR-specific fields, unlike github-issues)')
+    gh_prs_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
+    gh_prs_parser.add_argument('--state', default='open', choices=['open', 'closed', 'all'], help='PR state filter')
+    gh_prs_parser.add_argument('--sort', default='created', choices=['created', 'updated', 'popularity', 'long-running'], help='Sort order')
+    gh_prs_parser.add_argument('--max', '-m', type=int, default=30, help='Max PRs to list')
+    gh_prs_parser.add_argument('--out', '-o', default='github_prs_results.json', help='Output file')
+    gh_prs_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    gh_folder_parser = subparsers.add_parser('github-folder', help="List (and optionally fetch) every file under a repo folder, e.g. 'src/'")
+    gh_folder_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
+    gh_folder_parser.add_argument('--path', default='', help="Folder path, e.g. 'src/' (default: repo root)")
+    gh_folder_parser.add_argument('--ref', default=None, help='Branch/tag/SHA (default: repo default branch)')
+    gh_folder_parser.add_argument('--no-recursive', dest='recursive', action='store_false', help='List only immediate children instead of walking the whole subtree')
+    gh_folder_parser.set_defaults(recursive=True)
+    gh_folder_parser.add_argument('--include-content', action='store_true', help="Also fetch each file's contents (capped by --max-files)")
+    gh_folder_parser.add_argument('--max-files', type=int, default=20, help='Cap on how many files to fetch content for (only with --include-content)')
+    gh_folder_parser.add_argument('--out', '-o', default='github_folder_results.json', help='Output file')
+    gh_folder_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_issues_parser = subparsers.add_parser('github-issues', help='List issues in a GitHub repo')
     gh_issues_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
@@ -1461,14 +1361,35 @@ def main():
     # ======================================================================
     # Social/platform subcommands
     # ======================================================================
-    telegram_parser = subparsers.add_parser('telegram-channel', help='Fetch recent posts from a PUBLIC Telegram channel (no auth needed)')
-    telegram_parser.add_argument('--channel', required=True, help="Channel username, e.g. 'durov' (or a t.me URL)")
-    telegram_parser.add_argument('--max', '-m', type=int, default=20, help='Max posts to return')
+    telegram_parser = subparsers.add_parser(
+        'telegram-channel',
+        help='Fetch posts from a PUBLIC Telegram channel, or search for channels by topic',
+        description=(
+            'Two modes: --channel NAME fetches posts directly from a known public channel '
+            '(no auth needed). --query "..." instead searches for public channels matching a '
+            'topic (via a site:t.me web search -- there is no official Telegram-wide search '
+            'API for anonymous use) and returns a preview of each match.'
+        ),
+    )
+    telegram_parser.add_argument('--channel', default=None, help="Channel username, e.g. 'durov' (or a t.me URL) -- direct mode")
+    telegram_parser.add_argument('--query', '-q', default=None, help='Search for public channels matching this topic -- search mode')
+    telegram_parser.add_argument('--max', '-m', type=int, default=20, help='Max posts to return (--channel mode) or max channels (--query mode)')
+    telegram_parser.add_argument('--posts-per-channel', type=int, default=3, help='(--query mode) posts to preview per matched channel')
     telegram_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier')
     telegram_parser.add_argument('--out', '-o', default='telegram_results.json', help='Output file')
     telegram_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
-    discord_parser = subparsers.add_parser('discord-channel', help='Fetch recent messages from a Discord channel (requires DISCORD_BOT_TOKEN)')
+    discord_parser = subparsers.add_parser(
+        'discord-channel',
+        help='Fetch recent messages from a Discord channel (requires DISCORD_BOT_TOKEN)',
+        description=(
+            'Requires DISCORD_BOT_TOKEN, and the bot must already be a member of the target '
+            "server with read-history permission. Unlike telegram-channel, there's no --query "
+            "topic-search mode here: Discord has no anonymous/public read API of any kind "
+            '(you always need a bot that has actually been invited into the specific server), '
+            "so there's no server-wide or cross-server search this library could legitimately offer."
+        ),
+    )
     discord_parser.add_argument('--channel-id', required=True, help='Numeric Discord channel ID')
     discord_parser.add_argument('--max', '-m', type=int, default=50, help='Max messages to return')
     discord_parser.add_argument('--before', default=None, help='Only messages before this message ID (pagination)')
@@ -1796,8 +1717,7 @@ def main():
                 print(f'\n   ✅ VIDEO EXTRACTION COMPLETE!')
                 print(f'   📄 Results saved to: {out_path.resolve()}\n')
         else:
-            wrapped = _wrap_long_strings(output, _MAX_LINE - 60, skip_keys={"description"})
-            print(json.dumps(wrapped, indent=2, ensure_ascii=False).replace('\\n', '\n'))
+            print(json.dumps(output, indent=2, ensure_ascii=False))
 
     # Fetch URL
     elif args.command == 'fetch-url':
@@ -1903,13 +1823,31 @@ def main():
             "\nNote: Google/Bing/Yahoo/Opera search-result *pages* can't be scraped directly "
             "(anti-bot + ToS). The engines above use each provider's official API instead — "
             "SerpAPI additionally proxies Yahoo/Baidu/Yandex/etc. via --serpapi-engine.\n"
+            "Run `data-scout config` to set up API keys interactively.\n"
         )
+
+    # ==========================================================================
+    # config
+    # ==========================================================================
+    elif args.command == 'config':
+        if args.clear_all:
+            ds_config.clear_all_credentials()
+            print("✅ All stored credentials cleared.\n")
+        elif args.clear:
+            if ds_config.clear_credential(args.clear):
+                print(f"✅ Cleared stored credential: {args.clear}\n")
+            else:
+                print(f"⚪ No stored credential found for: {args.clear}\n")
+        elif args.show:
+            ds_config.print_credential_status()
+        else:
+            ds_config.run_config_wizard()
 
     # ==========================================================================
     # GitHub extraction commands
     # ==========================================================================
     elif args.command == 'github-repo':
-        result = gh.github_repo(args.repo)
+        result = gh.github_repo(args.repo, full=args.full, tree_limit=args.tree_limit)
         out_path = Path(args.out)
         _write_output(out_path, result)
         if args.json:
@@ -1918,6 +1856,9 @@ def main():
             print(f"❌ Error: {result['error_message']}\n")
         else:
             print(f"✅ {result['full_name']} — ⭐ {result['stars']} stars, 🍴 {result['forks']} forks, lang: {result['language']}")
+            if args.full:
+                print(f"   {result.get('branch_count', '?')} branches, ~{result.get('commit_count_approx', '?')} commits, "
+                      f"{result.get('open_issues_only', '?')} open issues, {result.get('open_pull_requests', '?')} open PRs")
             print(f"   📂 Results saved to: {out_path.resolve()}\n")
 
     elif args.command == 'github-commits':
@@ -1959,6 +1900,33 @@ def main():
         else:
             print(f"✅ PR #{result['number']}: {result['title']} [{result['state']}]"
                   f"{' (merged)' if result.get('is_merged') else ''}")
+            print(f"   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'github-prs':
+        result = gh.github_prs(args.repo, state=args.state, sort=args.sort, max_results=args.max)
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ {result['pr_count']} pull requests found\n   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'github-folder':
+        result = gh.github_folder(
+            args.repo, path=args.path, ref=args.ref, recursive=args.recursive,
+            include_content=args.include_content, max_files=args.max_files,
+        )
+        out_path = Path(args.out)
+        _write_output(out_path, result)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif "error" in result:
+            print(f"❌ Error: {result['error_message']}\n")
+        else:
+            print(f"✅ {result['entry_count']} entries under '{result['path']}'"
+                  + (f", {result.get('files_fetched', 0)} files' content fetched" if args.include_content else ""))
             print(f"   📂 Results saved to: {out_path.resolve()}\n")
 
     elif args.command == 'github-issues':
@@ -2038,16 +2006,33 @@ def main():
     # Social/platform commands
     # ==========================================================================
     elif args.command == 'telegram-channel':
-        result = social.telegram_channel(args.channel, max_results=args.max, max_fetch_retries=args.max_fetch_retries)
-        out_path = Path(args.out)
-        _write_output(out_path, result)
-        if args.json:
-            print(json.dumps(result, indent=2, ensure_ascii=False))
-        elif "error" in result:
-            print(f"❌ Error: {result['error_message']}\n")
+        if not args.channel and not args.query:
+            print("❌ Error: provide either --channel NAME (direct mode) or --query \"...\" (search mode)\n")
+        elif args.query:
+            result = social.telegram_search(
+                args.query, max_channels=args.max, posts_per_channel=args.posts_per_channel,
+                max_fetch_retries=args.max_fetch_retries,
+            )
+            out_path = Path(args.out)
+            _write_output(out_path, result)
+            if args.json:
+                print(json.dumps(result, indent=2, ensure_ascii=False))
+            elif "error" in result:
+                print(f"❌ Error: {result['error_message']}\n")
+            else:
+                print(f"✅ {result['channel_count']} public channels found matching '{args.query}'\n"
+                      f"   📂 Results saved to: {out_path.resolve()}\n")
         else:
-            print(f"✅ {result['post_count_returned']} posts from @{result['channel']}\n"
-                  f"   📂 Results saved to: {out_path.resolve()}\n")
+            result = social.telegram_channel(args.channel, max_results=args.max, max_fetch_retries=args.max_fetch_retries)
+            out_path = Path(args.out)
+            _write_output(out_path, result)
+            if args.json:
+                print(json.dumps(result, indent=2, ensure_ascii=False))
+            elif "error" in result:
+                print(f"❌ Error: {result['error_message']}\n")
+            else:
+                print(f"✅ {result['post_count_returned']} posts from @{result['channel']}\n"
+                      f"   📂 Results saved to: {out_path.resolve()}\n")
 
     elif args.command == 'discord-channel':
         result = social.discord_channel_messages(args.channel_id, max_results=args.max, before_message_id=args.before)

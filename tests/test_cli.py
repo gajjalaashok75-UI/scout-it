@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest import mock
 
 import json
+import os
 import pytest
 import requests
 
@@ -698,7 +699,7 @@ class TestAdvancedSearchFeatures:
     """Tests for retry and advanced DDGS feature wiring."""
 
     def test_news_search_uses_ddgs_wrapper(self):
-        with mock.patch('data_scout.cli._ddgs_list_search') as mock_ddgs:
+        with mock.patch('data_scout.extraction._ddgs_list_search') as mock_ddgs:
             mock_ddgs.return_value = ([{'title': 'news'}], {'total': 1, 'success': 1, 'execution_time': 0.1})
             results, stats = news_search('economy', max_results=5)
 
@@ -709,7 +710,7 @@ class TestAdvancedSearchFeatures:
             assert call_kwargs['max_results'] == 5
 
     def test_video_search_uses_ddgs_wrapper(self):
-        with mock.patch('data_scout.cli._ddgs_list_search') as mock_ddgs:
+        with mock.patch('data_scout.extraction._ddgs_list_search') as mock_ddgs:
             mock_ddgs.return_value = ([{'title': 'video'}], {'total': 1, 'success': 1, 'execution_time': 0.2})
             results, stats = video_search('dogs', max_results=3, duration='short')
 
@@ -1019,56 +1020,75 @@ class TestJsonOutputValidity:
                 assert len(loaded["structured_results"]) == 1
 
 
-class TestWrapLongStrings:
-    """Test _wrap_long_strings skip_keys behaviour"""
+class TestWriteOutputProducesValidJson:
+    """Regression tests for the _write_output JSON-corruption bug: it used to
+    word-wrap long strings (collapsing embedded newlines via str.split()) and
+    then blindly replace every escaped '\\n' in the whole serialized JSON
+    with a raw newline character -- corrupting multi-line values (diff
+    patches, commit messages, article bodies) into invalid JSON with raw
+    control characters. _write_output must now always produce clean,
+    standard, round-trippable JSON."""
 
-    def test_skip_keys_preserves_html(self):
-        """raw_html key is preserved verbatim"""
-        from data_scout.cli import _wrap_long_strings
-        html = '<div class="test"><p>long content that would exceed wrap limit</p></div>'
-        data = {"raw_html": html}
-        result = _wrap_long_strings(data, 40, skip_keys={"raw_html"})
-        assert result["raw_html"] == html
+    def _tmp_json_path(self):
+        import tempfile
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        os.unlink(path)  # _write_output must create it fresh
+        return Path(path)
 
-    def test_skip_keys_preserves_description(self):
-        """description key is preserved verbatim while other strings are wrapped"""
-        from data_scout.cli import _wrap_long_strings
-        long_desc = " ".join(["word"] * 50)
-        long_title = " ".join(["word"] * 50)
-        data = {"description": long_desc, "title": long_title}
-        result = _wrap_long_strings(data, 40, skip_keys={"description"})
-        assert result["description"] == long_desc
-        assert "\n" in result["title"]
+    def test_multiline_string_round_trips(self):
+        from data_scout.cli import _write_output
+        data = {"patch": "@@ -1,2 +1,3 @@\n-old line\n+new line one\n+new line two\n context line"}
+        out = self._tmp_json_path()
+        try:
+            _write_output(out, data)
+            loaded = json.loads(out.read_text(encoding="utf-8"))  # must not raise
+            assert loaded == data
+            assert loaded["patch"].count("\n") == 4
+        finally:
+            out.unlink(missing_ok=True)
 
-    def test_skip_keys_preserves_body(self):
-        """body key is preserved verbatim"""
-        from data_scout.cli import _wrap_long_strings
-        long_body = " ".join(["word"] * 50)
-        data = {"body": long_body}
-        result = _wrap_long_strings(data, 40, skip_keys={"body"})
-        assert result["body"] == long_body
+    def test_long_single_line_string_is_not_mangled(self):
+        from data_scout.cli import _write_output
+        long_str = " ".join(["word"] * 200)  # previously would have been wrapped/corrupted
+        data = {"title": long_str}
+        out = self._tmp_json_path()
+        try:
+            _write_output(out, data)
+            loaded = json.loads(out.read_text(encoding="utf-8"))
+            assert loaded["title"] == long_str
+            assert "\n" not in loaded["title"]
+        finally:
+            out.unlink(missing_ok=True)
 
-    def test_skip_keys_nested(self):
-        """skip_keys works on nested dicts and lists"""
-        from data_scout.cli import _wrap_long_strings
-        long_desc = " ".join(["word"] * 50)
+    def test_nested_structures_round_trip(self):
+        from data_scout.cli import _write_output
         data = {
             "results": [
-                {"description": long_desc, "title": long_desc},
-                {"description": long_desc, "title": long_desc},
+                {"body": "line one\nline two\nline three", "title": "t1"},
+                {"body": "another\nmulti\nline\nvalue", "title": "t2"},
             ]
         }
-        result = _wrap_long_strings(data, 40, skip_keys={"description"})
-        assert "\n" not in result["results"][0]["description"]
-        assert "\n" in result["results"][0]["title"]
+        out = self._tmp_json_path()
+        try:
+            _write_output(out, data)
+            loaded = json.loads(out.read_text(encoding="utf-8"))
+            assert loaded == data
+        finally:
+            out.unlink(missing_ok=True)
 
-    def test_default_no_skip(self):
-        """default behaviour (skip_keys=None) still wraps all strings"""
-        from data_scout.cli import _wrap_long_strings
-        long_str = " ".join(["word"] * 50)
-        data = {"key": long_str}
-        result = _wrap_long_strings(data, 40)
-        assert "\n" in result["key"]
+    def test_creates_parent_directories(self):
+        from data_scout.cli import _write_output
+        import tempfile
+        base = Path(tempfile.mkdtemp())
+        out = base / "nested" / "dir" / "out.json"
+        try:
+            _write_output(out, {"a": 1})
+            assert out.exists()
+            assert json.loads(out.read_text(encoding="utf-8")) == {"a": 1}
+        finally:
+            import shutil
+            shutil.rmtree(base, ignore_errors=True)
 
 
 class TestEnhanceVideoDescriptions:

@@ -46,17 +46,25 @@ from .github_extract import (
     github_commits,
     github_discussions,
     github_file_content,
+    github_folder,
     github_issue,
     github_issues,
+    github_prs,
     github_pull_request,
     github_rate_limit,
     github_repo,
     github_search_code,
     github_search_repos,
 )
-from .social import discord_channel_messages, reddit_search, telegram_channel
+from .social import discord_channel_messages, reddit_search, telegram_channel, telegram_search
+from .config import (
+    clear_all_credentials,
+    clear_credential,
+    credential_status,
+    run_config_wizard,
+)
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 __author__ = "Ashok-gakr"
 __license__ = "MIT"
 
@@ -83,14 +91,21 @@ __all__ = [
     "github_commits",
     "github_commit",
     "github_pull_request",
+    "github_prs",
     "github_issues",
     "github_issue",
     "github_file_content",
+    "github_folder",
     "github_search_code",
     "github_search_repos",
     "github_discussions",
     "github_rate_limit",
     "telegram_channel",
+    "telegram_search",
     "discord_channel_messages",
     "reddit_search",
+    "credential_status",
+    "run_config_wizard",
+    "clear_credential",
+    "clear_all_credentials",
 ]

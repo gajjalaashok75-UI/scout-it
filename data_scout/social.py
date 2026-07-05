@@ -114,6 +114,71 @@ def telegram_channel(
     }
 
 
+_TME_CHANNEL_RE = re.compile(r't\.me/(?:s/)?([A-Za-z0-9_]{5,32})/?$')
+
+
+def telegram_search(
+    query: str,
+    max_channels: int = 10,
+    posts_per_channel: int = 3,
+    max_fetch_retries: int = 3,
+) -> Dict[str, Any]:
+    """Find **public** Telegram channels matching a topic.
+
+    There is no official Telegram-wide public search API — Telegram's own
+    global search requires the MTProto client API with a logged-in user.
+    What this uses instead is a legitimate, commonly-used technique: public
+    ``t.me`` channel preview pages ARE indexed by regular search engines, so
+    a search scoped to ``site:t.me`` surfaces public channels whose preview
+    pages match your query. This reuses the existing DuckDuckGo search
+    engine (no ToS issue — it's an ordinary web search), extracts unique
+    channel usernames from the result URLs, then pulls a quick preview
+    (title + a couple of recent posts) of each via ``telegram_channel()``.
+
+    Coverage is inherently partial (only channels DuckDuckGo has indexed,
+    and only what's changed recently enough to be reflected), not an
+    exhaustive channel directory.
+    """
+    from .extraction import _ddgs_list_search_with_retry
+
+    query = str(query or "").strip()
+    if not query:
+        return {"error": "invalid_query", "error_message": "Provide a search query."}
+
+    ddg_results, _stats = _ddgs_list_search_with_retry(
+        'text', query=f"site:t.me {query}", max_results=max_channels * 3,
+        options={'region': 'us-en', 'safesearch': 'moderate'},
+    )
+
+    seen_channels = []
+    for r in ddg_results:
+        url = r.get('href', '') or r.get('url', '')
+        match = _TME_CHANNEL_RE.search(url)
+        if match:
+            username = match.group(1)
+            if username not in seen_channels and username.lower() not in ('s', 'joinchat'):
+                seen_channels.append(username)
+        if len(seen_channels) >= max_channels:
+            break
+
+    if not seen_channels:
+        return {
+            "query": query, "channel_count": 0, "channels": [],
+            "note": "No public t.me channels found matching this query in search results. Try a broader query, "
+                    "or use --channel directly if you already know the channel's username.",
+        }
+
+    channels = []
+    for username in seen_channels:
+        preview = telegram_channel(username, max_results=posts_per_channel, max_fetch_retries=max_fetch_retries)
+        if "error" in preview:
+            channels.append({"channel": username, "error": preview["error_message"]})
+        else:
+            channels.append(preview)
+
+    return {"query": query, "channel_count": len(channels), "channels": channels}
+
+
 # =====================================================================
 # Discord — real bot REST API, tier 1 (needs DISCORD_BOT_TOKEN)
 # =====================================================================

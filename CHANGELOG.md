@@ -9,7 +9,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.2.0] - 2026-07-05 16:00:00 UTC
+## [1.3.0] - 2026-07-05 16:00:00 UTC
+
+### 🔴 Fixed — critical: _write_output was producing invalid, corrupted JSON
+
+Every single output file (`web-search`, `news-search`, `github-commit`,
+`github-pr`, everything) went through `_write_output`, which word-wrapped
+long strings by splitting on whitespace (destroying embedded newlines —
+e.g. every line of a diff patch got collapsed into one run-on line) and
+then **blindly replaced every escaped `\n` in the entire serialized JSON
+with a raw newline character**. That second step corrupted the file at the
+JSON-syntax level: raw, unescaped control characters inside string literals
+are invalid per RFC 8259, which is why some viewers/parsers choked with
+"Invalid control character" errors, and why commit messages and diffs
+looked truncated, merged, or run-on when opened. `_write_output` now always
+emits clean, standard, `json.load`-round-trippable JSON — multi-line values
+are still fully preserved and readable (as the normal, valid `\n` escape
+sequence every JSON tool already understands), they just aren't lied about
+anymore. The same corrupting pattern was also fixed in `video-extract`'s
+`--json` stdout path. Added regression tests (`TestWriteOutputProducesValidJson`)
+that round-trip multi-line content through `_write_output` and assert it stays
+valid JSON.
+
+### 🔧 Fixed — diff patches are now line-by-line structured, not one run-on string
+
+`github-commit` and `github-pr` now include a `patch_lines` array alongside
+the raw `patch` text for every changed file: each diff line tagged as
+`hunk_header` / `added` / `removed` / `context` with its `+`/`-` prefix
+already stripped into the `type` field. No more eyeballing a giant string to
+figure out which lines were additions vs. deletions — this was really the
+same root cause as the corruption bug above (word-wrapping + collapsing
+whitespace in diff text), now fixed at both the storage layer and with a
+proper structured representation.
+
+### 🔧 Fixed — duplicate DuckDuckGo-calling implementations merged into one
+
+`EnterpriseSearchEngine._phase_search` (used by `web-search`) and
+`_ddgs_list_search`/`_ddgs_list_search_with_retry` (used by `news-search`,
+`video-search`, and multi-search's `duckduckgo` engine) were two **separate**
+implementations of "call the ddgs package," with divergent retry/backend-
+rotation behavior. These are now genuinely one shared implementation (moved
+to `extraction.py`), used by every command. `web-search` and `multi-search`
+remain separate *commands* (one is a fast DuckDuckGo-only path with a nicer
+progress UI, the other explicitly fans out across several engines), but
+they no longer have duplicate underlying search logic.
+
+### 🚀 Added — DDG HTML fallback tier for when DuckDuckGo's API is rate-limited
+
+When every retried `ddgs`-package attempt for a **web** search still comes
+back with zero results, one more fallback attempt now scrapes DuckDuckGo's
+plain HTML results page directly (`html.duckduckgo.com/html/`) through the
+existing `fetch_resilient` chain — independent of whatever's rate-limiting
+the `ddgs` package's own request path. Reported as `discovery_method:
+"ddg_html_fallback"` in stats when it's the one that actually worked.
+
+### 🚀 Added — github-repo is now a full repo overview (opt out with --quick)
+
+`github-repo` now aggregates, by default: all branches, an approximate
+total commit count, **accurately split** open-issue vs. open-PR counts (the
+repo object's own `open_issues_count` field includes PRs — a long-standing
+GitHub REST quirk — so this uses the Search API to split them correctly),
+top contributors, latest release, a per-language byte breakdown, and a
+file-tree preview. Costs ~7 API calls instead of 1; pass `--quick` for the
+old fast single-call behavior. `github-search-repos` results now carry the
+same full metadata per hit as `github-repo` (stars/forks/topics/license/
+timestamps/etc.) instead of a stripped-down subset.
+
+### 🚀 Added — github-prs, github-folder
+
+- **`github-prs`**: lists pull requests with PR-specific fields (draft
+  status, base/head branch, merged-at) that the generic `github-issues`
+  listing doesn't carry — the PR-specific counterpart already implied by
+  the single-PR `github-pr` command.
+- **`github-folder --path src/`**: lists (and optionally, with
+  `--include-content`, fetches) every file under a folder, recursively by
+  default via the Git Trees API, or `--no-recursive` for just the
+  immediate children.
+
+### 🚀 Added — telegram-channel --query (search for public channels by topic)
+
+`telegram-channel` now supports two modes: `--channel NAME` (unchanged,
+direct fetch) or `--query "..."` to find public channels matching a topic.
+There's no official Telegram-wide search API for anonymous use, so this
+uses a legitimate, real technique instead: public `t.me` channel previews
+are indexed by search engines, so a `site:t.me` DuckDuckGo search surfaces
+matches, which are then each given a quick preview. Coverage is inherently
+partial (whatever DuckDuckGo has indexed), not an exhaustive directory.
+Discord intentionally does **not** get an equivalent `--query` mode — unlike
+Telegram, Discord has no anonymous read API of any kind, so there's no
+legitimate cross-server search to offer.
+
+### 🚀 Added — `data-scout config`: interactive credential setup
+
+Run `data-scout config` for an interactive wizard covering every supported
+key (`GITHUB_TOKEN`, `BRAVE_API_KEY`, `BING_API_KEY`, `GOOGLE_API_KEY` +
+`GOOGLE_CSE_ID`, `SERPAPI_KEY`, `DISCORD_BOT_TOKEN`, `REDDIT_COOKIE`) —
+Enter to skip any you don't have. Values are stored at
+`~/.data-scout/credentials.json` (owner-only file permissions on POSIX) and
+loaded automatically into the environment on every future run; a real
+environment variable always takes precedence over a stored value. Use
+`data-scout config --show` to check status without running the wizard, or
+`--clear KEY`/`--clear-all` to remove stored values. "Secure storage" here
+means "not world-readable on disk," not encryption — for stronger
+guarantees keep using real environment variables or a dedicated secrets
+manager.
 
 ### 🚀 Added — Multi-engine search + new data sources (GitHub, Telegram, Discord, Reddit)
 

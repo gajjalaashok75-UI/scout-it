@@ -376,29 +376,50 @@ data-scout multi-search --query "rust vs go performance" --engines duckduckgo,br
 BRAVE_API_KEY=xxx data-scout list-engines   # check what's configured
 ```
 
+### Credential setup — `data-scout config`
+
+Several commands need an API key or token (multi-engine search, GitHub Discussions/code search,
+Discord). Instead of exporting environment variables every session, run:
+
+```bash
+data-scout config              # interactive wizard -- Enter to skip any key you don't have
+data-scout config --show       # check what's configured (no secrets printed)
+data-scout config --clear GITHUB_TOKEN   # remove one stored key
+data-scout config --clear-all            # remove everything
+```
+
+Values are stored at `~/.data-scout/credentials.json` (owner-only file permissions on POSIX) and
+loaded automatically on every future run. A real environment variable always takes precedence
+over a stored value, so CI/scripting setups that export env vars directly are unaffected. Every
+command that needs a key tells you exactly which one and how to get it if it isn't configured yet.
+
 ### GitHub extraction
 
 Uses GitHub's official REST + GraphQL APIs (no scraping). Works unauthenticated at 60
 requests/hour; set `GITHUB_TOKEN` (a personal access token, no special scopes needed for public
 repos) for 5,000/hour. GitHub Discussions specifically **requires** `GITHUB_TOKEN` — GraphQL has
-no anonymous access at all, even for public repos, which is a GitHub platform rule.
+no anonymous access at all, even for public repos, which is a GitHub platform rule. Run
+`data-scout config` to store `GITHUB_TOKEN` once instead of exporting it every session.
 
 | Command | What it does |
 |---|---|
-| `github-repo --repo owner/repo` | Full repo metadata: stars, forks, language, topics, license |
-| `github-commits --repo owner/repo [--branch][--path][--author][--since][--until][--max]` | List commits |
-| `github-commit --repo owner/repo --sha SHA` | **Full diff**: every changed file, +/- counts, unified patch text |
-| `github-pr --repo owner/repo --number N` | PR metadata + full diff/changed files |
+| `github-repo --repo owner/repo` | **Full repo overview by default**: metadata, branches, ~commit count, accurately-split open issue/PR counts, top contributors, latest release, language breakdown, file-tree preview. Pass `--quick` for just the fast single-call metadata. |
+| `github-commits --repo owner/repo [--branch][--path][--author][--since][--until][--max]` | List commits (full, untruncated commit messages) |
+| `github-commit --repo owner/repo --sha SHA` | **Full diff**: every changed file, +/- counts, raw unified `patch` text AND a structured `patch_lines` array (each line tagged `added`/`removed`/`context`/`hunk_header`) |
+| `github-pr --repo owner/repo --number N` | PR metadata + full diff/changed files (same `patch_lines` structuring) |
+| `github-prs --repo owner/repo [--state][--sort][--max]` | List pull requests (draft status, base/head branch — PR-specific fields `github-issues` doesn't carry) |
 | `github-issues --repo owner/repo [--state][--labels][--max]` | List issues |
 | `github-issue --repo owner/repo --number N` | Full issue body + all comments |
 | `github-file --repo owner/repo --path PATH [--ref REF]` | Fetch & decode one file's contents |
+| `github-folder --repo owner/repo --path src/ [--no-recursive][--include-content]` | List (and optionally fetch) every file under a folder |
 | `github-search-code --query "..."` | Code search (needs `GITHUB_TOKEN`, 10 req/min) |
-| `github-search-repos --query "language:python stars:>1000"` | Repo search |
+| `github-search-repos --query "language:python stars:>1000"` | Repo search — each hit carries the same full metadata as `github-repo` |
 | `github-discussions --repo owner/repo` | List discussions (**requires** `GITHUB_TOKEN`) |
 
 ```bash
-data-scout github-commit --repo psf/requests --sha <sha>   # full diff for one commit
-data-scout github-issue --repo psf/requests --number 1234  # issue + all comments
+data-scout github-repo --repo pytorch/pytorch              # full overview: branches, contributors, releases, etc.
+data-scout github-commit --repo psf/requests --sha <sha>   # full diff for one commit, line-by-line +/- structure
+data-scout github-folder --repo psf/requests --path src/ --include-content --max-files 10
 GITHUB_TOKEN=ghp_xxx data-scout github-discussions --repo pytorch/pytorch
 ```
 
@@ -407,14 +428,20 @@ GITHUB_TOKEN=ghp_xxx data-scout github-discussions --repo pytorch/pytorch
 | Command | Tier | Needs |
 |---|---|---|
 | `telegram-channel --channel NAME [--max]` | 0 — works now | nothing (public `t.me/s/` preview) |
+| `telegram-channel --query "..." [--max][--posts-per-channel]` | 0 — works now | nothing (finds public channels via a `site:t.me` search) |
 | `discord-channel --channel-id ID [--max]` | 1 — needs a key | `DISCORD_BOT_TOKEN` (bot must be in the server) |
 | `reddit-search --query "..." [--subreddit][--max]` | 2 — best-effort | Reddit blocks most anonymous requests as of 2026; optionally set `REDDIT_COOKIE` |
 
 ```bash
 data-scout telegram-channel --channel durov --max 10
+data-scout telegram-channel --query "machine learning" --max 10   # find & preview matching public channels
 DISCORD_BOT_TOKEN=xxx data-scout discord-channel --channel-id 123456789012345678
 data-scout reddit-search --query "python" --subreddit programming   # best-effort, see --help
 ```
+
+Discord intentionally has no `--query` topic-search mode: unlike Telegram's public preview pages,
+Discord has no anonymous read API of any kind — you always need a bot already invited into the
+specific server, so there's no cross-server search this library could legitimately offer.
 
 Twitter/X, Instagram, TikTok, and similar platforms are **not implemented** — none of them
 currently offer a working zero-config or affordable-API path (all require either a paid official

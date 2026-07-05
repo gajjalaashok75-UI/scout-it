@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote_plus
 
 try:
     # Prefer the newer package name `ddgs` when available, fall back to `duckduckgo_search`
@@ -444,6 +445,190 @@ def _compact_options(options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return compacted
 
 
+def _ddg_html_lite_fallback_search(query: str, max_results: int, timeout: int = 25) -> List[Dict[str, Any]]:
+    """Last-resort web-search discovery when the ``ddgs`` package itself is
+    rate-limited/blocked: scrape DuckDuckGo's plain HTML endpoint
+    (``html.duckduckgo.com/html/``) directly through the same
+    requests -> Playwright -> basic-fallback chain used everywhere else.
+
+    Only meaningful for web search (DuckDuckGo doesn't expose an equivalent
+    simple HTML listing for images/news/videos), and only used as a final
+    fallback after ``ddgs`` itself has been retried and come back empty.
+    """
+    from bs4 import BeautifulSoup
+
+    url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
+    outcome = fetch_resilient(url, timeout=timeout, max_retries=2)
+    if outcome["status"] != "success":
+        return []
+
+    soup = BeautifulSoup(outcome["html"], "html.parser")
+    results = []
+    for result_div in soup.select(".result")[:max_results]:
+        link = result_div.select_one(".result__a")
+        snippet_el = result_div.select_one(".result__snippet")
+        if not link or not link.get("href"):
+            continue
+        results.append({
+            "title": link.get_text(strip=True),
+            "href": link.get("href"),
+            "body": snippet_el.get_text(strip=True) if snippet_el else "",
+        })
+    return results
+
+
+def _ddgs_list_search(
+    method_name: str,
+    query: str,
+    max_results: int,
+    options: Optional[Dict[str, Any]] = None,
+    timeout: int = 25,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Run DDGS method with compatibility fallbacks across package versions."""
+    start_time = time.time()
+    params = _compact_options(options or {})
+    params['max_results'] = max_results
+
+    try:
+        with DDGS(timeout=timeout) as ddgs:
+            method = getattr(ddgs, method_name, None)
+            if not callable(method):
+                return [], {
+                    'total': 0,
+                    'success': 0,
+                    'execution_time': time.time() - start_time,
+                    'error': f"DDGS method '{method_name}' is unavailable in this installed version",
+                }
+
+            call_patterns = [
+                lambda: list(method(keywords=query, **params)),
+                lambda: list(method(query, **params)),
+                lambda: list(method(query, max_results=max_results)),
+                lambda: list(method(keywords=query, max_results=max_results)),
+                lambda: list(method(query, max_results)),
+                lambda: list(method(query))[:max_results],
+            ]
+
+            for call in call_patterns:
+                try:
+                    results = call()
+                    return results, {
+                        'total': len(results),
+                        'success': len(results),
+                        'execution_time': time.time() - start_time,
+                    }
+                except TypeError:
+                    continue
+
+            return [], {
+                'total': 0,
+                'success': 0,
+                'execution_time': time.time() - start_time,
+                'error': f"No compatible DDGS call signature worked for '{method_name}'",
+            }
+    except Exception as exc:
+        return [], {
+            'total': 0,
+            'success': 0,
+            'execution_time': time.time() - start_time,
+            'error': f'DuckDuckGo request failed: {type(exc).__name__}: {exc}',
+        }
+
+
+def _build_list_attempt_options(base_options: Dict[str, Any], attempt: int, method_name: str = 'text') -> Dict[str, Any]:
+    """Relax filters on later retry attempts to maximize the chance of a
+    non-empty result set (mirrors the strategy used by web/image search).
+
+    For text (web) search specifically, also rotates the ``ddgs`` backend
+    (auto -> html -> lite) across attempts — DuckDuckGo's different backend
+    modes get rate-limited somewhat independently, so cycling through them
+    is itself a useful fallback when one is temporarily throttled.
+    """
+    options = _compact_options(base_options)
+
+    if method_name == 'text':
+        backend_priority = []
+        requested_backend = options.get('backend')
+        if requested_backend:
+            backend_priority.append(requested_backend)
+        for candidate in ('auto', 'html', 'lite'):
+            if candidate not in backend_priority:
+                backend_priority.append(candidate)
+        options['backend'] = backend_priority[min(attempt, len(backend_priority) - 1)]
+
+    if attempt > 0:
+        options['timelimit'] = None
+    if attempt > 1 and options.get('safesearch', 'moderate') != 'off':
+        options['safesearch'] = 'off'
+    return options
+
+
+def _ddgs_list_search_with_retry(
+    method_name: str,
+    query: str,
+    max_results: int,
+    options: Optional[Dict[str, Any]] = None,
+    timeout: int = 25,
+    retry_on_zero_success: bool = True,
+    max_zero_success_retries: int = 2,
+    retry_backoff_seconds: float = 1.0,
+    enable_html_fallback: bool = True,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Retry-on-zero-results wrapper around ``_ddgs_list_search``.
+
+    This is the **single shared implementation** used by ``web-search``
+    (via ``EnterpriseSearchEngine._phase_search``), ``news-search``,
+    ``video-search``, and the ``duckduckgo`` engine in multi-engine search —
+    they all go through this one function instead of each having their own
+    DDGS-calling logic.
+
+    Retries relax filters (``timelimit``, then ``safesearch``) across
+    attempts. If every attempt still comes back with zero results for a
+    **web** search (``method_name == 'text'``) — the case that matters most
+    since DuckDuckGo's API layer is the one that gets rate-limited — one
+    final fallback attempt scrapes DuckDuckGo's plain HTML results page
+    directly (see ``_ddg_html_lite_fallback_search``), independent of the
+    ``ddgs`` package's own request path.
+    """
+    retries = max(0, int(max_zero_success_retries))
+    max_attempts = 1 + retries if retry_on_zero_success else 1
+
+    last_results: List[Dict[str, Any]] = []
+    last_stats: Dict[str, Any] = {}
+
+    for attempt in range(max_attempts):
+        attempt_options = _build_list_attempt_options(options or {}, attempt, method_name=method_name)
+        results, stats = _ddgs_list_search(
+            method_name, query=query, max_results=max_results, options=attempt_options, timeout=timeout,
+        )
+        stats['attempts'] = attempt + 1
+        stats['retries_used'] = attempt
+        stats['discovery_method'] = 'ddgs'
+        last_results, last_stats = results, stats
+
+        if results:
+            break
+
+        if attempt < max_attempts - 1:
+            if retry_backoff_seconds > 0:
+                time.sleep(retry_backoff_seconds * (attempt + 1))
+
+    if not last_results and enable_html_fallback and method_name == 'text':
+        html_results = _ddg_html_lite_fallback_search(query, max_results, timeout=timeout)
+        if html_results:
+            last_results = html_results
+            last_stats = {
+                'total': len(html_results),
+                'success': len(html_results),
+                'execution_time': last_stats.get('execution_time', 0.0),
+                'attempts': last_stats.get('attempts', max_attempts) + 1,
+                'retries_used': last_stats.get('retries_used', max_attempts - 1),
+                'discovery_method': 'ddg_html_fallback',
+            }
+
+    return last_results, last_stats
+
+
 class EnterpriseSearchEngine:
     """Complete enterprise search + extraction pipeline"""
 
@@ -466,50 +651,6 @@ class EnterpriseSearchEngine:
     @staticmethod
     def _compact_options(options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         return _compact_options(options)
-
-    def _build_text_attempt_options(self, base_options: Optional[Dict[str, Any]], attempt: int) -> Dict[str, Any]:
-        options = self._compact_options(base_options)
-        backend_priority = []
-        requested_backend = options.get('backend')
-        if requested_backend:
-            backend_priority.append(requested_backend)
-        for candidate in ('auto', 'html', 'lite'):
-            if candidate not in backend_priority:
-                backend_priority.append(candidate)
-
-        options['backend'] = backend_priority[min(attempt, len(backend_priority) - 1)]
-
-        # Later attempts relax filters to maximize chance of non-empty results.
-        if attempt > 0:
-            options['timelimit'] = None
-        if attempt > 1 and options.get('safesearch', 'moderate') != 'off':
-            options['safesearch'] = 'off'
-
-        return options
-
-    def _run_ddgs_text(self, ddgs: Any, query: str, max_results: int, search_options: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        options = self._compact_options(search_options)
-        options['max_results'] = max_results
-
-        call_patterns = [
-            lambda: list(ddgs.text(keywords=query, **options)),
-            lambda: list(ddgs.text(query, **options)),
-            lambda: list(ddgs.text(keywords=query, max_results=max_results)),
-            lambda: list(ddgs.text(query, max_results=max_results)),
-            lambda: list(ddgs.text(query, max_results)),
-            lambda: list(ddgs.text(query))[:max_results],
-        ]
-
-        for call in call_patterns:
-            try:
-                return call()
-            except TypeError:
-                continue
-            except Exception as e:
-                self.console.print(f"[red]DDGS error:[/red] {e}")
-                return []
-
-        return []
 
     def _reset_stats(self):
         self.stats.update({
@@ -561,7 +702,7 @@ class EnterpriseSearchEngine:
             self.results = []
             self._reset_stats()
 
-            attempt_options = self._build_text_attempt_options(search_options, attempt)
+            attempt_options = _build_list_attempt_options(search_options or {}, attempt, method_name='text')
 
             # Phase 1: Multi-engine search
             self._phase_search(query, max_results, attempt_options)
@@ -629,11 +770,11 @@ class EnterpriseSearchEngine:
         
         with Progress(console=self.console) as progress:
             search_task = progress.add_task("Searching DuckDuckGo...", total=1)
-            
-            with DDGS(timeout=self.timeout) as ddgs:
-                raw_results = self._run_ddgs_text(ddgs, query, max_results, search_options)
 
-            
+            raw_results, ddgs_stats = _ddgs_list_search('text', query, max_results, options=search_options, timeout=self.timeout)
+            if ddgs_stats.get('error'):
+                self.console.print(f"[red]DDGS error:[/red] {ddgs_stats['error']}")
+
             for i, result in enumerate(raw_results, 1):
                 self.results.append(EnterpriseResult(
                     position=i,

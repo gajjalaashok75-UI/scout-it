@@ -129,15 +129,11 @@ def github_rate_limit() -> Dict[str, Any]:
     return result["data"]
 
 
-def github_repo(owner_repo_or_url: str) -> Dict[str, Any]:
-    """Full repository metadata: stars, forks, language, topics, license, etc."""
-    ref = parse_repo_ref(owner_repo_or_url)
-    if not ref:
-        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
-    result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}")
-    if not result["ok"]:
-        return result
-    d = result["data"]
+def _map_repo_fields(d: Dict[str, Any]) -> Dict[str, Any]:
+    """Shared mapping from a GitHub API repo object to our output shape.
+    Used by both github_repo() and github_search_repos() so search results
+    carry the same rich metadata as a direct repo lookup, not a stripped-down
+    subset."""
     return {
         "full_name": d.get("full_name"),
         "description": d.get("description"),
@@ -146,7 +142,11 @@ def github_repo(owner_repo_or_url: str) -> Dict[str, Any]:
         "stars": d.get("stargazers_count"),
         "forks": d.get("forks_count"),
         "watchers": d.get("subscribers_count"),
-        "open_issues": d.get("open_issues_count"),
+        # NOTE: GitHub's own `open_issues_count` on the repo object INCLUDES
+        # open pull requests (a long-standing REST API quirk) — see
+        # `open_issues_only`/`open_pull_requests` below for the split-out,
+        # accurate counts fetched via the Search API in github_repo(--full).
+        "open_issues_and_prs": d.get("open_issues_count"),
         "default_branch": d.get("default_branch"),
         "language": d.get("language"),
         "topics": d.get("topics", []),
@@ -160,6 +160,113 @@ def github_repo(owner_repo_or_url: str) -> Dict[str, Any]:
         "owner": (d.get("owner") or {}).get("login"),
         "owner_type": (d.get("owner") or {}).get("type"),
     }
+
+
+def _approx_count_via_link_header(headers: Dict[str, str]) -> Optional[int]:
+    """GitHub's pagination Link header exposes a 'last' page number, which
+    (at per_page=1) is exactly the total item count — one cheap request
+    instead of paginating through everything."""
+    link = headers.get("Link") or headers.get("link")
+    if not link:
+        return None
+    match = re.search(r'[?&]page=(\d+)>;\s*rel="last"', link)
+    return int(match.group(1)) if match else None
+
+
+def github_repo(owner_repo_or_url: str, full: bool = True, tree_limit: int = 200) -> Dict[str, Any]:
+    """Repository metadata. By default (``full=True``) this aggregates a
+    comprehensive overview in one call: base metadata, branches, an
+    approximate commit count, accurately split open-issue/open-PR counts,
+    top contributors, latest release + release count, a per-language byte
+    breakdown, and a preview of the repo's file tree — everything the CLI
+    otherwise needs several separate ``github-*`` commands for. Pass
+    ``full=False`` (``--quick`` on the CLI) for just the fast, single-call
+    base metadata when you don't need all that and want to conserve rate
+    limit (the full version costs ~7 API calls instead of 1).
+
+    Every sub-call here is independently error-tolerant: if e.g. releases
+    fails or contributors is disabled for this repo, that section is
+    reported with its own error instead of failing the whole command.
+    """
+    ref = parse_repo_ref(owner_repo_or_url)
+    if not ref:
+        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
+    owner, repo = ref["owner"], ref["repo"]
+
+    result = _request("GET", f"/repos/{owner}/{repo}")
+    if not result["ok"]:
+        return result
+    out = _map_repo_fields(result["data"])
+    default_branch = result["data"].get("default_branch") or "main"
+
+    if not full:
+        return out
+
+    # --- languages: bytes of code per language ---
+    lang_result = _request("GET", f"/repos/{owner}/{repo}/languages")
+    out["languages"] = lang_result["data"] if lang_result["ok"] else {"error": lang_result.get("error_message")}
+
+    # --- branches (names only, capped) ---
+    branches_result = _request("GET", f"/repos/{owner}/{repo}/branches", params={"per_page": 100})
+    if branches_result["ok"]:
+        out["branches"] = [b.get("name") for b in branches_result["data"] or []]
+        out["branch_count"] = len(out["branches"])
+    else:
+        out["branches"] = {"error": branches_result.get("error_message")}
+
+    # --- approximate total commit count on the default branch ---
+    commits_probe = _request("GET", f"/repos/{owner}/{repo}/commits", params={"sha": default_branch, "per_page": 1})
+    if commits_probe["ok"]:
+        approx = _approx_count_via_link_header(commits_probe.get("headers", {}))
+        out["commit_count_approx"] = approx if approx is not None else (1 if commits_probe["data"] else 0)
+    else:
+        out["commit_count_approx"] = {"error": commits_probe.get("error_message")}
+
+    # --- accurate open issue / open PR split, via the Search API ---
+    issues_count = _request("GET", "/search/issues", params={"q": f"repo:{owner}/{repo} is:issue is:open", "per_page": 1})
+    out["open_issues_only"] = issues_count["data"].get("total_count") if issues_count["ok"] else {"error": issues_count.get("error_message")}
+    prs_count = _request("GET", "/search/issues", params={"q": f"repo:{owner}/{repo} is:pr is:open", "per_page": 1})
+    out["open_pull_requests"] = prs_count["data"].get("total_count") if prs_count["ok"] else {"error": prs_count.get("error_message")}
+
+    # --- top contributors ---
+    contrib_result = _request("GET", f"/repos/{owner}/{repo}/contributors", params={"per_page": 15})
+    if contrib_result["ok"]:
+        out["top_contributors"] = [{
+            "login": c.get("login"), "contributions": c.get("contributions"), "url": c.get("html_url"),
+        } for c in contrib_result["data"] or []]
+    else:
+        # Common non-error case: contributor stats disabled for very large/empty repos (202) or private repos.
+        out["top_contributors"] = {"error": contrib_result.get("error_message")}
+
+    # --- releases: latest + total count ---
+    releases_result = _request("GET", f"/repos/{owner}/{repo}/releases", params={"per_page": 1})
+    if releases_result["ok"]:
+        latest = (releases_result["data"] or [None])[0]
+        out["latest_release"] = {
+            "tag_name": latest.get("tag_name"), "name": latest.get("name"),
+            "published_at": latest.get("published_at"), "url": latest.get("html_url"),
+        } if latest else None
+        release_count = _approx_count_via_link_header(releases_result.get("headers", {}))
+        out["release_count_approx"] = release_count if release_count is not None else len(releases_result["data"] or [])
+    else:
+        out["latest_release"] = {"error": releases_result.get("error_message")}
+
+    # --- file tree preview (recursive), capped so huge monorepos don't blow up the output ---
+    tree_result = _request("GET", f"/repos/{owner}/{repo}/git/trees/{default_branch}", params={"recursive": "1"})
+    if tree_result["ok"]:
+        tree_data = tree_result["data"] or {}
+        entries = tree_data.get("tree", [])
+        out["file_tree_preview"] = [{
+            "path": e.get("path"), "type": e.get("type"), "size": e.get("size"),
+        } for e in entries[:tree_limit]]
+        out["file_tree_total_entries"] = len(entries)
+        out["file_tree_truncated"] = len(entries) > tree_limit
+        if tree_data.get("truncated"):
+            out["file_tree_note"] = "GitHub's own tree API truncated this response (repo is very large); use github-folder to walk specific subdirectories instead."
+    else:
+        out["file_tree_preview"] = {"error": tree_result.get("error_message")}
+
+    return out
 
 
 def github_commits(
@@ -207,6 +314,26 @@ def github_commits(
     return {"repo": f"{ref['owner']}/{ref['repo']}", "commit_count": len(commits), "commits": commits}
 
 
+def _parse_patch_lines(patch: Optional[str]) -> List[Dict[str, str]]:
+    """Break a unified diff patch into individual tagged lines, so consumers
+    don't have to eyeball a single run-on string to tell additions from
+    deletions. Each entry is ``{"type": ..., "text": ...}`` where type is
+    one of: hunk_header, added, removed, context."""
+    if not patch:
+        return []
+    lines = []
+    for raw_line in patch.split("\n"):
+        if raw_line.startswith("@@"):
+            lines.append({"type": "hunk_header", "text": raw_line})
+        elif raw_line.startswith("+") and not raw_line.startswith("+++"):
+            lines.append({"type": "added", "text": raw_line[1:]})
+        elif raw_line.startswith("-") and not raw_line.startswith("---"):
+            lines.append({"type": "removed", "text": raw_line[1:]})
+        else:
+            lines.append({"type": "context", "text": raw_line[1:] if raw_line.startswith(" ") else raw_line})
+    return lines
+
+
 def github_commit(owner_repo_or_url: str, sha: str, include_patch: bool = True) -> Dict[str, Any]:
     """Full details for ONE commit: stats, and every changed file with its
     status (added/modified/removed/renamed), +/- line counts, and unified
@@ -237,6 +364,7 @@ def github_commit(owner_repo_or_url: str, sha: str, include_patch: bool = True) 
         }
         if include_patch:
             entry["patch"] = f.get("patch")  # unified diff text; absent for binary/huge files
+            entry["patch_lines"] = _parse_patch_lines(f.get("patch"))  # same diff, tagged line-by-line
         files.append(entry)
 
     parents = [{"sha": p.get("sha"), "url": p.get("html_url")} for p in d.get("parents", []) or []]
@@ -258,6 +386,47 @@ def github_commit(owner_repo_or_url: str, sha: str, include_patch: bool = True) 
         "files_changed": len(files),
         "files": files,
     }
+
+
+def github_prs(
+    owner_repo_or_url: str,
+    state: str = "open",
+    sort: str = "created",
+    max_results: int = 30,
+) -> Dict[str, Any]:
+    """List pull requests for a repo — the PR-specific counterpart to
+    github_issues(). Unlike the generic /issues endpoint (which mixes in
+    PRs but only exposes issue-shaped fields), this uses /pulls directly so
+    each entry carries PR-specific fields: draft status, base/head branches,
+    and mergeable state."""
+    ref = parse_repo_ref(owner_repo_or_url)
+    if not ref:
+        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
+    params = {"state": state, "sort": sort, "direction": "desc", "per_page": min(max_results, 100)}
+
+    result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}/pulls", params=params)
+    if not result["ok"]:
+        return result
+
+    prs = []
+    for p in (result["data"] or [])[:max_results]:
+        prs.append({
+            "number": p.get("number"),
+            "title": p.get("title"),
+            "state": p.get("state"),
+            "is_draft": p.get("draft"),
+            "author": (p.get("user") or {}).get("login"),
+            "base_branch": (p.get("base") or {}).get("ref"),
+            "head_branch": (p.get("head") or {}).get("ref"),
+            "labels": [l.get("name") for l in p.get("labels", []) or []],
+            "created_at": p.get("created_at"),
+            "updated_at": p.get("updated_at"),
+            "closed_at": p.get("closed_at"),
+            "merged_at": p.get("merged_at"),
+            "url": p.get("html_url"),
+        })
+
+    return {"repo": f"{ref['owner']}/{ref['repo']}", "pr_count": len(prs), "pull_requests": prs}
 
 
 def github_pull_request(owner_repo_or_url: str, number: int, include_diff: bool = True) -> Dict[str, Any]:
@@ -302,6 +471,7 @@ def github_pull_request(owner_repo_or_url: str, number: int, include_diff: bool 
                 "additions": f.get("additions"),
                 "deletions": f.get("deletions"),
                 "patch": f.get("patch"),
+                "patch_lines": _parse_patch_lines(f.get("patch")),
             } for f in files_result["data"] or []]
 
     return out
@@ -391,6 +561,82 @@ def github_issue(owner_repo_or_url: str, number: int, include_comments: bool = T
     return out
 
 
+def github_folder(
+    owner_repo_or_url: str,
+    path: str = "",
+    ref: Optional[str] = None,
+    recursive: bool = True,
+    include_content: bool = False,
+    max_files: int = 20,
+) -> Dict[str, Any]:
+    """List every file under a folder path (e.g. 'src/'), optionally fetching
+    each file's content too.
+
+    ``recursive=True`` (default) walks the *entire* subtree under *path*
+    using the Git Trees API in a single call. ``recursive=False`` lists only
+    the immediate children (one Contents-API call, cheaper for huge repos
+    when you just want a shallow listing).
+
+    ``include_content=True`` fetches the actual text of up to *max_files*
+    files (one API call each — capped by default to avoid silently burning
+    through your whole rate limit on a big folder; raise --max-files
+    explicitly if you really want more).
+    """
+    repo_ref = parse_repo_ref(owner_repo_or_url)
+    if not repo_ref:
+        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
+    owner, repo = repo_ref["owner"], repo_ref["repo"]
+    clean_path = path.strip("/")
+
+    if not recursive:
+        result = _request("GET", f"/repos/{owner}/{repo}/contents/{clean_path}", params={"ref": ref} if ref else None)
+        if not result["ok"]:
+            return result
+        d = result["data"]
+        if not isinstance(d, list):
+            return {"error": "not_a_directory", "error_message": f"'{path}' is a file, not a directory. Use github-file instead."}
+        entries = [{"path": e.get("path"), "type": "blob" if e.get("type") == "file" else "tree", "size": e.get("size")} for e in d]
+    else:
+        branch = ref
+        if not branch:
+            repo_info = _request("GET", f"/repos/{owner}/{repo}")
+            if not repo_info["ok"]:
+                return repo_info
+            branch = repo_info["data"].get("default_branch", "main")
+
+        tree_result = _request("GET", f"/repos/{owner}/{repo}/git/trees/{branch}", params={"recursive": "1"})
+        if not tree_result["ok"]:
+            return tree_result
+        all_entries = (tree_result["data"] or {}).get("tree", [])
+        prefix = f"{clean_path}/" if clean_path else ""
+        entries = [
+            {"path": e.get("path"), "type": e.get("type"), "size": e.get("size")}
+            for e in all_entries
+            if not clean_path or e.get("path", "").startswith(prefix) or e.get("path") == clean_path
+        ]
+        if clean_path and not entries:
+            return {"error": "not_found", "error_message": f"No entries found under '{path}' — check the path exists on branch '{branch}'."}
+
+    out = {
+        "repo": f"{owner}/{repo}",
+        "path": clean_path or "/",
+        "entry_count": len(entries),
+        "entries": entries,
+    }
+
+    if include_content:
+        file_entries = [e for e in entries if e.get("type") in ("blob", "file")][:max_files]
+        fetched = []
+        for e in file_entries:
+            file_result = github_file_content(f"{owner}/{repo}", e["path"], ref=ref)
+            fetched.append(file_result)
+        out["files_fetched"] = len(fetched)
+        out["files_truncated"] = len([e for e in entries if e.get("type") in ("blob", "file")]) > max_files
+        out["files"] = fetched
+
+    return out
+
+
 def github_file_content(owner_repo_or_url: str, path: str, ref: Optional[str] = None) -> Dict[str, Any]:
     """Fetch and decode a single file's contents from a repo (any text or binary
     file up to GitHub's 1MB Contents-API limit; larger files fall back to the
@@ -448,23 +694,18 @@ def github_search_code(query: str, max_results: int = 20) -> Dict[str, Any]:
 
 
 def github_search_repos(query: str, sort: str = "stars", max_results: int = 20) -> Dict[str, Any]:
-    """Search repositories (e.g. 'language:python stars:>1000 topic:llm')."""
+    """Search repositories (e.g. 'language:python stars:>1000 topic:llm').
+
+    Each result carries the same rich metadata fields as ``github_repo()``
+    (stars, forks, topics, license, timestamps, etc.) — GitHub's search API
+    already returns full repo objects per hit, so there's no need to settle
+    for a stripped-down subset."""
     result = _request("GET", "/search/repositories",
                        params={"q": query, "sort": sort, "order": "desc", "per_page": min(max_results, 100)})
     if not result["ok"]:
         return result
     d = result["data"] or {}
-    items = []
-    for r in d.get("items", [])[:max_results]:
-        items.append({
-            "full_name": r.get("full_name"),
-            "description": r.get("description"),
-            "stars": r.get("stargazers_count"),
-            "forks": r.get("forks_count"),
-            "language": r.get("language"),
-            "url": r.get("html_url"),
-            "updated_at": r.get("updated_at"),
-        })
+    items = [_map_repo_fields(r) for r in d.get("items", [])[:max_results]]
     return {"query": query, "total_count": d.get("total_count", 0), "results": items}
 
 

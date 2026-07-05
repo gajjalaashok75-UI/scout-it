@@ -6,6 +6,7 @@ no real network access needed.
 import base64
 import json
 import os
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -45,7 +46,7 @@ class TestGithubParseRef:
 
 class TestGithubRepo:
     @mock.patch("data_scout.github_extract.requests.request")
-    def test_happy_path(self, mock_request):
+    def test_happy_path_quick_mode(self, mock_request):
         mock_request.return_value = _FakeResp(200, {
             "full_name": "psf/requests", "description": "HTTP for humans",
             "html_url": "https://github.com/psf/requests", "stargazers_count": 50000,
@@ -55,10 +56,51 @@ class TestGithubRepo:
             "created_at": "x", "updated_at": "x", "pushed_at": "x", "size": 1000,
             "owner": {"login": "psf", "type": "Organization"},
         })
-        out = gh.github_repo("psf/requests")
+        out = gh.github_repo("psf/requests", full=False)
         assert out["full_name"] == "psf/requests"
         assert out["stars"] == 50000
         assert out["language"] == "Python"
+        assert "branches" not in out  # quick mode skips the rich aggregation
+
+    @mock.patch("data_scout.github_extract.requests.request")
+    def test_full_mode_aggregates_multiple_endpoints(self, mock_request):
+        base = {
+            "full_name": "psf/requests", "description": "d", "html_url": "u", "stargazers_count": 1,
+            "forks_count": 1, "subscribers_count": 1, "open_issues_count": 1, "default_branch": "main",
+            "language": "Python", "topics": [], "license": None, "fork": False, "archived": False,
+            "created_at": "x", "updated_at": "x", "pushed_at": "x", "size": 1,
+            "owner": {"login": "psf", "type": "Organization"},
+        }
+
+        def side_effect(method, url, headers=None, params=None, timeout=None):
+            if url.endswith("/repos/psf/requests"):
+                return _FakeResp(200, base)
+            if url.endswith("/languages"):
+                return _FakeResp(200, {"Python": 12345})
+            if url.endswith("/branches"):
+                return _FakeResp(200, [{"name": "main"}, {"name": "dev"}])
+            if url.endswith("/commits"):
+                return _FakeResp(200, [{"sha": "abc"}])
+            if url.endswith("/search/issues"):
+                return _FakeResp(200, {"total_count": 3})
+            if url.endswith("/contributors"):
+                return _FakeResp(200, [{"login": "alice", "contributions": 100, "html_url": "u"}])
+            if url.endswith("/releases"):
+                return _FakeResp(200, [{"tag_name": "v1.0", "name": "v1.0", "published_at": "x", "html_url": "u"}])
+            if "/git/trees/" in url:
+                return _FakeResp(200, {"tree": [{"path": "a.py", "type": "blob", "size": 10}], "truncated": False})
+            return _FakeResp(404, {})
+
+        mock_request.side_effect = side_effect
+        out = gh.github_repo("psf/requests", full=True)
+        assert out["languages"] == {"Python": 12345}
+        assert out["branches"] == ["main", "dev"]
+        assert out["branch_count"] == 2
+        assert out["open_issues_only"] == 3
+        assert out["open_pull_requests"] == 3
+        assert out["top_contributors"][0]["login"] == "alice"
+        assert out["latest_release"]["tag_name"] == "v1.0"
+        assert out["file_tree_preview"][0]["path"] == "a.py"
 
     @mock.patch("data_scout.github_extract.requests.request")
     def test_rate_limited(self, mock_request):
@@ -247,6 +289,150 @@ class TestRedditSearch:
             out = social.reddit_search("python")
             assert out["result_count"] == 1
             assert out["posts"][0]["title"] == "Post title"
+
+
+class TestGithubPatchLines:
+    def test_parses_added_removed_context_and_hunk(self):
+        patch = "@@ -1,2 +1,3 @@\n-old line\n+new line one\n+new line two\n context line"
+        lines = gh._parse_patch_lines(patch)
+        types = [l["type"] for l in lines]
+        assert types == ["hunk_header", "removed", "added", "added", "context"]
+        assert lines[1]["text"] == "old line"
+        assert lines[2]["text"] == "new line one"
+
+    def test_empty_patch_returns_empty_list(self):
+        assert gh._parse_patch_lines(None) == []
+        assert gh._parse_patch_lines("") == []
+
+    @mock.patch("data_scout.github_extract.requests.request")
+    def test_commit_includes_patch_lines(self, mock_request):
+        mock_request.return_value = _FakeResp(200, {
+            "sha": "abc", "html_url": "u", "commit": {"message": "m", "author": {}},
+            "author": {}, "committer": {}, "parents": [], "stats": {},
+            "files": [{"filename": "a.py", "status": "modified",
+                       "patch": "@@ -1 +1 @@\n-a\n+b"}],
+        })
+        out = gh.github_commit("x/y", "abc")
+        assert out["files"][0]["patch_lines"][1]["type"] == "removed"
+        assert out["files"][0]["patch_lines"][2]["type"] == "added"
+
+
+class TestGithubPrs:
+    @mock.patch("data_scout.github_extract.requests.request")
+    def test_lists_prs_with_pr_specific_fields(self, mock_request):
+        mock_request.return_value = _FakeResp(200, [{
+            "number": 5, "title": "Add feature", "state": "open", "draft": False,
+            "user": {"login": "alice"}, "base": {"ref": "main"}, "head": {"ref": "feature"},
+            "labels": [], "created_at": "x", "updated_at": "x", "closed_at": None,
+            "merged_at": None, "html_url": "u",
+        }])
+        out = gh.github_prs("x/y")
+        assert out["pr_count"] == 1
+        assert out["pull_requests"][0]["base_branch"] == "main"
+        assert out["pull_requests"][0]["head_branch"] == "feature"
+        assert out["pull_requests"][0]["is_draft"] is False
+
+
+class TestGithubFolder:
+    @mock.patch("data_scout.github_extract.requests.request")
+    def test_recursive_listing_filters_by_prefix(self, mock_request):
+        def side_effect(method, url, headers=None, params=None, timeout=None):
+            if url.endswith("/repos/x/y"):
+                return _FakeResp(200, {"default_branch": "main"})
+            if "/git/trees/" in url:
+                return _FakeResp(200, {"tree": [
+                    {"path": "src/a.py", "type": "blob", "size": 10},
+                    {"path": "src/sub/b.py", "type": "blob", "size": 20},
+                    {"path": "README.md", "type": "blob", "size": 5},
+                ]})
+            return _FakeResp(404, {})
+        mock_request.side_effect = side_effect
+        out = gh.github_folder("x/y", path="src/")
+        paths = [e["path"] for e in out["entries"]]
+        assert "src/a.py" in paths
+        assert "src/sub/b.py" in paths
+        assert "README.md" not in paths
+
+    @mock.patch("data_scout.github_extract.requests.request")
+    def test_non_recursive_single_level(self, mock_request):
+        mock_request.return_value = _FakeResp(200, [
+            {"path": "src/a.py", "type": "file", "size": 10},
+            {"path": "src/sub", "type": "dir", "size": 0},
+        ])
+        out = gh.github_folder("x/y", path="src", recursive=False)
+        assert out["entry_count"] == 2
+
+
+class TestTelegramSearch:
+    def test_finds_channels_from_site_search(self):
+        fake_ddg_results = [
+            {"href": "https://t.me/s/pythondev/123", "title": "t"},
+            {"href": "https://t.me/pythondev", "title": "t2"},  # duplicate channel, should dedupe
+            {"href": "https://t.me/s/anotherchan", "title": "t3"},
+        ]
+        with mock.patch("data_scout.extraction._ddgs_list_search_with_retry", return_value=(fake_ddg_results, {})), \
+             mock.patch.object(social, "telegram_channel", return_value={"channel": "pythondev", "title": "Python Dev", "post_count_returned": 1, "posts": []}):
+            out = social.telegram_search("python")
+            assert out["channel_count"] == 2  # deduped to 2 unique channels
+
+    def test_empty_query(self):
+        out = social.telegram_search("")
+        assert out["error"] == "invalid_query"
+
+    def test_no_matches_returns_helpful_note(self):
+        with mock.patch("data_scout.extraction._ddgs_list_search_with_retry", return_value=([], {})):
+            out = social.telegram_search("extremely obscure query with no results")
+            assert out["channel_count"] == 0
+            assert "note" in out
+
+
+class TestConfig:
+    def test_credential_status_reports_env_var_source(self):
+        from data_scout import config as ds_config
+        os.environ["GITHUB_TOKEN"] = "faketoken123"
+        try:
+            with mock.patch.object(ds_config, "load_credentials_file", return_value={}):
+                status = {c["key"]: c for c in ds_config.credential_status()}
+                assert status["GITHUB_TOKEN"]["configured"] is True
+                assert status["GITHUB_TOKEN"]["source"] == "environment variable"
+        finally:
+            del os.environ["GITHUB_TOKEN"]
+
+    def test_credential_status_unconfigured(self):
+        from data_scout import config as ds_config
+        os.environ.pop("SERPAPI_KEY", None)
+        with mock.patch.object(ds_config, "load_credentials_file", return_value={}):
+            status = {c["key"]: c for c in ds_config.credential_status()}
+            assert status["SERPAPI_KEY"]["configured"] is False
+
+    def test_save_and_load_roundtrip(self):
+        from data_scout import config as ds_config
+        import tempfile
+        tmpdir = tempfile.mkdtemp()
+        fake_file = Path(tmpdir) / "credentials.json"
+        with mock.patch.object(ds_config, "CREDENTIALS_FILE", fake_file), \
+             mock.patch.object(ds_config, "CONFIG_DIR", Path(tmpdir)):
+            ds_config.save_credentials_file({"GITHUB_TOKEN": "abc123"})
+            loaded = ds_config.load_credentials_file()
+            assert loaded == {"GITHUB_TOKEN": "abc123"}
+
+    def test_env_var_takes_precedence_over_stored_file(self):
+        from data_scout import config as ds_config
+        os.environ["BRAVE_API_KEY"] = "from_env"
+        try:
+            with mock.patch.object(ds_config, "load_credentials_file", return_value={"BRAVE_API_KEY": "from_file"}):
+                ds_config.load_stored_credentials_into_env()
+                assert os.environ["BRAVE_API_KEY"] == "from_env"
+        finally:
+            os.environ.pop("BRAVE_API_KEY", None)
+
+    def test_stored_file_loads_when_no_env_var(self):
+        from data_scout import config as ds_config
+        os.environ.pop("GOOGLE_CSE_ID", None)
+        with mock.patch.object(ds_config, "load_credentials_file", return_value={"GOOGLE_CSE_ID": "from_file"}):
+            ds_config.load_stored_credentials_into_env()
+            assert os.environ.get("GOOGLE_CSE_ID") == "from_file"
+        os.environ.pop("GOOGLE_CSE_ID", None)
 
 
 if __name__ == "__main__":

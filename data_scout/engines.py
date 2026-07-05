@@ -74,7 +74,7 @@ class DuckDuckGoEngine(SearchEngineBase):
         return True
 
     def search(self, query: str, max_results: int = 10, **kwargs) -> List[Dict[str, Any]]:
-        from .cli import _ddgs_list_search_with_retry
+        from .extraction import _ddgs_list_search_with_retry
 
         region = kwargs.get('region', 'us-en')
         safesearch = kwargs.get('safesearch', 'moderate')
