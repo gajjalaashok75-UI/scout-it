@@ -812,17 +812,70 @@ def _check_max_size_warning(max_size: Optional[str], main_content: Any) -> Optio
     return None
 
 
+def _fetch_with_playwright(url: str, timeout: int = 25) -> Tuple[str, str, str]:
+    """Fetch a page's rendered HTML using Playwright (headless browser).
+
+    Required: ``pip install data-scout[js-render]`` or ``playwright install chromium``.
+
+    Returns
+    -------
+    (html_text, title, final_url)
+        Fully rendered HTML, page title, and resolved URL after any redirects.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        raise ImportError(
+            "The --js-render flag requires Playwright.\n"
+            "  pip install playwright\n"
+            "  playwright install chromium\n"
+            "Or: pip install data-scout[js-render]"
+        )
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            # Use 'load' instead of 'networkidle' — many sites have persistent
+            # connections (long-polling, websockets) that never fully idle.
+            page.goto(url, wait_until="load", timeout=timeout * 1000)
+            # Give async JS a moment to finish rendering after load.
+            page.wait_for_timeout(2000)
+            html = page.content()
+            title = page.title()
+            final_url = page.url
+        finally:
+            browser.close()
+
+    return html, title, final_url
+
+
 def fetch_url(
     url: str,
     timeout: int = 25,
     max_chars: Optional[int] = None,
     max_size: Optional[str] = None,
     raw_html: bool = False,
+    js_render: bool = False,
 ):
     """
     Fetch a single URL and extract/clean its content.
-    
-    Enhanced version of fatchurl with better naming.
+
+    Parameters
+    ----------
+    url : str
+        The URL to fetch.
+    timeout : int
+        Request / browser-navigation timeout in seconds.
+    max_chars : Optional[int]
+        Maximum characters to keep in extracted content.
+    max_size : Optional[str]
+        Maximum response size (e.g. '1mb').
+    raw_html : bool
+        If True, return raw prettified HTML instead of extracted content.
+    js_render : bool
+        If True, use Playwright (headless Chromium) to render JavaScript-heavy
+        SPAs before extraction. Requires ``playwright`` and ``playwright install chromium``.
 
     Returns a dict containing a single structured result.
     """
@@ -841,27 +894,31 @@ def fetch_url(
 
     start_time = time.time()
     try:
-        headers = {
-            "User-Agent": random.choice(ExtractionEngine.USER_AGENTS),
-            "Accept": "text/html,application/xhtml+xml,*/*;q=0.9",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        response = requests.get(
-            url,
-            headers=headers,
-            timeout=timeout,
-            allow_redirects=True,
-            stream=True,
-        )
-        response.raise_for_status()
-        final_url = str(response.url)
+        if js_render:
+            response_text, title, final_url = _fetch_with_playwright(url, timeout)
+        else:
+            headers = {
+                "User-Agent": random.choice(ExtractionEngine.USER_AGENTS),
+                "Accept": "text/html,application/xhtml+xml,*/*;q=0.9",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+            response = requests.get(
+                url,
+                headers=headers,
+                timeout=timeout,
+                allow_redirects=True,
+                stream=True,
+            )
+            response.raise_for_status()
+            final_url = str(response.url)
 
-        # Truncate HTML response if max_size is specified
-        response_text = response.text
-        max_size_bytes = _parse_size_string(max_size)
-        if max_size_bytes and len(response.content) > max_size_bytes:
-            # Truncate HTML content to max_size bytes
-            response_text = response.content[:max_size_bytes].decode('utf-8', errors='ignore')
+            # Truncate HTML response if max_size is specified
+            response_text = response.text
+            max_size_bytes = _parse_size_string(max_size)
+            if max_size_bytes and len(response.content) > max_size_bytes:
+                response_text = response.content[:max_size_bytes].decode('utf-8', errors='ignore')
+
+            title = _extract_html_title(response_text) or final_url
 
         extractor = ExtractionEngine()
         main_content, method, confidence = extractor.extract_content(
@@ -875,7 +932,6 @@ def fetch_url(
             main_content = main_content[:max_chars]
 
         elapsed = time.time() - start_time
-        title = _extract_html_title(response_text) or final_url
 
         if raw_html:
             # Return raw HTML — skip extraction and cleaner pipeline entirely
@@ -1089,12 +1145,13 @@ def main():
                     '(3) Verifying the website is accessible, or (4) Using --timeout to increase wait time.'
     )
     url_parser.add_argument('--url', '-u', required=True, help='URL to fetch')
-    url_parser.add_argument('--timeout', type=int, default=5, help='Extraction timeout in seconds')
+    url_parser.add_argument('--timeout', type=int, default=25, help='Extraction timeout in seconds (increase for JS-rendered SPAs)')
     url_parser.add_argument('--max-chars', type=int, default=None, help='Maximum characters to extract (e.g., 10000)')
     url_parser.add_argument('--max-size', type=str, default=None, help='Maximum response size (e.g., 100kb, 1mb, 500mb)')
     url_parser.add_argument('--out', '-o', default='url_fetch_result.json', help='Output file')
     url_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
     url_parser.add_argument('--raw-html', action='store_true', help='Return raw HTML (prettified) instead of extracted/cleaned content')
+    url_parser.add_argument('--js-render', action='store_true', help='Render JavaScript-heavy SPAs with Playwright before extraction')
 
     # ======================================================================
     # video-extract subcommand
@@ -1425,6 +1482,7 @@ def main():
             max_chars=args.max_chars,
             max_size=args.max_size,
             raw_html=args.raw_html,
+            js_render=args.js_render,
         )
 
         output = {
@@ -1435,6 +1493,7 @@ def main():
                 'max_chars': args.max_chars,
                 'max_size': args.max_size,
                 'raw_html': args.raw_html,
+                'js_render': args.js_render,
             },
             'result': result
         }

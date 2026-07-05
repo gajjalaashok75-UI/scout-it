@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.0] - 2026-07-05 16:00:00 UTC
+
+### 🎉 Added
+
+#### JS Rendering via Playwright
+- **`--js-render` flag for `fetch-url`**: New optional flag that uses Playwright (headless Chromium) to render JavaScript-heavy SPAs before content extraction. Requires `playwright install chromium`. Controlled via `js_render=True` parameter in `fetch_url()` API. Imports Playwright lazily — raises a clear `ImportError` with install instructions if the dependency is missing.
+- **`_fetch_with_playwright()` helper**: Dedicated function using `playwright.sync_api` with a 2-second post-load render delay. Uses `wait_until="load"` (not `networkidle`) to avoid hanging on sites with persistent connections (long-polling, WebSockets).
+- **`js-render` extras in pyproject.toml**: New optional dependency group (`pip install data-scout[js-render]`) installs `playwright>=1.40.0`.
+
+#### Content Cleaning — Table/Data Row Exemption
+- **`_is_table_row()` heuristics**: New function that distinguishes markdown-like table rows from pipe-separated navigation bars. Checks: 3+ non-empty columns, average cell length > 5 chars, presence of URLs/code backticks/long cells, and separator rows (`---|---|---`). Single-word all-cells rows are classified as nav and remain filtered.
+
+### 🚀 Improved
+
+#### Extraction Pipeline
+- **Default timeout raised to 25s**: `fetch-url --timeout` default changed from 5 to 25 seconds, reducing failures on slow sites and JS-rendered pages.
+- **`extract_content_sections()` — No more section overwrites**: Repeated headings (e.g., multiple "References" sections) now append content instead of overwriting. All three heading-detection paths (`# prefix`, ALL-CAPS, generic) updated to use `if current_section not in sections` guard.
+- **`_is_nav_paragraph()` — '/' removed from breadcrumb detection**: Forward slash caused false positives on URLs (`https://host/path`) and file paths (`./dist/bundles/anime.js`). Breadcrumb detection now only checks `•·>»` characters.
+
+---
+
 ## [Unreleased]
 
 ### 🎉 Added

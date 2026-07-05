@@ -35,6 +35,44 @@ _PIPE_SEPARATED_LINE_RE = re.compile(
 )
 _CAMEL_CASE_RE = re.compile(r'[a-z]+[A-Z][a-z]+')
 
+# Minimum column count for table-row detection
+_TABLE_ROW_MIN_COLS = 3
+
+
+def _is_table_row(text: str) -> bool:
+    """Check if text looks like a table/data row (NOT navigation).
+
+    Distinguishes markdown-like table rows from pipe-separated nav bars
+    by checking that the content between pipes has substance.
+    """
+    if '|' not in text:
+        return False
+
+    parts = [p.strip() for p in text.split('|') if p.strip()]
+
+    # Need at least N non-empty columns to be a table
+    if len(parts) < _TABLE_ROW_MIN_COLS:
+        return False
+
+    # Markdown table separator row (---|---)
+    if all(re.match(r'^[\s:-]+$', p) for p in parts):
+        return True
+
+    # All cells are single words → language nav bar, not a table
+    if all(' ' not in p for p in parts):
+        return False
+
+    # Average cell content length > 5 chars → real data, not nav
+    total_len = sum(len(p) for p in parts)
+    if total_len / len(parts) > 5:
+        return True
+
+    # Any cell contains a URL, code backtick, or is very long (>20 chars)
+    if any(len(p) > 20 or '://' in p or '`' in p for p in parts):
+        return True
+
+    return False
+
 
 _NAV_KEYWORDS = frozenset({
     'home', 'about', 'contact', 'sitemap', 'privacy', 'terms',
@@ -73,14 +111,21 @@ def _is_nav_paragraph(para: str) -> bool:
     stripped = para.strip()
     lower = stripped.lower()
 
+    # Table/data rows are NOT navigation — exempt before pipe-based checks
+    if _is_table_row(stripped):
+        return False
+
     # Language-link bars: "Afrikaans | Alemannisch | Amharic | ..."
     if _LANG_LINK_RE.match(stripped):
         return True
     if _PIPE_SEPARATED_LINE_RE.match(stripped):
         return True
 
-    # Lines that are mostly short tokens separated by •·/* (breadcrumb style)
-    breadcrumb_sep = sum(1 for ch in stripped if ch in '|•·>»/')
+    # Lines that are mostly short tokens separated by breadcrumb characters
+    # NOTE: '/' is excluded because it appears in URLs (`https://host/path`)
+    # and file paths (`./dist/bundles/anime.js`) which are common in code —
+    # far more false positives than true breadcrumb detections.
+    breadcrumb_sep = sum(1 for ch in stripped if ch in '•·>»')  # no '/' — see note above
     if breadcrumb_sep >= 2 and len(stripped) < 200:
         return True
 
@@ -603,7 +648,9 @@ def extract_content_sections(text: str) -> Dict[str, List[str]]:
             section_title = re.sub(r'[#*_`]', '', section_title)
             if section_title and section_title != current_section:
                 current_section = section_title
-                sections[current_section] = []
+                # Don't overwrite — repeated headings APPEND to existing section
+                if current_section not in sections:
+                    sections[current_section] = []
             continue
 
         # --- ALL-CAPS lines (common heading style on many sites) ---
@@ -612,7 +659,8 @@ def extract_content_sections(text: str) -> Dict[str, List[str]]:
             title = line_stripped.strip()
             if title and title != current_section:
                 current_section = title
-                sections[current_section] = []
+                if current_section not in sections:
+                    sections[current_section] = []
             continue
 
         # --- Generic content heading (heuristically determined) ---
@@ -620,7 +668,8 @@ def extract_content_sections(text: str) -> Dict[str, List[str]]:
         if title:
             if title != current_section:
                 current_section = title
-                sections[current_section] = []
+                if current_section not in sections:
+                    sections[current_section] = []
             continue
 
         # Regular content line — only keep if it has substance
