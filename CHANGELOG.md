@@ -9,7 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.4.0] - 2026-07-05 16:00:00 UTC
+## [1.4.0] - 2026-07-06 12:00:00 UTC
+
+### 🔄 Changed — Renamed from `data-scout` to `scout-it`
+
+- **Package renamed** for PyPI publishing: `data-scout` → `scout-it`
+- **Python import path** renamed: `data_scout` → `scout_it`
+- **CLI command** renamed: `data-scout` → `scout-it`
+- **CLI entry point** updated: `scout-it = scout_it.cli:main`
+- All internal imports, documentation, and config references updated
+- Published to PyPI: https://pypi.org/project/scout-it/1.4.0/
 
 ### 🔴 Fixed — 13KB+ single-line content, now safely chunked (still valid JSON)
 

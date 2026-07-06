@@ -3,12 +3,12 @@ requires = ["setuptools>=65.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "data-scout"
+name = "scout-it"
 version = "1.4.0"
 description = "Enterprise-grade DuckDuckGo search toolkit with content extraction, cleaning, and structured JSON output"
 readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Ashok-gakr"}
 ]
@@ -17,7 +17,6 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
-    "License :: OSI Approved :: MIT License",
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -57,7 +56,7 @@ js-render = [
 ]
 legacy-ddgs = [
     # Fallback for environments still pinned to the old package name;
-    # data_scout tries `ddgs` first and falls back to this automatically.
+    # scout_it tries `ddgs` first and falls back to this automatically.
     "duckduckgo-search>=3.9.0",
 ]
 all = [
@@ -71,10 +70,10 @@ Repository = "https://github.com/Ashok-gakr/data-scout.git"
 "Bug Tracker" = "https://github.com/Ashok-gakr/data-scout/issues"
 
 [project.scripts]
-data-scout = "data_scout.cli:main"
+scout-it = "scout_it.cli:main"
 
 [tool.setuptools]
-packages = ["data_scout"]
+packages = ["scout_it"]
 
 [tool.black]
 line-length = 100

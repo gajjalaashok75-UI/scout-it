@@ -1,11 +1,11 @@
-"""Tests for data_scout.output: JSON line-length safety, --out/--markdown
+"""Tests for scout_it.output: JSON line-length safety, --out/--markdown
 path resolution, and Markdown rendering."""
 import json
 from pathlib import Path
 
 import pytest
 
-from data_scout import output as om
+from scout_it import output as om
 
 
 class TestChunkText:
@@ -108,7 +108,7 @@ class TestResolveOutputPath:
         assert r["format"] == "markdown"
         assert r["path"] == Path("custom.md")
 
-    def test_bare_filename_lands_under_data_scout_dir(self):
+    def test_bare_filename_lands_under_scout_it_dir(self):
         r = om.resolve_output_path("myfile.json", False, "web_search_results")
         assert r["path"] == Path(".data-scout/myfile.json")
 

@@ -1,6 +1,6 @@
 # 🤖 AGENTS.md - Instructions for AI Coding Agents
 
-**Project:** data-scout v1.0.0  
+**Project:** scout-it v1.4.0  
 **Author:** Ashok-gakr  
 **Date:** June 12, 2026  
 **Status:** Production Ready
@@ -26,7 +26,7 @@ This file is a guide for AI coding agents (GitHub Copilot, Cursor, Claude, etc.)
 
 ## Project Overview
 
-**data-scout** is a production-ready Python package for AI-powered web search, image search, and content extraction.
+**scout-it** is a production-ready Python package for AI-powered web search, image search, and content extraction.
 
 ### What it does:
 - Searches the web via DuckDuckGo and Google APIs
@@ -57,7 +57,7 @@ This file is a guide for AI coding agents (GitHub Copilot, Cursor, Claude, etc.)
 ### System Design
 
 ```
-CLI Layer (data_scout/cli.py)
+CLI Layer (scout_it/cli.py)
     ↓
     ├─→ EnterpriseSearchEngine (web/news search)
     ├─→ ImageSearchEngine (image search)
@@ -92,7 +92,7 @@ CLI Layer (data_scout/cli.py)
 
 ```
 data-scout/
-├── data_scout/
+├── scout_it/
 │   ├── __init__.py          (Public API exports)
 │   ├── extraction.py        (Search & extraction engines)
 │   ├── cleaner.py           (Content cleaning)
@@ -125,7 +125,7 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Or using conda
-conda create -n data-scout python=3.11
+conda create -n scout-it python=3.11
 conda activate data-scout
 ```
 
@@ -142,7 +142,7 @@ pip install -r requirements.txt
 ### 5. Verify Installation
 ```bash
 # Check CLI
-data-scout --help
+scout-it --help
 
 # Run tests
 pytest tests/ -v
@@ -161,8 +161,8 @@ pip install build twine
 python -m build
 
 # Output:
-# dist/data_scout-1.0.0-py3-none-any.whl (29.2 KB)
-# dist/data_scout-1.0.0.tar.gz (42.3 KB)
+# dist/scout_it-1.0.0-py3-none-any.whl (29.2 KB)
+# dist/scout_it-1.0.0.tar.gz (42.3 KB)
 ```
 
 ### Verify Build
@@ -180,10 +180,10 @@ python -m venv test_env
 source test_env/bin/activate
 
 # Install from wheel
-pip install dist/data_scout-1.0.0-py3-none-any.whl
+pip install dist/scout_it-1.0.0-py3-none-any.whl
 
 # Test CLI
-data-scout web-search --query "test" --max-results 2
+scout-it web-search --query "test" --max-results 2
 ```
 
 ---
@@ -202,7 +202,7 @@ pytest tests/test_cli.py -v
 
 ### Run Tests with Coverage
 ```bash
-pytest tests/ --cov=data_scout --cov-report=html
+pytest tests/ --cov=scout_it --cov-report=html
 ```
 
 ### Run Tests with Markers
@@ -238,16 +238,16 @@ pytest tests/test_cli.py::test_web_search -v
 **Use these tools:**
 ```bash
 # Format with black
-black data_scout/ tests/ --line-length=100
+black scout_it/ tests/ --line-length=100
 
 # Sort imports with isort
-isort data_scout/ tests/ --profile black
+isort scout_it/ tests/ --profile black
 
 # Lint with flake8
-flake8 data_scout/ tests/ --max-line-length=100
+flake8 scout_it/ tests/ --max-line-length=100
 
 # Type check with mypy
-mypy data_scout/ --strict
+mypy scout_it/ --strict
 ```
 
 **Standards:**
@@ -354,13 +354,13 @@ def search(query, max_results=10):
 Before committing:
 ```bash
 # Check for secrets
-grep -r "password\|api_key\|token" data_scout/ | grep -v ".pyc"
+grep -r "password\|api_key\|token" scout_it/ | grep -v ".pyc"
 
 # Check for hardcoded URLs (should use config)
-grep -r "http://" data_scout/ | grep -v "test\|example"
+grep -r "http://" scout_it/ | grep -v "test\|example"
 
 # Check for dangerous functions
-grep -r "eval\|exec\|pickle" data_scout/ | grep -v "test"
+grep -r "eval\|exec\|pickle" scout_it/ | grep -v "test"
 ```
 
 ### Environment Variables
@@ -385,14 +385,14 @@ export MAX_WORKERS="8"
 - ❌ `dist/` - Build artifacts (regenerated each build)
 - ❌ `__pycache__/` - Python cache (regenerated)
 - ❌ `.mypy_cache/` - Type checker cache (regenerated)
-- ❌ `data_scout.egg-info/` - Package metadata (regenerated)
+- ❌ `scout_it.egg-info/` - Package metadata (regenerated)
 - ❌ `docs/` - User documentation (contact maintainer to update)
 - ❌ `references/` - Legacy code archive (historical reference only)
 - ❌ `LICENSE` - MIT license (do not modify)
 - ❌ `setup.py` - Only update if changing dependencies
 
 ### CAN MODIFY:
-- ✅ `data_scout/` - Source code (main development area)
+- ✅ `scout_it/` - Source code (main development area)
 - ✅ `tests/` - Test suite (add tests for new features)
 - ✅ `README.md` - Main documentation (user-facing docs)
 - ✅ `AGENTS.md` - This file (agent instructions)
@@ -402,7 +402,7 @@ export MAX_WORKERS="8"
 ### Package Layout
 
 ```
-data_scout/                          # Main package
+scout_it/                          # Main package
 ├── __init__.py                     # Public API
 ├── extraction.py                   # Search engines (570+ lines)
 ├── cleaner.py                      # Content cleaning (350+ lines)
@@ -449,13 +449,13 @@ git checkout -b feature/my-feature
 # - Run tests: pytest tests/ -v
 
 # 3. Format code
-black data_scout/ && isort data_scout/
+black scout_it/ && isort scout_it/
 
 # 4. Type check
-mypy data_scout/ --strict
+mypy scout_it/ --strict
 
 # 5. Lint
-flake8 data_scout/
+flake8 scout_it/
 
 # 6. Commit
 git add .
@@ -466,12 +466,12 @@ git commit -m "feat: description"
 
 **Always use relative imports within package:**
 ```python
-# ✅ Correct (within data_scout/)
+# ✅ Correct (within scout_it/)
 from .extraction import EnterpriseSearchEngine
 from .cleaner import process_results
 
 # ❌ Wrong
-from data_scout.extraction import EnterpriseSearchEngine
+from scout_it.extraction import EnterpriseSearchEngine
 ```
 
 ### 4. Dependency Management
@@ -577,10 +577,10 @@ Closes #123
 
 ### Pre-Commit Checklist
 - [ ] Tests pass: `pytest tests/ -v`
-- [ ] Code formatted: `black data_scout/`
-- [ ] Imports sorted: `isort data_scout/`
-- [ ] Linting passes: `flake8 data_scout/`
-- [ ] Type checking passes: `mypy data_scout/`
+- [ ] Code formatted: `black scout_it/`
+- [ ] Imports sorted: `isort scout_it/`
+- [ ] Linting passes: `flake8 scout_it/`
+- [ ] Type checking passes: `mypy scout_it/`
 - [ ] No hardcoded secrets
 - [ ] Docstrings added/updated
 - [ ] Commit message follows convention
@@ -602,21 +602,21 @@ git push origin feature/my-feature
 |------|---------|
 | Install development | `pip install -e ".[dev]"` |
 | Run tests | `pytest tests/ -v` |
-| Format code | `black data_scout/` |
-| Sort imports | `isort data_scout/` |
-| Lint | `flake8 data_scout/` |
-| Type check | `mypy data_scout/` |
+| Format code | `black scout_it/` |
+| Sort imports | `isort scout_it/` |
+| Lint | `flake8 scout_it/` |
+| Type check | `mypy scout_it/` |
 | Build package | `python -m build` |
-| CLI help | `data-scout --help` |
-| Web search | `data-scout web-search --query "test"` |
+| CLI help | `scout-it --help` |
+| Web search | `scout-it web-search --query "test"` |
 
 ### File Purposes
 | File | Purpose | Modify? |
 |------|---------|---------|
-| `data_scout/__init__.py` | Public API | ✅ Yes |
-| `data_scout/extraction.py` | Search engines | ✅ Yes |
-| `data_scout/cleaner.py` | Content cleaning | ✅ Yes |
-| `data_scout/cli.py` | CLI interface | ✅ Yes |
+| `scout_it/__init__.py` | Public API | ✅ Yes |
+| `scout_it/extraction.py` | Search engines | ✅ Yes |
+| `scout_it/cleaner.py` | Content cleaning | ✅ Yes |
+| `scout_it/cli.py` | CLI interface | ✅ Yes |
 | `tests/test_cli.py` | Test suite | ✅ Yes |
 | `pyproject.toml` | Build config | ✅ (Carefully) |
 | `setup.py` | Legacy setup | ✅ (Only if needed) |

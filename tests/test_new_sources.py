@@ -1,6 +1,6 @@
 """
-Tests for the multi-source additions: data_scout.github_extract,
-data_scout.engines, and data_scout.social. All HTTP calls are mocked —
+Tests for the multi-source additions: scout_it.github_extract,
+scout_it.engines, and scout_it.social. All HTTP calls are mocked —
 no real network access needed.
 """
 import base64
@@ -11,9 +11,9 @@ from unittest import mock
 
 import pytest
 
-from data_scout import github_extract as gh
-from data_scout import engines as eng
-from data_scout import social
+from scout_it import github_extract as gh
+from scout_it import engines as eng
+from scout_it import social
 
 
 class _FakeResp:
@@ -45,7 +45,7 @@ class TestGithubParseRef:
 
 
 class TestGithubRepo:
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_happy_path_quick_mode(self, mock_request):
         mock_request.return_value = _FakeResp(200, {
             "full_name": "psf/requests", "description": "HTTP for humans",
@@ -62,7 +62,7 @@ class TestGithubRepo:
         assert out["language"] == "Python"
         assert "branches" not in out  # quick mode skips the rich aggregation
 
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_full_mode_aggregates_multiple_endpoints(self, mock_request):
         base = {
             "full_name": "psf/requests", "description": "d", "html_url": "u", "stargazers_count": 1,
@@ -103,7 +103,7 @@ class TestGithubRepo:
         assert out["file_tree"][0]["path"] == "a.py"
         assert out["file_tree_truncated"] is False
 
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_file_tree_not_included_by_default(self, mock_request):
         base = {
             "full_name": "psf/requests", "description": "d", "html_url": "u", "stargazers_count": 1,
@@ -120,14 +120,14 @@ class TestGithubRepo:
         out = gh.github_repo("psf/requests", full=False, include_file_tree=True, max_chars=100, max_size="5mb")
         assert out["error"] == "invalid_arguments"
 
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_rate_limited(self, mock_request):
         mock_request.return_value = _FakeResp(403, {}, headers={"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "999"})
         out = gh.github_repo("psf/requests")
         assert out["error"] == "rate_limited"
         assert "GITHUB_TOKEN" in out["error_message"]
 
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_not_found(self, mock_request):
         mock_request.return_value = _FakeResp(404, {})
         out = gh.github_repo("nonexistent/nonexistent")
@@ -139,7 +139,7 @@ class TestGithubRepo:
 
 
 class TestGithubCommit:
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_full_diff_extraction(self, mock_request):
         mock_request.return_value = _FakeResp(200, {
             "sha": "abc1234567890", "html_url": "https://github.com/x/y/commit/abc",
@@ -160,7 +160,7 @@ class TestGithubCommit:
         out = gh.github_commit("x/y", "")
         assert out["error"] == "invalid_sha"
 
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_no_patch_option(self, mock_request):
         mock_request.return_value = _FakeResp(200, {
             "sha": "abc", "html_url": "u", "commit": {"message": "m", "author": {}},
@@ -172,7 +172,7 @@ class TestGithubCommit:
 
 
 class TestGithubFileContent:
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_decodes_base64_text_file(self, mock_request):
         mock_request.return_value = _FakeResp(200, {
             "encoding": "base64", "content": base64.b64encode(b"print('hi')").decode(),
@@ -182,7 +182,7 @@ class TestGithubFileContent:
         assert out["content"] == "print('hi')"
         assert out["is_binary_or_too_large"] is False
 
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_directory_returns_error(self, mock_request):
         mock_request.return_value = _FakeResp(200, [{"name": "a.py", "type": "file"}])
         out = gh.github_file_content("x/y", "src")
@@ -239,7 +239,7 @@ class TestTelegramChannel:
           </div>
         </div>
         """
-        with mock.patch("data_scout.extraction.fetch_resilient", return_value={
+        with mock.patch("scout_it.extraction.fetch_resilient", return_value={
             "html": fake_html, "final_url": "u", "status": "success", "tier": "requests", "attempts": 1, "errors": [],
         }):
             out = social.telegram_channel("testchan")
@@ -249,7 +249,7 @@ class TestTelegramChannel:
             assert out["parser_used"] == "primary"
 
     def test_fetch_failure_reported(self):
-        with mock.patch("data_scout.extraction.fetch_resilient", return_value={
+        with mock.patch("scout_it.extraction.fetch_resilient", return_value={
             "html": "", "final_url": "u", "status": "failed", "tier": "none", "attempts": 7, "errors": ["e1"],
         }):
             out = social.telegram_channel("testchan")
@@ -267,7 +267,7 @@ class TestTelegramChannel:
         <meta property="og:title" content="Empty Channel" />
         <div class="tgme_channel_info_header_title">Empty Channel</div>
         """
-        with mock.patch("data_scout.extraction.fetch_resilient", return_value={
+        with mock.patch("scout_it.extraction.fetch_resilient", return_value={
             "html": fake_html, "final_url": "u", "status": "success", "tier": "requests", "attempts": 1, "errors": [],
         }):
             out = social.telegram_channel("chan", max_fetch_retries=1)
@@ -310,7 +310,7 @@ class TestDiscordChannel:
     def test_happy_path(self):
         os.environ["DISCORD_BOT_TOKEN"] = "fake"
         try:
-            with mock.patch("data_scout.social.requests.get") as mock_get:
+            with mock.patch("scout_it.social.requests.get") as mock_get:
                 mock_get.return_value = _FakeResp(200, [
                     {"id": "1", "author": {"username": "alice"}, "content": "hi", "timestamp": "t", "attachments": []}
                 ])
@@ -323,14 +323,14 @@ class TestDiscordChannel:
 
 class TestRedditSearch:
     def test_403_reports_honest_blocked_error_not_empty_results(self):
-        with mock.patch("data_scout.social.requests.get") as mock_get:
+        with mock.patch("scout_it.social.requests.get") as mock_get:
             mock_get.return_value = _FakeResp(403)
             out = social.reddit_search("python")
             assert out["error"] == "blocked"
             assert "2026" in out["error_message"] or "REDDIT_COOKIE" in out["error_message"]
 
     def test_happy_path(self):
-        with mock.patch("data_scout.social.requests.get") as mock_get:
+        with mock.patch("scout_it.social.requests.get") as mock_get:
             mock_get.return_value = _FakeResp(200, {
                 "data": {"children": [{"data": {
                     "title": "Post title", "subreddit": "python", "author": "bob", "score": 42,
@@ -375,7 +375,7 @@ class TestGithubPatchLines:
         assert gh._parse_patch_lines(None) == []
         assert gh._parse_patch_lines("") == []
 
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_commit_includes_patch_lines(self, mock_request):
         mock_request.return_value = _FakeResp(200, {
             "sha": "abc", "html_url": "u", "commit": {"message": "m", "author": {}},
@@ -391,7 +391,7 @@ class TestGithubPatchLines:
 
 
 class TestGithubPrs:
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_lists_prs_with_pr_specific_fields(self, mock_request):
         mock_request.return_value = _FakeResp(200, [{
             "number": 5, "title": "Add feature", "state": "open", "draft": False,
@@ -407,7 +407,7 @@ class TestGithubPrs:
 
 
 class TestGithubFolder:
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_recursive_listing_filters_by_prefix(self, mock_request):
         def side_effect(method, url, headers=None, params=None, timeout=None):
             if url.endswith("/repos/x/y"):
@@ -426,7 +426,7 @@ class TestGithubFolder:
         assert "src/sub/b.py" in paths
         assert "README.md" not in paths
 
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_non_recursive_single_level(self, mock_request):
         mock_request.return_value = _FakeResp(200, [
             {"path": "src/a.py", "type": "file", "size": 10},
@@ -447,7 +447,7 @@ class TestGithubFolder:
         out = gh.github_folder("x/y", path="src/", include_content=True, max_chars=100, max_size="1kb")
         assert out["error"] == "invalid_arguments"
 
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_include_content_without_max_files_fetches_all(self, mock_request):
         def side_effect(method, url, headers=None, params=None, timeout=None):
             if url.endswith("/repos/x/y"):
@@ -467,7 +467,7 @@ class TestGithubFolder:
         assert out["files_fetched"] == 3  # all files, no default cap
         assert out["files_truncated"] is False
 
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_max_chars_truncates_content(self, mock_request):
         def side_effect(method, url, headers=None, params=None, timeout=None):
             if url.endswith("/repos/x/y"):
@@ -484,7 +484,7 @@ class TestGithubFolder:
         assert len(out["files"][0]["content"]) == 50
         assert out["files"][0]["content_truncated"] is True
 
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_detected_file_type(self, mock_request):
         def side_effect(method, url, headers=None, params=None, timeout=None):
             if url.endswith("/repos/x/y"):
@@ -507,7 +507,7 @@ class TestGithubFolder:
         assert gh._detect_file_type("Dockerfile") == "dockerfile"
         assert gh._detect_file_type("noextension") == "unknown"
 
-    @mock.patch("data_scout.github_extract.requests.request")
+    @mock.patch("scout_it.github_extract.requests.request")
     def test_save_path_dir_writes_files_preserving_tree(self, mock_request):
         import tempfile, shutil
         tmpdir = tempfile.mkdtemp()
@@ -538,7 +538,7 @@ class TestTelegramSearch:
             {"href": "https://t.me/pythondev", "title": "t2"},  # duplicate channel, should dedupe
             {"href": "https://t.me/s/anotherchan", "title": "t3"},
         ]
-        with mock.patch("data_scout.extraction._ddgs_list_search_with_retry", return_value=(fake_ddg_results, {})), \
+        with mock.patch("scout_it.extraction._ddgs_list_search_with_retry", return_value=(fake_ddg_results, {})), \
              mock.patch.object(social, "telegram_channel", return_value={"channel": "pythondev", "title": "Python Dev", "post_count_returned": 1, "posts": []}):
             out = social.telegram_search("python")
             assert out["channel_count"] == 2  # deduped to 2 unique channels
@@ -548,7 +548,7 @@ class TestTelegramSearch:
         assert out["error"] == "invalid_query"
 
     def test_no_matches_returns_helpful_note(self):
-        with mock.patch("data_scout.extraction._ddgs_list_search_with_retry", return_value=([], {})):
+        with mock.patch("scout_it.extraction._ddgs_list_search_with_retry", return_value=([], {})):
             out = social.telegram_search("extremely obscure query with no results")
             assert out["channel_count"] == 0
             assert "note" in out
@@ -556,7 +556,7 @@ class TestTelegramSearch:
 
 class TestConfig:
     def test_credential_status_reports_env_var_source(self):
-        from data_scout import config as ds_config
+        from scout_it import config as ds_config
         os.environ["GITHUB_TOKEN"] = "faketoken123"
         try:
             with mock.patch.object(ds_config, "load_credentials_file", return_value={}):
@@ -567,14 +567,14 @@ class TestConfig:
             del os.environ["GITHUB_TOKEN"]
 
     def test_credential_status_unconfigured(self):
-        from data_scout import config as ds_config
+        from scout_it import config as ds_config
         os.environ.pop("SERPAPI_KEY", None)
         with mock.patch.object(ds_config, "load_credentials_file", return_value={}):
             status = {c["key"]: c for c in ds_config.credential_status()}
             assert status["SERPAPI_KEY"]["configured"] is False
 
     def test_save_and_load_roundtrip(self):
-        from data_scout import config as ds_config
+        from scout_it import config as ds_config
         import tempfile
         tmpdir = tempfile.mkdtemp()
         fake_file = Path(tmpdir) / "credentials.json"
@@ -585,7 +585,7 @@ class TestConfig:
             assert loaded == {"GITHUB_TOKEN": "abc123"}
 
     def test_env_var_takes_precedence_over_stored_file(self):
-        from data_scout import config as ds_config
+        from scout_it import config as ds_config
         os.environ["BRAVE_API_KEY"] = "from_env"
         try:
             with mock.patch.object(ds_config, "load_credentials_file", return_value={"BRAVE_API_KEY": "from_file"}):
@@ -595,7 +595,7 @@ class TestConfig:
             os.environ.pop("BRAVE_API_KEY", None)
 
     def test_stored_file_loads_when_no_env_var(self):
-        from data_scout import config as ds_config
+        from scout_it import config as ds_config
         os.environ.pop("GOOGLE_CSE_ID", None)
         with mock.patch.object(ds_config, "load_credentials_file", return_value={"GOOGLE_CSE_ID": "from_file"}):
             ds_config.load_stored_credentials_into_env()

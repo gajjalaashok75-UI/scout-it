@@ -5,14 +5,14 @@
 from setuptools import setup
 
 setup(
-    name="data-scout",
-    version="1.0.0",
+    name="scout-it",
+    version="1.4.0",
     author="Ashok-gakr",
     description="Enterprise-grade DuckDuckGo search toolkit with content extraction, cleaning, and structured JSON output",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     url="https://github.com/Ashok-gakr/data-scout",
-    packages=["data_scout"],
+    packages=["scout_it"],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
@@ -37,7 +37,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "data-scout=data_scout.cli:main",
+            "scout-it=scout_it.cli:main",
         ],
     },
 )

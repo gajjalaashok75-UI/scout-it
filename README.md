@@ -74,10 +74,10 @@ There are 5 query/search modes available through `search.py`:
 ## Project Structure
 
 ```text
-data-scout/
-  data_scout/
+scout-it/
+  scout_it/
     __init__.py               # Package initialization + public API
-    cli.py                    # CLI entry point (data-scout command)
+    cli.py                    # CLI entry point (scout-it command)
     extraction.py             # Search engines + extraction engines
     cleaner.py                # Content cleaning + structuring
   tests/
@@ -140,7 +140,7 @@ Python packages used by the project:
 - `boilerpy3`
 - `rich`
 - `youtube-transcript-api` (for `video-extract` subtitles)
-- `playwright` — *optional*, only needed for the Tier-2 JS-render fallback. Install with `pip install data-scout[js-render]` then `playwright install chromium`.
+- `playwright` — *optional*, only needed for the Tier-2 JS-render fallback. Install with `pip install scout-it[js-render]` then `playwright install chromium`.
 - `pytest` (for tests)
 
 ## Installation
@@ -160,16 +160,16 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -e ".[dev]"
 ```
 
-### Option 2: Install from PyPI (When Published)
+### Option 2: Install from PyPI
 
 ```bash
-pip install data-scout
+pip install scout-it
 ```
 
 ### Verify Installation
 
 ```bash
-data-scout --help
+scout-it --help
 ```
 
 ## Quick Start
@@ -177,37 +177,37 @@ data-scout --help
 ### 1) Web Search (3 results)
 
 ```bash
-data-scout web-search --query "dog" --max-results 3
+scout-it web-search --query "dog" --max-results 3
 ```
 
 ### 2) Image Search (3 results)
 
 ```bash
-data-scout image-search --query "dog" --max-results 3
+scout-it image-search --query "dog" --max-results 3
 ```
 
 ### 3) News Search
 
 ```bash
-data-scout news-search --query "dog" --max-results 5
+scout-it news-search --query "dog" --max-results 5
 ```
 
 ### 4) Video Search
 
 ```bash
-data-scout video-search --query "dog" --max-results 5
+scout-it video-search --query "dog" --max-results 5
 ```
 
 ### 5) Fetch and Extract a Single URL
 
 ```bash
-data-scout fetch-url --url "https://en.wikipedia.org/wiki/Dog"
+scout-it fetch-url --url "https://en.wikipedia.org/wiki/Dog"
 ```
 
 ### 6) Web Search with JSON Output
 
 ```bash
-data-scout web-search --query "machine learning" --max-results 10 --json
+scout-it web-search --query "machine learning" --max-results 10 --json
 ```
 
 ## CLI Reference
@@ -215,7 +215,7 @@ data-scout web-search --query "machine learning" --max-results 10 --json
 ### Global Help
 
 ```bash
-data-scout --help
+scout-it --help
 ```
 
 Subcommands:
@@ -229,7 +229,7 @@ Subcommands:
 ### web-search
 
 ```bash
-data-scout web-search --query "<text>" [options]
+scout-it web-search --query "<text>" [options]
 ```
 
 Options:
@@ -246,14 +246,14 @@ Options:
 
 **Example:**
 ```bash
-data-scout web-search --query "machine learning" --max 5
-data-scout web-search --query "site behind cloudflare" --max-fetch-retries 4
+scout-it web-search --query "machine learning" --max 5
+scout-it web-search --query "site behind cloudflare" --max-fetch-retries 4
 ```
 
 ### image-search
 
 ```bash
-data-scout image-search --query "<text>" [options]
+scout-it image-search --query "<text>" [options]
 ```
 
 Options:
@@ -267,13 +267,13 @@ Options:
 
 **Example:**
 ```bash
-data-scout image-search --query "landscape" --max 10 --min-width 1024 --min-height 768
+scout-it image-search --query "landscape" --max 10 --min-width 1024 --min-height 768
 ```
 
 ### news-search
 
 ```bash
-data-scout news-search --query "<text>" [options]
+scout-it news-search --query "<text>" [options]
 ```
 
 Options:
@@ -287,13 +287,13 @@ Options:
 
 **Example:**
 ```bash
-data-scout news-search --query "artificial intelligence" --max 5
+scout-it news-search --query "artificial intelligence" --max 5
 ```
 
 ### video-search
 
 ```bash
-data-scout video-search --query "<text>" [options]
+scout-it video-search --query "<text>" [options]
 ```
 
 Options:
@@ -306,13 +306,13 @@ Options:
 
 **Example:**
 ```bash
-data-scout video-search --query "python tutorial" --max 5
+scout-it video-search --query "python tutorial" --max 5
 ```
 
 ### video-extract
 
 ```bash
-data-scout video-extract --url "<youtube-url>" [options]
+scout-it video-extract --url "<youtube-url>" [options]
 ```
 
 Extracts full metadata (title, channel, view/like counts, description, upload date) and, where available, subtitles/transcript for a YouTube video.
@@ -327,7 +327,7 @@ Options:
 
 **Example:**
 ```bash
-data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --segments
+scout-it video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --segments
 ```
 
 Only YouTube is currently supported; other platforms return a clear `unsupported_platform` error rather than failing silently.
@@ -335,7 +335,7 @@ Only YouTube is currently supported; other platforms return a clear `unsupported
 ### fetch-url
 
 ```bash
-data-scout fetch-url --url "https://example.com" [options]
+scout-it fetch-url --url "https://example.com" [options]
 ```
 
 Options:
@@ -352,19 +352,19 @@ Options:
 
 **Example:**
 ```bash
-data-scout fetch-url --url "https://example.com/article"
-data-scout fetch-url --url "https://spa-heavy-site.com" --js-render
+scout-it fetch-url --url "https://example.com/article"
+scout-it fetch-url --url "https://spa-heavy-site.com" --js-render
 ```
 
 ### multi-search — search across multiple engines
 
 ```bash
-data-scout multi-search --query "<text>" --engines duckduckgo,brave,google [options]
+scout-it multi-search --query "<text>" --engines duckduckgo,brave,google [options]
 ```
 
 Queries several search engines **in parallel**, merges/dedupes by URL, then runs the same
 content-extraction pipeline as `web-search`. `duckduckgo` needs no setup; the others need a
-free/paid API key set as an environment variable — run `data-scout list-engines` to see what's
+free/paid API key set as an environment variable — run `scout-it list-engines` to see what's
 configured and what each one needs.
 
 Options: `--query/-q`, `--engines` (comma-separated), `--max/-m`, `--workers/-w`,
@@ -372,20 +372,20 @@ Options: `--query/-q`, `--engines` (comma-separated), `--max/-m`, `--workers/-w`
 `--no-dedupe`, `--max-fetch-retries`, `--no-js-fallback`, `--json`.
 
 ```bash
-data-scout multi-search --query "rust vs go performance" --engines duckduckgo,brave --max 15
-BRAVE_API_KEY=xxx data-scout list-engines   # check what's configured
+scout-it multi-search --query "rust vs go performance" --engines duckduckgo,brave --max 15
+BRAVE_API_KEY=xxx scout-it list-engines   # check what's configured
 ```
 
-### Credential setup — `data-scout config`
+### Credential setup — `scout-it config`
 
 Several commands need an API key or token (multi-engine search, GitHub Discussions/code search,
 Discord). Instead of exporting environment variables every session, run:
 
 ```bash
-data-scout config              # interactive wizard -- Enter to skip any key you don't have
-data-scout config --show       # check what's configured (no secrets printed)
-data-scout config --clear GITHUB_TOKEN   # remove one stored key
-data-scout config --clear-all            # remove everything
+scout-it config              # interactive wizard -- Enter to skip any key you don't have
+scout-it config --show       # check what's configured (no secrets printed)
+scout-it config --clear GITHUB_TOKEN   # remove one stored key
+scout-it config --clear-all            # remove everything
 ```
 
 Values are stored at `~/.data-scout/credentials.json` (owner-only file permissions on POSIX) and
@@ -399,7 +399,7 @@ Uses GitHub's official REST + GraphQL APIs (no scraping). Works unauthenticated 
 requests/hour; set `GITHUB_TOKEN` (a personal access token, no special scopes needed for public
 repos) for 5,000/hour. GitHub Discussions specifically **requires** `GITHUB_TOKEN` — GraphQL has
 no anonymous access at all, even for public repos, which is a GitHub platform rule. Run
-`data-scout config` to store `GITHUB_TOKEN` once instead of exporting it every session.
+`scout-it config` to store `GITHUB_TOKEN` once instead of exporting it every session.
 
 | Command | What it does |
 |---|---|
@@ -417,10 +417,10 @@ no anonymous access at all, even for public repos, which is a GitHub platform ru
 | `github-discussions --repo owner/repo` | List discussions (**requires** `GITHUB_TOKEN`) |
 
 ```bash
-data-scout github-repo --repo pytorch/pytorch              # full overview: branches, contributors, releases, etc.
-data-scout github-commit --repo psf/requests --sha <sha>   # full diff for one commit, line-by-line +/- structure
-data-scout github-folder --repo psf/requests --path src/ --include-content --max-files 10
-GITHUB_TOKEN=ghp_xxx data-scout github-discussions --repo pytorch/pytorch
+scout-it github-repo --repo pytorch/pytorch              # full overview: branches, contributors, releases, etc.
+scout-it github-commit --repo psf/requests --sha <sha>   # full diff for one commit, line-by-line +/- structure
+scout-it github-folder --repo psf/requests --path src/ --include-content --max-files 10
+GITHUB_TOKEN=ghp_xxx scout-it github-discussions --repo pytorch/pytorch
 ```
 
 ### Social / platform commands
@@ -433,10 +433,10 @@ GITHUB_TOKEN=ghp_xxx data-scout github-discussions --repo pytorch/pytorch
 | `reddit-search --query "..." [--subreddit][--max]` | 2 — best-effort | Reddit blocks most anonymous requests as of 2026; optionally set `REDDIT_COOKIE` |
 
 ```bash
-data-scout telegram-channel --channel durov --max 10
-data-scout telegram-channel --query "machine learning" --max 10   # find & preview matching public channels
-DISCORD_BOT_TOKEN=xxx data-scout discord-channel --channel-id 123456789012345678
-data-scout reddit-search --query "python" --subreddit programming   # best-effort, see --help
+scout-it telegram-channel --channel durov --max 10
+scout-it telegram-channel --query "machine learning" --max 10   # find & preview matching public channels
+DISCORD_BOT_TOKEN=xxx scout-it discord-channel --channel-id 123456789012345678
+scout-it reddit-search --query "python" --subreddit programming   # best-effort, see --help
 ```
 
 Discord intentionally has no `--query` topic-search mode: unlike Telegram's public preview pages,
@@ -486,8 +486,8 @@ You can import and use the search engines and extraction functions directly from
 ### Web Search with Content Extraction
 
 ```python
-from data_scout.extraction import EnterpriseSearchEngine
-from data_scout.cleaner import process_results
+from scout_it.extraction import EnterpriseSearchEngine
+from scout_it.cleaner import process_results
 
 engine = EnterpriseSearchEngine()
 results = engine.search(
@@ -509,7 +509,7 @@ for result in cleaned_results:
 ### Image Search
 
 ```python
-from data_scout.extraction import ImageSearchEngine
+from scout_it.extraction import ImageSearchEngine
 
 engine = ImageSearchEngine()
 results = engine.search(
@@ -529,7 +529,7 @@ for result in results:
 ### Direct Content Extraction from URL
 
 ```python
-from data_scout.extraction import ExtractionEngine
+from scout_it.extraction import ExtractionEngine
 
 engine = ExtractionEngine()
 content, method, confidence = engine.extract(
@@ -545,7 +545,7 @@ print(f"Content:\n{content[:500]}...")
 ### Text Cleaning and Processing
 
 ```python
-from data_scout.cleaner import advanced_clean_text
+from scout_it.cleaner import advanced_clean_text
 
 raw_text = "   Hello   world   with   extra    spaces   "
 cleaned = advanced_clean_text(raw_text)
@@ -572,9 +572,9 @@ file.md` also works without `--markdown`. Combining `--markdown` with an explici
 ....json` is rejected with a clear error.
 
 ```bash
-data-scout github-repo --repo psf/requests --markdown          # .data-scout/github_repo_results.md
-data-scout web-search --query "rust vs go" --out report.md     # markdown, no --markdown flag needed
-data-scout web-search --query "x" --markdown --out result.json # ERROR: conflicting formats
+scout-it github-repo --repo psf/requests --markdown          # .data-scout/github_repo_results.md
+scout-it web-search --query "rust vs go" --out report.md     # markdown, no --markdown flag needed
+scout-it web-search --query "x" --markdown --out result.json # ERROR: conflicting formats
 ```
 
 ### Web Search Output (`results.json`)
@@ -636,7 +636,7 @@ Each image item includes:
 
 ## Retry and Fallback Behavior
 
-data-scout retries and falls back at **two independent layers**, and it's worth understanding the difference:
+scout-it retries and falls back at **two independent layers**, and it's worth understanding the difference:
 
 1. **Search/discovery layer** — did DDGS return any results at all?
 2. **Content-fetch layer** — for each individual result URL, can we actually download and extract its page content?
@@ -671,7 +671,7 @@ Notes on the design:
 - **Tier 2 is skipped automatically** when every Tier 1 attempt failed at the connection level (DNS failure, connection refused, timeout) rather than getting an actual HTTP response — a browser hitting the same broken network path won't succeed either, so this avoids wasting 3× browser launches (~tens of seconds) on an unreachable host. It's still tried whenever at least one Tier 1 attempt *did* get a response (e.g. a 403 or a bot-check page), since that's exactly the case Playwright is good at getting past.
 - Every result records which tier actually succeeded, e.g. `extraction_method: "trafilatura (playwright)"`, so you can see in the output how much the fallback chain is being used.
 - `--no-js-fallback` disables Tier 2 entirely (useful if Playwright/Chromium isn't installed in your environment, or you want fast-fail behavior).
-- Playwright is optional: `pip install data-scout[js-render] && playwright install chromium`. If it isn't installed, Tier 2 is skipped with a note in the diagnostics and the chain still falls through to Tier 3.
+- Playwright is optional: `pip install scout-it[js-render] && playwright install chromium`. If it isn't installed, Tier 2 is skipped with a note in the diagnostics and the chain still falls through to Tier 3.
 - `fetch-url --js-render` skips straight to Tier 2 instead of trying `requests` first (useful when you already know a page needs JS).
 
 ### DDGS Signature Compatibility
@@ -695,7 +695,7 @@ If no dimension filters are enabled:
 ### Example A: Web Search for Articles
 
 ```bash
-data-scout web-search --query "artificial intelligence" --max-results 5
+scout-it web-search --query "artificial intelligence" --max-results 5
 ```
 
 **Output:**
@@ -710,31 +710,31 @@ Content: [extracted article text...]
 ### Example B: High-Resolution Image Search
 
 ```bash
-data-scout image-search --query "mountain scenery" --max-results 10 --min-width 1920 --min-height 1080
+scout-it image-search --query "mountain scenery" --max-results 10 --min-width 1920 --min-height 1080
 ```
 
 ### Example C: News Search
 
 ```bash
-data-scout news-search --query "technology breakthroughs" --max-results 5
+scout-it news-search --query "technology breakthroughs" --max-results 5
 ```
 
 ### Example D: Video Search
 
 ```bash
-data-scout video-search --query "python programming tutorial" --max-results 5
+scout-it video-search --query "python programming tutorial" --max-results 5
 ```
 
 ### Example E: Extract Content from Specific URL
 
 ```bash
-data-scout fetch-url --url "https://en.wikipedia.org/wiki/Artificial_intelligence"
+scout-it fetch-url --url "https://en.wikipedia.org/wiki/Artificial_intelligence"
 ```
 
 ### Example F: Programmatic Web Search (Python)
 
 ```python
-from data_scout.extraction import EnterpriseSearchEngine
+from scout_it.extraction import EnterpriseSearchEngine
 
 engine = EnterpriseSearchEngine()
 results = engine.search(
@@ -759,7 +759,7 @@ pytest tests/ -v
 Run with coverage:
 
 ```bash
-pytest tests/ --cov=data_scout --cov-report=html
+pytest tests/ --cov=scout_it --cov-report=html
 ```
 
 Current test suite includes:
@@ -810,7 +810,7 @@ Current test suite includes:
 pip install -e ".[dev]"
 
 # Or verify installation
-python -c "from data_scout import EnterpriseSearchEngine; print('OK')"
+python -c "from scout_it import EnterpriseSearchEngine; print('OK')"
 ```
 
 ### 5) Python version mismatch

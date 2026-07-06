@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unit tests for data_scout.cleaner functions — content extraction, heading
+Unit tests for scout_it.cleaner functions — content extraction, heading
 detection, section parsing, nav filtering, and paragraph quality scoring.
 
 Every test exercises REGRESSION GUARDS: the assertions document the
@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 
 import pytest
 
-from data_scout.cleaner import (
+from scout_it.cleaner import (
     _is_nav_paragraph,
     _is_content_section,
     extract_content_sections,
