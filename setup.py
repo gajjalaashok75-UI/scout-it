@@ -11,7 +11,7 @@ setup(
     description="Enterprise-grade DuckDuckGo search toolkit with content extraction, cleaning, and structured JSON output",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
-    url="https://github.com/Ashok-gakr/data-scout",
+    url="https://github.com/gajjalaashok75-UI/scout-it",
     packages=["scout_it"],
     classifiers=[
         "Development Status :: 5 - Production/Stable",

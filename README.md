@@ -149,8 +149,8 @@ Python packages used by the project:
 
 ```bash
 # Clone repository
-git clone https://github.com/Ashok-gakr/data-scout.git
-cd data-scout
+git clone https://github.com/gajjalaashok75-UI/scout-it.git
+cd scout-it
 
 # Create virtual environment
 python -m venv venv
