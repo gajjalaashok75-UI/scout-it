@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **scout-it website** — new Vite + React + TypeScript landing page at `scout-it-website/`
+- **CI workflow** — added website build check to CI
+
 ## [1.4.0] - 2026-07-06 12:00:00 UTC
 
 ### 🔄 Changed — Renamed from `data-scout` to `scout-it`

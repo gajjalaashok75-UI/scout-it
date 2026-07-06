@@ -1,0 +1,8 @@
+dist/
+node_modules/
+.astro/
+.vercel/
+*.tsbuildinfo
+
+# Re-include src/lib overridden by root .gitignore's lib/ rule
+!src/lib/

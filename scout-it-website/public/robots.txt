@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://scout-it.netlify.app/sitemap.xml
