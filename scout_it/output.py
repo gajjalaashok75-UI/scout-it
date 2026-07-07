@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-📄 OUTPUT FORMATTING — JSON line-length safety, .data-scout/ paths, Markdown export
+📄 OUTPUT FORMATTING — JSON line-length safety, .scout-it/ paths, Markdown export
 ======================================================================================
 
 Three responsibilities, used by every CLI command:
@@ -18,7 +18,7 @@ Three responsibilities, used by every CLI command:
 2. **Output path resolution** (`resolve_output_path`): honors ``--out`` /
    ``--markdown`` together, enforces that they don't contradict each other
    (``--markdown`` with an explicit ``--out ....json`` is an error), and
-   defaults bare filenames to live under ``.data-scout/`` instead of the
+   defaults bare filenames to live under ``.scout-it/`` instead of the
    current directory.
 
 3. **Markdown rendering** (`render_markdown`): a generic (works for any
@@ -32,7 +32,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-DEFAULT_OUTPUT_DIR = ".data-scout"
+DEFAULT_OUTPUT_DIR = ".scout-it"
 MAX_LINE_CHARS = 500
 
 
@@ -154,7 +154,7 @@ def resolve_output_path(out_arg: str, markdown_flag: bool, default_stub: str) ->
     """Resolve final output path + format from --out/--markdown.
 
     *out_arg* is whatever ``--out`` resolved to (including its own default,
-    e.g. ``.data-scout/web_search_results.json``). *default_stub* is the
+    e.g. ``.scout-it/web_search_results.json``). *default_stub* is the
     command's base name (e.g. ``"web_search_results"``), used to rebuild a
     sensible default path if ``--markdown`` forces a different extension
     than the default suggests.
@@ -183,7 +183,7 @@ def resolve_output_path(out_arg: str, markdown_flag: bool, default_stub: str) ->
     if ext == ".md":
         return {"path": out_path, "format": "markdown"}
 
-    # Bare filename with no directory component still lands under .data-scout/
+    # Bare filename with no directory component still lands under .scout-it/
     if not out_path.is_absolute() and out_path.parent == Path("."):
         out_path = Path(DEFAULT_OUTPUT_DIR) / out_path.name
 

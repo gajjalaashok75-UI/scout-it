@@ -20,7 +20,7 @@ export default function Quickstart() {
       <h2 id="first-search">1. run your first search</h2>
       <p>Web search with content extraction, three results:</p>
       <pre><code>scout-it web-search --query "dog" --max-results 3</code></pre>
-      <p>scout-it queries DuckDuckGo, fetches each result page, extracts the main content, and writes a structured file under <code>.data-scout/web_search_results.json</code> next to wherever you ran the command.</p>
+      <p>scout-it queries DuckDuckGo, fetches each result page, extracts the main content, and writes a structured file under <code>.scout-it/web_search_results.json</code> next to wherever you ran the command.</p>
 
       <h2 id="json-output">2. get json output</h2>
       <p>Add <code>--json</code> to print structured results straight to stdout instead of writing a file — handy for piping into <code>jq</code> or another tool:</p>
@@ -35,7 +35,7 @@ export default function Quickstart() {
       <h2 id="store-credentials">4. store credentials (optional)</h2>
       <p>Commands like <code>github-discussions</code>, <code>multi-search</code>, and <code>discord-channel</code> need an API key. Instead of exporting environment variables every session, run the interactive wizard once:</p>
       <pre><code>scout-it config</code></pre>
-      <p>Values are stored at <code>~/.data-scout/credentials.json</code> with owner-only file permissions and loaded automatically on every future run. Real environment variables always take precedence, so CI setups are unaffected.</p>
+      <p>Values are stored at <code>~/.scout-it/credentials.json</code> with owner-only file permissions and loaded automatically on every future run. Real environment variables always take precedence, so CI setups are unaffected.</p>
 
       <h2 id="next-steps">next steps</h2>
       <ul>

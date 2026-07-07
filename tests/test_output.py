@@ -90,14 +90,14 @@ class TestWriteJsonOutput:
 
 class TestResolveOutputPath:
     def test_default_no_markdown(self):
-        r = om.resolve_output_path(".data-scout/web_search_results.json", False, "web_search_results")
+        r = om.resolve_output_path(".scout-it/web_search_results.json", False, "web_search_results")
         assert r["format"] == "json"
-        assert r["path"] == Path(".data-scout/web_search_results.json")
+        assert r["path"] == Path(".scout-it/web_search_results.json")
 
     def test_default_with_markdown_flag(self):
-        r = om.resolve_output_path(".data-scout/web_search_results.json", True, "web_search_results")
+        r = om.resolve_output_path(".scout-it/web_search_results.json", True, "web_search_results")
         assert r["format"] == "markdown"
-        assert r["path"] == Path(".data-scout/web_search_results.md")
+        assert r["path"] == Path(".scout-it/web_search_results.md")
 
     def test_explicit_json_out_with_markdown_flag_errors(self):
         r = om.resolve_output_path("custom.json", True, "web_search_results")
@@ -110,7 +110,7 @@ class TestResolveOutputPath:
 
     def test_bare_filename_lands_under_scout_it_dir(self):
         r = om.resolve_output_path("myfile.json", False, "web_search_results")
-        assert r["path"] == Path(".data-scout/myfile.json")
+        assert r["path"] == Path(".scout-it/myfile.json")
 
     def test_path_with_directory_honored_as_is(self):
         r = om.resolve_output_path("output/custom.json", False, "web_search_results")

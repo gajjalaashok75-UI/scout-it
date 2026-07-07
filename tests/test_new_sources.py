@@ -45,6 +45,32 @@ class TestGithubParseRef:
 
 
 class TestGithubRepo:
+    @mock.patch("scout_it.extraction.fetch_resilient")
+    @mock.patch("scout_it.github_extract.requests.request")
+    def test_error_dicts_never_leak_internal_ok_key(self, mock_request, mock_fetch):
+        """Regression guard: every public github_* function's error contract
+        is {"error": ..., "error_message": ...} -- several of them used to
+        return _request()'s internal dict verbatim on failure, leaking the
+        {"ok": False, ...} bookkeeping shape to callers."""
+        mock_request.return_value = _FakeResp(403, {}, headers={"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "999"})
+        mock_fetch.return_value = {"html": "", "final_url": "u", "status": "failed", "tier": "none", "attempts": 1, "errors": ["e"]}
+
+        for result in [
+            gh.github_repo("x/y"),
+            gh.github_commits("x/y"),
+            gh.github_commit("x/y", "sha123"),
+            gh.github_pull_request("x/y", 1),
+            gh.github_issues("x/y"),
+            gh.github_issue("x/y", 1),
+            gh.github_file_content("x/y", "a.py"),
+            gh.github_search_code("query"),
+            gh.github_search_repos("query"),
+            gh.github_folder("x/y", path="src/"),
+            gh.github_prs("x/y"),
+        ]:
+            assert "ok" not in result, f"leaked internal 'ok' key: {result}"
+            assert result.get("error") == "rate_limited"
+
     @mock.patch("scout_it.github_extract.requests.request")
     def test_happy_path_quick_mode(self, mock_request):
         mock_request.return_value = _FakeResp(200, {
@@ -120,10 +146,34 @@ class TestGithubRepo:
         out = gh.github_repo("psf/requests", full=False, include_file_tree=True, max_chars=100, max_size="5mb")
         assert out["error"] == "invalid_arguments"
 
+    @mock.patch("scout_it.extraction.fetch_resilient")
     @mock.patch("scout_it.github_extract.requests.request")
-    def test_rate_limited(self, mock_request):
+    def test_rate_limited_falls_back_to_html_scrape(self, mock_request, mock_fetch):
+        """When the REST API is rate-limited, github_repo() should try the
+        HTML-scrape fallback (a genuinely independent layer -- doesn't share
+        the API's rate limit) before giving up."""
         mock_request.return_value = _FakeResp(403, {}, headers={"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "999"})
+        mock_fetch.return_value = {
+            "html": '<html><head><meta property="og:description" content="A test repo"/></head>'
+                    '<body><a aria-label="150 users starred this repository">Star</a>'
+                    '<a aria-label="20 users forked this repository">Fork</a></body></html>',
+            "final_url": "https://github.com/psf/requests", "status": "success", "tier": "requests",
+            "attempts": 1, "errors": [],
+        }
         out = gh.github_repo("psf/requests")
+        assert out["source"] == "html_fallback"
+        assert out["description"] == "A test repo"
+        assert out["stars"] == 150
+        assert out["forks"] == 20
+
+    @mock.patch("scout_it.extraction.fetch_resilient")
+    @mock.patch("scout_it.github_extract.requests.request")
+    def test_rate_limited_reports_original_error_if_fallback_also_fails(self, mock_request, mock_fetch):
+        mock_request.return_value = _FakeResp(403, {}, headers={"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "999"})
+        mock_fetch.return_value = {"html": "", "final_url": "u", "status": "failed", "tier": "none", "attempts": 5, "errors": ["e1"]}
+        out = gh.github_repo("psf/requests")
+        # Both layers failed -- the ORIGINAL rate-limit error is more useful
+        # (has reset time + GITHUB_TOKEN guidance) than the fallback's generic failure.
         assert out["error"] == "rate_limited"
         assert "GITHUB_TOKEN" in out["error_message"]
 

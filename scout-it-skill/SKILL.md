@@ -65,18 +65,18 @@ scout-it web-search --query "your search query"
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--query` / `-q` | str | *required* | Search query |
-| `--max` / `-m` | int | `10` | Max results (1-100) |
-| `--workers` / `-w` | int | `3` | Parallel fetch workers |
-| `--out` / `-o` | str | `.data-scout/struct_format_results.json` | Output file |
+| `--max` / `-m` | int | `5` | Max results |
+| `--workers` / `-w` | int | `5` | Parallel fetch workers |
+| `--out` / `-o` | str | `.scout-it/struct_format_results.json` | Output file |
 | `--markdown` | flag | — | Save results as Markdown (.md) instead of JSON |
-| `--region` | str | `wt-wt` | Region (e.g., `us-en`, `uk-en`, `de-de`) |
+| `--region` | str | *(none)* | Region (e.g., `us-en`, `uk-en`, `de-de`) |
 | `--safesearch` | str | `moderate` | `on`, `moderate`, or `off` |
-| `--timelimit` | str | — | `d` (day), `w` (week), `m` (month), `y` (year) |
+| `--timelimit` | str | *(none)* | `d` (day), `w` (week), `m` (month), `y` (year) |
 | `--backend` | str | `auto` | `auto`, `html`, or `lite` |
-| `--no-retry-on-zero` | flag | — | Skip retry on zero results |
-| `--retry-attempts` | int | `3` | Max retry attempts |
+| `--no-retry-on-zero` | flag | — | Skip retry on zero successful extractions |
+| `--retry-attempts` | int | `2` | Retry attempts when 0 successful extractions |
 | `--retry-backoff` | float | `1.0` | Backoff seconds between retries |
-| `--max-fetch-retries` | int | — | Retry attempts per fetch tier (requests → Playwright) |
+| `--max-fetch-retries` | int | `3` | Retry attempts per fetch tier (requests → Playwright) |
 | `--no-js-fallback` | flag | — | Disable Playwright fallback on blocked pages |
 
 **Examples:**
@@ -99,13 +99,127 @@ scout-it web-search --query "niche topic" --backend html --retry-attempts 5 --re
 
 ---
 
-## multi-search
+## image-search
 
-Search across multiple engines (DuckDuckGo + optional Brave/Bing/Google/SerpAPI) in parallel. Requires API keys set via `scout-it config`.
+```bash
+scout-it image-search --query "sunset landscapes" --max 10
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--query` / `-q` | str | *required* | Search query |
+| `--max` / `-m` | int | `5` | Max images |
+| `--download` / `-d` | flag | — | Download the images |
+| `--download-dir` | str | `downloaded_images` | Where to save downloaded images |
+| `--region` | str | `us-en` | DuckDuckGo region |
+| `--safesearch` | str | `moderate` | `on`, `moderate`, or `off` |
+| `--timelimit` | str | *(none)* | `d`/`w`/`m`/`y` |
+| `--size` | str | *(none)* | `Small`, `Medium`, `Large`, `Wallpaper` |
+| `--color` | str | *(none)* | Color filter |
+| `--type-image` | str | *(none)* | `photo`, `clipart`, `gif`, `transparent`, `line` |
+| `--layout` | str | *(none)* | `Square`, `Tall`, `Wide` |
+| `--license-image` | str | *(none)* | License filter |
+| `--min-width` / `--max-width` / `--min-height` / `--max-height` | int | *(none)* | Dimension filters (in pixels) |
+| `--no-retry-on-zero` | flag | — | Disable retry when 0 valid images are found |
+| `--retry-attempts` | int | `2` | Retry attempts |
+| `--retry-backoff` | float | `1.0` | Backoff seconds between retries |
+| `--out` / `-o` | str | `.scout-it/image_search_results.json` | Output file |
+| `--markdown` | flag | — | Save as Markdown instead |
+
+---
+
+## news-search
+
+```bash
+scout-it news-search --query "artificial intelligence" --max 5
+```
+
+Same core flags as `web-search` (`--region`, `--safesearch`, `--timelimit`, retry/fallback flags), plus:
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--query` / `-q` | str | *required* | Search query |
+| `--max` / `-m` | int | `5` | Max articles |
+| `--workers` | int | `5` | Parallel workers for article content extraction |
+| `--max-fetch-retries` | int | `3` | Retry attempts per fetch tier when fetching each article |
+| `--no-js-fallback` | flag | — | Disable Playwright fallback for blocked articles |
+| `--out` / `-o` | str | `.scout-it/news_search_results.json` | Output file |
+
+---
+
+## video-search
+
+```bash
+scout-it video-search --query "python tutorial" --max 5
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--query` / `-q` | str | *required* | Search query |
+| `--max` / `-m` | int | `5` | Max videos |
+| `--region` / `--safesearch` / `--timelimit` | — | see web-search | Standard DuckDuckGo filters |
+| `--resolution` | str | *(none)* | `high` or `standard` |
+| `--duration` | str | *(none)* | `short`, `medium`, or `long` |
+| `--license-videos` | str | *(none)* | License filter |
+| `--no-retry-on-zero` / `--retry-attempts` / `--retry-backoff` | — | *(see web-search)* | Zero-result retry tuning |
+| `--out` / `-o` | str | `.scout-it/video_search_results.json` | Output file |
+
+Note: `video-search` only lists videos — it doesn't extract per-video content. Use `video-extract` for a single video's full metadata/subtitles.
+
+---
+
+## fetch-url
+
+Fetch and extract content from **one specific URL** (not a search).
+
+```bash
+scout-it fetch-url --url "https://example.com/article"
+scout-it fetch-url --url "https://spa-heavy-site.com" --js-render
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--url` / `-u` | str | *required* | URL to fetch |
+| `--timeout` | int | `25` | Per-attempt timeout in seconds |
+| `--max-chars` | int | *(none)* | Truncate extracted content by character count — mutually exclusive with `--max-size` |
+| `--max-size` | str | *(none)* | Cap raw response size, e.g. `500kb`, `5mb` — mutually exclusive with `--max-chars` |
+| `--raw-html` | flag | — | Return prettified raw HTML instead of extracted main content |
+| `--js-render` | flag | — | Skip straight to Playwright instead of trying `requests` first |
+| `--no-js-fallback` | flag | — | Disable the automatic Playwright fallback |
+| `--max-retries` | int | `3` | Retry attempts per fetch tier |
+| `--out` / `-o` | str | `.scout-it/url_fetch_result.json` | Output file |
+
+Providing both `--max-chars` and `--max-size` is an error — use at most one.
+
+---
+
+## video-extract
+
+Extract full metadata + subtitles from a single video URL (YouTube only for now).
+
+```bash
+scout-it video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+scout-it video-extract --url "https://youtu.be/dQw4w9WgXcQ" --subtitle-lang fr --segments
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--url` | str | *required* | YouTube video URL |
+| `--subtitle-lang` | str | `en` | Preferred subtitle language code |
+| `--segments` | flag | — | Include timestamped subtitle segments |
+| `--max-fetch-retries` | int | `3` | Retry attempts per fetch tier |
+| `--no-js-fallback` | flag | — | Disable Playwright fallback |
+| `--out` / `-o` | str | `.scout-it/video_extract_results.json` | Output file |
+
+Non-YouTube URLs return a clear `unsupported_platform` error rather than failing silently.
+
+---
+
+Search across multiple engines (DuckDuckGo + optional Brave/Bing/Google/SerpAPI) in parallel. DuckDuckGo works with no setup; the others need a free/paid API key each, configured via `scout-it config`.
 
 **Basic usage:**
 ```bash
-scout-it multi-search --query "your query" --engines ddg,brave,bing
+scout-it multi-search --query "your query" --engines duckduckgo,brave,bing
 ```
 
 **Flags:**
@@ -113,65 +227,67 @@ scout-it multi-search --query "your query" --engines ddg,brave,bing
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--query` / `-q` | str | *required* | Search query |
-| `--engines` | str | `ddg` | Comma-separated: `ddg,brave,bing,google,serpapi` |
-| `--max` / `-m` | int | `10` | Max results per engine |
-| `--out` / `-o` | str | *(stdout)* | Output file |
+| `--engines` | str | `duckduckgo` | Comma-separated: `duckduckgo,brave,bing,google,serpapi` |
+| `--max` / `-m` | int | `10` | Max merged results |
+| `--workers` / `-w` | int | `5` | Parallel content-extraction workers |
+| `--out` / `-o` | str | `.scout-it/multi_search_results.json` | Output file |
+
+`duckduckgo` works with no setup; the others each need a free/paid API key configured via `scout-it config` or an environment variable — run `scout-it list-engines` to check status. Unconfigured engines are skipped (not treated as an error).
 
 **Examples:**
 ```bash
 # DuckDuckGo + Brave + Bing
-scout-it multi-search --query "quantum computing" --engines ddg,brave,bing
+scout-it multi-search --query "quantum computing" --engines duckduckgo,brave,bing
 
 # All configured engines
-scout-it multi-search --query "climate science" --engines ddg,brave,bing,google --max 15
+scout-it multi-search --query "climate science" --engines duckduckgo,brave,bing,google --max 15
 ```
 
 ---
 
 ## config
 
-Set up API keys/tokens for GitHub, Brave, Bing, Google, SerpAPI, Discord, Reddit. Stored at `~/.data-scout/config.json`.
+Set up API keys/tokens for GitHub, Brave, Bing, Google, SerpAPI, Discord, Reddit. Stored at `~/.scout-it/credentials.json` (owner-only file permissions).
 
 ```bash
-scout-it config
+scout-it config              # interactive wizard -- Enter to skip any key you don't have
+scout-it config --show       # check what's configured (no secrets printed)
+scout-it config --clear GITHUB_TOKEN
+scout-it config --clear-all
 ```
 
-Run interactively to set tokens. Use `scout-it list-engines` to see which are configured.
+A real environment variable (e.g. `GITHUB_TOKEN`) always takes precedence over a stored value. Use `scout-it list-engines` to see which search engines are configured specifically.
 
 ---
 
 ## GitHub subcommands
 
-All GitHub commands accept one of:
+Repo-scoped commands (`github-repo`, `github-commits`, `github-commit`, `github-pr`, `github-prs`, `github-issues`, `github-issue`, `github-file`, `github-folder`, `github-discussions`) all accept `--repo` as one of:
 - `owner/repo` format
 - Full GitHub URL: `https://github.com/owner/repo`
 
-**Flags common to all GitHub commands:**
+`github-search-code` and `github-search-repos` take `--query` instead (they search across GitHub, not within one repo).
 
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--repo` | str | *required* | `owner/repo` or full URL |
-| `--token` / `-t` | str | `~/.data-scout/config.json` | GitHub token override |
-| `--out` / `-o` | str | *(stdout)* | Output file |
+Auth is **not** a per-command flag — set `GITHUB_TOKEN` as an environment variable, or run `scout-it config` to store it once. Unauthenticated requests are capped at 60/hour; a token raises that to 5,000/hour and is **required** for `github-discussions` and `github-search-code`.
 
 **Examples:**
 ```bash
-# Repo metadata
+# Repo metadata (full overview by default: branches, contributors, releases, languages)
 scout-it github-repo --repo gajjalaashok75-UI/scout-it
 
 # List recent PRs
 scout-it github-prs --repo gajjalaashok75-UI/scout-it --state open
 
-# Get a PR with full diff
+# Get a PR with full diff (patch_lines includes old/new file line numbers)
 scout-it github-pr --repo gajjalaashok75-UI/scout-it --number 1
 
-# Search code
-scout-it github-search-code --query "class EnterpriseSearch" --repo gajjalaashok75-UI/scout-it
+# Search code (requires GITHUB_TOKEN)
+scout-it github-search-code --query "class EnterpriseSearch language:python"
 
 # List commits
-scout-it github-commits --repo gajjalaashok75-UI/scout-it --limit 20
+scout-it github-commits --repo gajjalaashok75-UI/scout-it --max 20
 
-# Full commit details with diff
+# Full commit details with line-numbered diff
 scout-it github-commit --repo gajjalaashok75-UI/scout-it --sha <commit-sha>
 ```
 
@@ -181,11 +297,12 @@ scout-it github-commit --repo gajjalaashok75-UI/scout-it --sha <commit-sha>
 
 ### Telegram
 ```bash
-# Fetch recent posts from a public channel
+# Fetch recent posts from a known public channel
 scout-it telegram-channel --channel "channel_name"
 
-# Search for channels by topic
-scout-it telegram-channel --search "Python programming"
+# Search for public channels matching a topic (via a site:t.me web search --
+# there's no official Telegram-wide search API for anonymous use)
+scout-it telegram-channel --query "Python programming"
 ```
 
 ### Discord (requires DISCORD_BOT_TOKEN set via `scout-it config`)
@@ -204,32 +321,36 @@ scout-it reddit-search --query "Python" --subreddit "learnprogramming"
 
 ## Output format
 
-All subcommands output JSON arrays by default. Each result contains:
+Every command writes a JSON **object** (not a bare array) to `.scout-it/<command>_results.json` by default — typically containing the query/repo/etc., a `parameters` or similar echo of the options used, a `stats` block, and the actual results under a key like `structured_results`, `commits`, `posts`, etc. (the exact key varies by command). Long string fields (extracted article text, diff patches, raw HTML) are automatically chunked into arrays of <=500-character pieces so no single line in the file is unreasonably long — this never affects the actual content, just how it's laid out in the file.
 
-- `title` / `body` — search result title and snippet
-- `url` / `href` — the result URL
-- `main_content` — cleaned, extracted content (web-search, news-search, fetch-url)
-- `extraction_method` — which extraction layer succeeded (e.g., `readability`, `trafilatura`)
+For web-search/news-search/fetch-url specifically, each result also contains:
+- `title` / `url` — search result title and URL
+- `main_content` — cleaned, extracted content
+- `extraction_method` — which extraction layer succeeded, and which fetch tier got the page (e.g. `"trafilatura (playwright)"`)
 - `confidence_score` — content quality score (0.0–1.0)
 - `extraction_status` — `"success"` or `"failed"`
 - `content_word_count` — word count of cleaned content
 
-The `--markdown` flag (on `web-search`) saves results as a Markdown file instead.
+**`--markdown` works on every command that writes output** (all 22 of them, not just web-search) — renders the same data as a Markdown document (tables, fenced code blocks, headers) instead of JSON. `--out somefile.md` does the same thing without needing the flag explicitly.
 
-## 5-Layer Extraction Fallback
+## Content-extraction fallback chain
+
+Once a page's HTML is fetched, extracting the *main content* tries these in order, keeping whichever result scores highest (confidence x word count) rather than just the first one that returns something:
 
 ```
-1. Trafilatura (confidence: 1.0)  — Best for news/articles
-2. Justext (confidence: 0.95)     — Good for general content
-3. BoilerPy3 (confidence: 0.90)   — Robust fallback
-4. Readability (confidence: 0.85) — Alternative extractor
-5. BeautifulSoup (confidence: 0.70) — Ultimate HTML fallback
+1. Trafilatura   — usually best for news/articles
+2. Justext       — good general-purpose extractor
+3. BoilerPy3     — robust fallback
+4. Readability   — alternative extractor
+5. Heuristic (BeautifulSoup-based) — ultimate fallback, always produces *something*
 ```
+
+This is separate from the **fetch** fallback chain (getting the raw HTML in the first place), which is requests → Playwright → a last-resort basic request — see `--no-js-fallback`/`--max-fetch-retries` on web-search/news-search/fetch-url/video-extract.
 
 ## Config directory
 
-All config and credentials stored at `~/.data-scout/config.json`.
-Output files default to `.data-scout/` in the working directory.
+Credentials stored at `~/.scout-it/credentials.json` (owner-only file permissions on POSIX; see `scout-it config`).
+Output files default to `.scout-it/` in the current working directory (created automatically).
 
 ## Rate limiting
 

@@ -332,7 +332,7 @@ def discord_channel_messages(
     if not channel_id.isdigit():
         return {"error": "invalid_channel_id", "error_message": "channel_id must be the numeric Discord channel ID."}
 
-    headers = {"Authorization": f"Bot {token}", "User-Agent": "data-scout (https://github.com, 1.1.0)"}
+    headers = {"Authorization": f"Bot {token}", "User-Agent": "scout-it (https://github.com, 1.1.0)"}
     params = {"limit": min(max(max_results, 1), 100)}
     if before_message_id:
         params["before"] = before_message_id

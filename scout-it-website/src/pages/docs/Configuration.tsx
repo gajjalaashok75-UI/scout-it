@@ -63,7 +63,7 @@ export default function Configuration() {
       <p>A real environment variable always takes precedence over a stored credential, so CI and scripting setups that export env vars directly are unaffected by whatever is stored locally. Every command that needs a key tells you exactly which one is missing and how to get it.</p>
 
       <h2 id="storage">where credentials live</h2>
-      <p>Values are stored at <code>~/.data-scout/credentials.json</code>, with owner-only file permissions on POSIX systems, and loaded automatically on every future run.</p>
+      <p>Values are stored at <code>~/.scout-it/credentials.json</code>, with owner-only file permissions on POSIX systems, and loaded automatically on every future run.</p>
       <pre><code>{`scout-it config              # interactive wizard -- Enter to skip any key you don't have
 scout-it config --show       # check what's configured (no secrets printed)
 scout-it config --clear GITHUB_TOKEN   # remove one stored key

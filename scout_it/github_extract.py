@@ -40,7 +40,7 @@ def _headers() -> Dict[str, str]:
     headers = {
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "data-scout/1.1.0",
+        "User-Agent": "scout-it/1.1.0",
     }
     token = os.environ.get("GITHUB_TOKEN")
     if token:
@@ -65,6 +65,15 @@ def parse_repo_ref(owner_repo_or_url: str) -> Optional[Dict[str, str]]:
         if owner and repo:
             return {"owner": owner, "repo": repo[:-4] if repo.endswith('.git') else repo}
     return None
+
+
+def _public_error(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Strip the internal ``ok`` bookkeeping key before an error result from
+    ``_request()`` is returned to a public function's caller -- every public
+    function's contract is ``{"error": ..., "error_message": ...}`` on
+    failure, not the internal ``{"ok": False, "error": ..., ...}`` shape
+    ``_request()`` itself uses."""
+    return {k: v for k, v in result.items() if k != "ok"}
 
 
 def _request(method: str, path_or_url: str, params: Optional[Dict[str, Any]] = None,
@@ -128,7 +137,7 @@ def github_rate_limit() -> Dict[str, Any]:
     """Check current GitHub API rate-limit status for the configured token (or IP)."""
     result = _request("GET", "/rate_limit")
     if not result["ok"]:
-        return result
+        return _public_error(result)
     return result["data"]
 
 
@@ -176,6 +185,63 @@ def _approx_count_via_link_header(headers: Dict[str, str]) -> Optional[int]:
     return int(match.group(1)) if match else None
 
 
+def _github_repo_html_fallback(owner: str, repo: str) -> Dict[str, Any]:
+    """Best-effort HTML-scrape fallback for ``github_repo()`` used
+    specifically when the REST API comes back rate-limited. This is a
+    genuinely independent layer (not just retrying the same API): scraping
+    github.com's public repo page doesn't share the REST API's 60/hr (or
+    5,000/hr) rate limit at all, so it can succeed even when every API call
+    is currently blocked. It's less complete and less robust than the API
+    (GitHub's page markup can change over time, and this only recovers a
+    handful of fields) -- set ``GITHUB_TOKEN`` for a 5,000/hr limit and this
+    fallback should rarely be needed. Uses the same requests -> Playwright
+    -> basic-fallback fetch chain as everything else in this project.
+    """
+    from .extraction import fetch_resilient
+    from bs4 import BeautifulSoup
+
+    url = f"https://github.com/{owner}/{repo}"
+    outcome = fetch_resilient(url, timeout=20, max_retries=2)
+    if outcome["status"] != "success":
+        return {
+            "error": "fallback_failed",
+            "error_message": "REST API was rate-limited, and the HTML fallback also failed: " + "; ".join(outcome["errors"][-2:]),
+        }
+
+    soup = BeautifulSoup(outcome["html"], "html.parser")
+
+    def _meta(prop: str) -> Optional[str]:
+        tag = soup.select_one(f"meta[property='{prop}']") or soup.select_one(f"meta[name='{prop}']")
+        return tag.get("content") if tag else None
+
+    def _count_near_label(*keywords: str) -> Optional[int]:
+        for el in soup.select("a[aria-label], span[title], a[title]"):
+            label = (el.get("aria-label") or el.get("title") or "").lower()
+            if any(k in label for k in keywords):
+                match = re.search(r'([\d,]+)', label)
+                if match:
+                    return int(match.group(1).replace(",", ""))
+        return None
+
+    description = _meta("og:description")
+
+    return {
+        "full_name": f"{owner}/{repo}",
+        "description": description,
+        "url": url,
+        "stars": _count_near_label("star"),
+        "forks": _count_near_label("fork"),
+        "language": None,  # not reliably recoverable from the HTML page without a stable selector
+        "source": "html_fallback",
+        "note": (
+            "This came from scraping github.com directly because the REST API was rate-limited "
+            "-- best-effort and less complete than the API result (no topics/license/branches/"
+            "contributors/etc.). Set GITHUB_TOKEN for a 5,000/hr limit; this fallback should "
+            "rarely be needed once that's configured."
+        ),
+    }
+
+
 def github_repo(
     owner_repo_or_url: str,
     full: bool = True,
@@ -216,7 +282,18 @@ def github_repo(
 
     result = _request("GET", f"/repos/{owner}/{repo}")
     if not result["ok"]:
-        return result
+        if result.get("error") == "rate_limited":
+            # Full aggregation would need several more (also rate-limited) API
+            # calls, so the fallback only ever returns quick/basic-shaped data --
+            # that's an intentional tradeoff, not a bug: it's still something
+            # rather than nothing while the API is unavailable.
+            fallback = _github_repo_html_fallback(owner, repo)
+            if "error" not in fallback:
+                return fallback
+            # Both layers failed -- report the original API error, since it's
+            # more informative (rate-limit reset time, GITHUB_TOKEN guidance)
+            # than the fallback's generic failure.
+        return _public_error(result)
     out = _map_repo_fields(result["data"])
     default_branch = result["data"].get("default_branch") or "main"
 
@@ -336,7 +413,7 @@ def github_commits(
 
     result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}/commits", params=params)
     if not result["ok"]:
-        return result
+        return _public_error(result)
 
     commits = []
     for c in (result["data"] or [])[:max_results]:
@@ -416,7 +493,7 @@ def github_commit(owner_repo_or_url: str, sha: str, include_patch: bool = True) 
 
     result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}/commits/{sha}")
     if not result["ok"]:
-        return result
+        return _public_error(result)
     d = result["data"]
     commit = d.get("commit", {})
 
@@ -476,7 +553,7 @@ def github_prs(
 
     result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}/pulls", params=params)
     if not result["ok"]:
-        return result
+        return _public_error(result)
 
     prs = []
     for p in (result["data"] or [])[:max_results]:
@@ -507,7 +584,7 @@ def github_pull_request(owner_repo_or_url: str, number: int, include_diff: bool 
 
     result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}/pulls/{number}")
     if not result["ok"]:
-        return result
+        return _public_error(result)
     d = result["data"]
 
     out = {
@@ -564,7 +641,7 @@ def github_issues(
 
     result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}/issues", params=params)
     if not result["ok"]:
-        return result
+        return _public_error(result)
 
     issues = []
     for i in result["data"] or []:
@@ -598,7 +675,7 @@ def github_issue(owner_repo_or_url: str, number: int, include_comments: bool = T
 
     result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}/issues/{number}")
     if not result["ok"]:
-        return result
+        return _public_error(result)
     d = result["data"]
 
     out = {
@@ -711,7 +788,7 @@ def github_folder(
     if not recursive:
         result = _request("GET", f"/repos/{owner}/{repo}/contents/{clean_path}", params={"ref": ref} if ref else None)
         if not result["ok"]:
-            return result
+            return _public_error(result)
         d = result["data"]
         if not isinstance(d, list):
             return {"error": "not_a_directory", "error_message": f"'{path}' is a file, not a directory. Use github-file instead."}
@@ -721,12 +798,12 @@ def github_folder(
         if not branch:
             repo_info = _request("GET", f"/repos/{owner}/{repo}")
             if not repo_info["ok"]:
-                return repo_info
+                return _public_error(repo_info)
             branch = repo_info["data"].get("default_branch", "main")
 
         tree_result = _request("GET", f"/repos/{owner}/{repo}/git/trees/{branch}", params={"recursive": "1"})
         if not tree_result["ok"]:
-            return tree_result
+            return _public_error(tree_result)
         all_entries = (tree_result["data"] or {}).get("tree", [])
         prefix = f"{clean_path}/" if clean_path else ""
         entries = [
@@ -803,7 +880,7 @@ def github_file_content(owner_repo_or_url: str, path: str, ref: Optional[str] = 
 
     result = _request("GET", f"/repos/{repo_ref['owner']}/{repo_ref['repo']}/contents/{path}", params=params)
     if not result["ok"]:
-        return result
+        return _public_error(result)
     d = result["data"]
 
     if isinstance(d, list):
@@ -835,7 +912,7 @@ def github_search_code(query: str, max_results: int = 20) -> Dict[str, Any]:
     REST endpoints, even with a token."""
     result = _request("GET", "/search/code", params={"q": query, "per_page": min(max_results, 100)})
     if not result["ok"]:
-        return result
+        return _public_error(result)
     d = result["data"] or {}
     items = []
     for item in d.get("items", [])[:max_results]:
@@ -858,7 +935,7 @@ def github_search_repos(query: str, sort: str = "stars", max_results: int = 20) 
     result = _request("GET", "/search/repositories",
                        params={"q": query, "sort": sort, "order": "desc", "per_page": min(max_results, 100)})
     if not result["ok"]:
-        return result
+        return _public_error(result)
     d = result["data"] or {}
     items = [_map_repo_fields(r) for r in d.get("items", [])[:max_results]]
     return {"query": query, "total_count": d.get("total_count", 0), "results": items}

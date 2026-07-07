@@ -31,7 +31,7 @@ export interface OutputSetting {
 }
 
 export const outputSettings: OutputSetting[] = [
-  { key: '--out, -o <path>', description: 'Explicit output path, always honored exactly as given \u2014 overrides the per-command default under .data-scout/.' },
+  { key: '--out, -o <path>', description: 'Explicit output path, always honored exactly as given \u2014 overrides the per-command default under .scout-it/.' },
   { key: '--json', description: 'Print raw JSON straight to stdout instead of writing a file.' },
   { key: '--markdown', description: 'Save a readable .md file instead of JSON (tables for uniform records, fenced code blocks for file/diff content). Rejected if combined with an explicit --out ....json.' },
 ]

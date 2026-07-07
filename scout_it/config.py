@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🔐 CONFIG / CREDENTIAL STORAGE — ~/.data-scout/credentials.json
+🔐 CONFIG / CREDENTIAL STORAGE — ~/.scout-it/credentials.json
 ================================================================
 
 Every API key/token this project can use (GITHUB_TOKEN, BRAVE_API_KEY,
@@ -9,9 +9,9 @@ DISCORD_BOT_TOKEN, REDDIT_COOKIE) is read via ``os.environ.get(...)``
 throughout the codebase. This module adds a persistent, local alternative
 to setting them as real environment variables every session:
 
-- ``data-scout config`` runs an interactive wizard that asks for each key
+- ``scout-it config`` runs an interactive wizard that asks for each key
   one at a time (Enter to skip any you don't have).
-- Values are saved to ``~/.data-scout/credentials.json``, permissioned
+- Values are saved to ``~/.scout-it/credentials.json``, permissioned
   ``0600`` (owner read/write only) on POSIX systems — this is "secure
   storage" in the sense of "not world-readable on disk", not encryption;
   anyone with access to your user account/OS-level file permissions (e.g.
@@ -30,7 +30,7 @@ import stat
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-CONFIG_DIR = Path.home() / ".data-scout"
+CONFIG_DIR = Path.home() / ".scout-it"
 CREDENTIALS_FILE = CONFIG_DIR / "credentials.json"
 
 # (env_var_name, human description, which command(s) need it)
@@ -47,19 +47,31 @@ KNOWN_CREDENTIALS: List[Dict[str, str]] = [
 KNOWN_KEYS = {c["key"] for c in KNOWN_CREDENTIALS}
 
 
+# Legacy path from before this project was renamed data-scout -> scout-it
+# (PyPI naming conflict). Read-only fallback for continuity -- never written
+# to; new credentials always go to CREDENTIALS_FILE.
+_LEGACY_CREDENTIALS_FILE = Path.home() / ".data-scout" / "credentials.json"
+
+
 def load_credentials_file() -> Dict[str, str]:
-    """Read the stored credentials file, if any. Never raises."""
-    if not CREDENTIALS_FILE.exists():
+    """Read the stored credentials file, if any. Never raises.
+
+    Falls back to the pre-rename ``~/.data-scout/credentials.json`` location
+    if the current one doesn't exist yet, so upgrading from the old
+    ``data-scout`` package name doesn't silently drop configured API keys.
+    """
+    target = CREDENTIALS_FILE if CREDENTIALS_FILE.exists() else _LEGACY_CREDENTIALS_FILE
+    if not target.exists():
         return {}
     try:
-        data = json.loads(CREDENTIALS_FILE.read_text(encoding="utf-8"))
+        data = json.loads(target.read_text(encoding="utf-8"))
         return {k: v for k, v in data.items() if isinstance(v, str) and v}
     except Exception:
         return {}
 
 
 def save_credentials_file(creds: Dict[str, str]) -> None:
-    """Write credentials to disk, creating ~/.data-scout/ if needed and
+    """Write credentials to disk, creating ~/.scout-it/ if needed and
     restricting file permissions to owner-only where the OS supports it."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     CREDENTIALS_FILE.write_text(json.dumps(creds, indent=2), encoding="utf-8")
@@ -127,7 +139,7 @@ def run_config_wizard() -> None:
     """Interactive setup: ask for each known credential one at a time,
     Enter to skip. Existing stored values are shown (masked) and kept if
     you just press Enter."""
-    print("\n🔐 data-scout configuration")
+    print("\n🔐 scout-it configuration")
     print(f"   Credentials are stored at: {CREDENTIALS_FILE}")
     print("   Press Enter to skip any key you don't have (or want to leave unchanged).\n")
 
@@ -162,7 +174,7 @@ def run_config_wizard() -> None:
     save_credentials_file(stored)
     configured_count = len([v for v in stored.values() if v])
     print(f"✅ Configuration saved to {CREDENTIALS_FILE} ({configured_count}/{len(KNOWN_CREDENTIALS)} keys configured).")
-    print("   Run `data-scout config --show` any time to review status, or `data-scout list-engines` for search engines specifically.\n")
+    print("   Run `scout-it config --show` any time to review status, or `scout-it list-engines` for search engines specifically.\n")
 
 
 def print_credential_status() -> None:
@@ -172,4 +184,4 @@ def print_credential_status() -> None:
         print(f"  {info['key']:<20} {status}")
         if not info["configured"]:
             print(f"      → {info['get_it']}")
-    print("\nRun `data-scout config` to set up missing keys interactively.\n")
+    print("\nRun `scout-it config` to set up missing keys interactively.\n")

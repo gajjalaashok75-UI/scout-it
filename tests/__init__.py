@@ -1,1 +1,1 @@
-"""Test suite for data-scout package."""
+"""Test suite for scout-it package."""

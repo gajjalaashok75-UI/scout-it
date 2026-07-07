@@ -34,7 +34,7 @@ export const webSearchFlags: FlagGroup = {
     { flag: '--max-fetch-retries', arg: '<n>', description: 'Retry attempts per tier (requests, then Playwright) when fetching each result page. Default: 3.' },
     { flag: '--no-js-fallback', description: 'Disable the automatic Playwright fallback for blocked/failed page fetches.' },
     { flag: '--markdown', description: 'Save a readable .md file instead of JSON.' },
-    { flag: '--out, -o', arg: '<path>', description: 'Output path. Defaults under .data-scout/.' },
+    { flag: '--out, -o', arg: '<path>', description: 'Output path. Defaults under .scout-it/.' },
     { flag: '--json', description: 'Print raw JSON to stdout.' },
   ],
   example: 'scout-it web-search --query "machine learning" --max 5\nscout-it web-search --query "site behind cloudflare" --max-fetch-retries 4',

@@ -632,7 +632,7 @@ def _ddgs_list_search_with_retry(
 class EnterpriseSearchEngine:
     """Complete enterprise search + extraction pipeline"""
 
-    def __init__(self, max_workers: int = 8, timeout: int = 25, max_fetch_retries: int = 3, enable_js_fallback: bool = True):
+    def __init__(self, max_workers: int = 5, timeout: int = 25, max_fetch_retries: int = 3, enable_js_fallback: bool = True):
         self.max_workers = min(max_workers, 12)  # CPU-aware
         self.timeout = timeout
         self.max_fetch_retries = max(1, int(max_fetch_retries))

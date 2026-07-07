@@ -5,8 +5,8 @@ Runs extraction.py → cleaner.py
 Outputs: structured JSON with filtered results
 
 Usage (CLI):
-  data-scout web-search --query "today hot news" --max 50 --workers 6 --out results.json
-  data-scout image-search --query "sunset" --max 20 --out images.json
+  scout-it web-search --query "today hot news" --max 50 --workers 6 --out results.json
+  scout-it image-search --query "sunset" --max 20 --out images.json
 
 This imports `EnterpriseSearchEngine`, `ImageSearchEngine` from `extraction.py` 
 and `process_results` from `cleaner.py`
@@ -100,7 +100,7 @@ def _write_output(out_path: Path, data: Any) -> None:
     """Write *data* to *out_path* as either line-length-safe JSON (default)
     or Markdown, based on the resolved extension. Path/format resolution
     itself (honoring --out/--markdown together, defaulting bare filenames
-    under .data-scout/) happens once, centrally, right after argument
+    under .scout-it/) happens once, centrally, right after argument
     parsing in main() -- see COMMAND_OUTPUT_STUBS and its use below.
     """
     if out_path.suffix.lower() == ".md":
@@ -112,7 +112,7 @@ def _write_output(out_path: Path, data: Any) -> None:
 
 
 # Maps each command to the base filename (no extension, no directory) its
-# --out default is built from, e.g. 'web-search' -> '.data-scout/struct_format_results.json'.
+# --out default is built from, e.g. 'web-search' -> '.scout-it/struct_format_results.json'.
 # Centralizes --out/--markdown resolution in one place instead of duplicating
 # it in every dispatch block.
 COMMAND_OUTPUT_STUBS: Dict[str, str] = {
@@ -144,7 +144,7 @@ COMMAND_OUTPUT_STUBS: Dict[str, str] = {
 def web_search(
     query: str,
     max_results: int = 100,
-    workers: int = 8,
+    workers: int = 5,
     retry_on_zero_success: bool = True,
     retry_attempts: int = 2,
     retry_backoff: float = 1.0,
@@ -210,7 +210,7 @@ def multi_search(
     query: str,
     engines: Optional[List[str]] = None,
     max_results: int = 10,
-    workers: int = 8,
+    workers: int = 5,
     max_fetch_retries: int = 3,
     enable_js_fallback: bool = True,
     dedupe: bool = True,
@@ -330,7 +330,7 @@ def news_search(
     region: str = 'us-en',
     safesearch: str = 'moderate',
     timelimit: Optional[str] = None,
-    workers: int = 3,
+    workers: int = 5,
     max_fetch_retries: int = 3,
     enable_js_fallback: bool = True,
 ):
@@ -449,7 +449,7 @@ def _enhance_video_descriptions(results: List[Dict[str, Any]], max_workers: int 
 
 def _extract_news_content(
     results: List[Dict[str, Any]],
-    max_workers: int = 3,
+    max_workers: int = 5,
     max_fetch_retries: int = 3,
     enable_js_fallback: bool = True,
 ) -> List[Dict[str, Any]]:
@@ -762,7 +762,7 @@ def video_extract(
     """
     url = str(url or "").strip()
     if not url:
-        return {"error": "invalid_url", "error_message": "No URL provided. Use --url to specify a video URL.", "hint": "Example: data-scout video-extract --url \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\""}
+        return {"error": "invalid_url", "error_message": "No URL provided. Use --url to specify a video URL.", "hint": "Example: scout-it video-extract --url \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\""}
 
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -922,7 +922,7 @@ def fetch_url(
     js_render : bool
         If True, skip straight to Playwright (headless Chromium) rendering
         instead of trying plain ``requests`` first. Requires ``playwright``
-        (``pip install data-scout[js-render]`` + ``playwright install chromium``).
+        (``pip install scout-it[js-render]`` + ``playwright install chromium``).
     no_js_fallback : bool
         If True, disable the automatic Playwright fallback that normally
         kicks in when plain ``requests`` fails or looks blocked. Has no
@@ -1118,8 +1118,8 @@ def main():
     )
     web_parser.add_argument('--query', '-q', required=True, help='Search query')
     web_parser.add_argument('--max', '-m', type=int, default=5, help='Max results (1-100)')
-    web_parser.add_argument('--workers', '-w', type=int, default=8, help='Parallel workers')
-    web_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/struct_format_results.json)')
+    web_parser.add_argument('--workers', '-w', type=int, default=5, help='Parallel workers')
+    web_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/struct_format_results.json)')
     web_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     web_parser.add_argument('--region', default=None, help='DuckDuckGo region (example: us-en, wt-wt)')
     web_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
@@ -1144,7 +1144,7 @@ def main():
     )
     img_parser.add_argument('--query', '-q', required=True, help='Search query')
     img_parser.add_argument('--max', '-m', type=int, default=5, help='Max images (1-50)')
-    img_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/image_search_results.json)')
+    img_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/image_search_results.json)')
     img_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     img_parser.add_argument('--download', '-d', action='store_true', help='Download images')
     img_parser.add_argument('--download-dir', default='downloaded_images', help='Download directory')
@@ -1176,12 +1176,12 @@ def main():
     )
     news_parser.add_argument('--query', '-q', required=True, help='Search query')
     news_parser.add_argument('--max', '-m', type=int, default=5, help='Max news items (1-50)')
-    news_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/news_search_results.json)')
+    news_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/news_search_results.json)')
     news_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     news_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
     news_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     news_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
-    news_parser.add_argument('--workers', type=int, default=3, help='Parallel workers for content extraction')
+    news_parser.add_argument('--workers', type=int, default=5, help='Parallel workers for content extraction')
     news_parser.set_defaults(retry_on_zero=True)
     news_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries on zero results')
     news_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts on zero results')
@@ -1201,7 +1201,7 @@ def main():
     )
     video_parser.add_argument('--query', '-q', required=True, help='Search query')
     video_parser.add_argument('--max', '-m', type=int, default=5, help='Max videos (1-50)')
-    video_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/video_search_results.json)')
+    video_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/video_search_results.json)')
     video_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     video_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
     video_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
@@ -1227,7 +1227,7 @@ def main():
     url_parser.add_argument('--timeout', type=int, default=25, help='Extraction timeout in seconds (increase for JS-rendered SPAs)')
     url_parser.add_argument('--max-chars', type=int, default=None, help='Maximum characters to extract (e.g., 10000)')
     url_parser.add_argument('--max-size', type=str, default=None, help='Maximum response size (e.g., 100kb, 1mb, 500mb)')
-    url_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/url_fetch_result.json)')
+    url_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/url_fetch_result.json)')
     url_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     url_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
     url_parser.add_argument('--raw-html', action='store_true', help='Return raw HTML (prettified) instead of extracted/cleaned content')
@@ -1247,18 +1247,18 @@ def main():
         ),
         epilog=(
             'Examples:\n'
-            '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\n'
-            '  data-scout video-extract --url "https://youtu.be/dQw4w9WgXcQ"\n'
-            '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --subtitle-lang fr\n'
-            '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --segments\n'
-        '  data-scout video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json'
+            '  scout-it video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\n'
+            '  scout-it video-extract --url "https://youtu.be/dQw4w9WgXcQ"\n'
+            '  scout-it video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --subtitle-lang fr\n'
+            '  scout-it video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --segments\n'
+        '  scout-it video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     video_extract_parser.add_argument('--url', required=True, help='Video URL to extract (e.g., https://www.youtube.com/watch?v=VIDEO_ID)')
     video_extract_parser.add_argument('--subtitle-lang', default='en', help='Preferred subtitle language code (default: en)')
     video_extract_parser.add_argument('--segments', action='store_true', help='Include subtitle segments with timestamps (default: off)')
-    video_extract_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/video_extract_results.json)')
+    video_extract_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/video_extract_results.json)')
     video_extract_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     video_extract_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
     video_extract_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier (requests, then Playwright) when fetching the video page')
@@ -1274,40 +1274,40 @@ def main():
         description=(
             'Query several search engines in parallel, merge/dedupe the results, then run the '
             'same content-extraction pipeline as web-search. DuckDuckGo works with no setup. '
-            'Brave/Bing/Google/SerpAPI each need an API key (env var) — see `data-scout list-engines`. '
+            'Brave/Bing/Google/SerpAPI each need an API key (env var) — see `scout-it list-engines`. '
             'Unconfigured engines are skipped, not treated as errors.'
         ),
         epilog=(
             'Examples:\n'
-            '  data-scout multi-search --query "rust vs go" --engines duckduckgo\n'
-            '  data-scout multi-search --query "rust vs go" --engines duckduckgo,brave,google --max 15\n'
+            '  scout-it multi-search --query "rust vs go" --engines duckduckgo\n'
+            '  scout-it multi-search --query "rust vs go" --engines duckduckgo,brave,google --max 15\n'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     multi_parser.add_argument('--query', '-q', required=True, help='Search query')
     multi_parser.add_argument('--engines', default='duckduckgo', help='Comma-separated engine names (duckduckgo,brave,bing,google,serpapi)')
     multi_parser.add_argument('--max', '-m', type=int, default=10, help='Max merged results')
-    multi_parser.add_argument('--workers', '-w', type=int, default=8, help='Parallel content-extraction workers')
+    multi_parser.add_argument('--workers', '-w', type=int, default=5, help='Parallel content-extraction workers')
     multi_parser.add_argument('--serpapi-engine', default='google', help='Underlying engine for SerpAPI (google/bing/yahoo/baidu/yandex/...)')
     multi_parser.add_argument('--no-dedupe', dest='dedupe', action='store_false', help='Keep duplicate URLs across engines instead of deduping')
     multi_parser.set_defaults(dedupe=True)
     multi_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier when fetching each result page')
     multi_parser.add_argument('--no-js-fallback', dest='enable_js_fallback', action='store_false', help='Disable automatic Playwright fallback')
     multi_parser.set_defaults(enable_js_fallback=True)
-    multi_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/multi_search_results.json)')
+    multi_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/multi_search_results.json)')
     multi_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     multi_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     # list-engines subcommand — show configuration status of every engine
     subparsers.add_parser('list-engines', help='List available search engines and whether each is configured')
 
-    # config subcommand — interactive credential setup, stored at ~/.data-scout/
+    # config subcommand — interactive credential setup, stored at ~/.scout-it/
     config_parser = subparsers.add_parser(
         'config',
-        help='Set up API keys/tokens (GitHub, Brave, Bing, Google, SerpAPI, Discord, Reddit) -- stored at ~/.data-scout/',
+        help='Set up API keys/tokens (GitHub, Brave, Bing, Google, SerpAPI, Discord, Reddit) -- stored at ~/.scout-it/',
         description=(
             "Run with no flags for an interactive wizard that asks for each supported API key/token "
-            "one at a time (Enter to skip). Values are stored at ~/.data-scout/credentials.json "
+            "one at a time (Enter to skip). Values are stored at ~/.scout-it/credentials.json "
             "(owner-only file permissions) and loaded automatically on every future run -- a real "
             "environment variable always takes precedence over a stored value."
         ),
@@ -1337,7 +1337,7 @@ def main():
     gh_repo_parser.add_argument('--file-tree', action='store_true', help='Include the FULL, untruncated file tree (not included by default -- can be huge)')
     gh_repo_parser.add_argument('--max-chars', type=int, default=None, help='(--file-tree only) cap the tree output by character count -- mutually exclusive with --max-size')
     gh_repo_parser.add_argument('--max-size', default=None, help='(--file-tree only) cap the tree output by size, e.g. 5mb -- mutually exclusive with --max-chars')
-    gh_repo_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_repo_results.json)')
+    gh_repo_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/github_repo_results.json)')
     gh_repo_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_repo_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1349,7 +1349,7 @@ def main():
     gh_commits_parser.add_argument('--since', default=None, help='ISO8601 date — only commits after this')
     gh_commits_parser.add_argument('--until', default=None, help='ISO8601 date — only commits before this')
     gh_commits_parser.add_argument('--max', '-m', type=int, default=30, help='Max commits to list')
-    gh_commits_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_commits_results.json)')
+    gh_commits_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/github_commits_results.json)')
     gh_commits_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_commits_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1358,7 +1358,7 @@ def main():
     gh_commit_parser.add_argument('--sha', required=True, help='Commit SHA (full or short)')
     gh_commit_parser.add_argument('--no-patch', dest='include_patch', action='store_false', help="Omit each file's unified diff patch text (metadata only)")
     gh_commit_parser.set_defaults(include_patch=True)
-    gh_commit_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_commit_results.json)')
+    gh_commit_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/github_commit_results.json)')
     gh_commit_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_commit_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1367,7 +1367,7 @@ def main():
     gh_pr_parser.add_argument('--number', '-n', type=int, required=True, help='Pull request number')
     gh_pr_parser.add_argument('--no-diff', dest='include_diff', action='store_false', help='Omit the changed-files/diff list (metadata only)')
     gh_pr_parser.set_defaults(include_diff=True)
-    gh_pr_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_pr_results.json)')
+    gh_pr_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/github_pr_results.json)')
     gh_pr_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_pr_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1376,7 +1376,7 @@ def main():
     gh_prs_parser.add_argument('--state', default='open', choices=['open', 'closed', 'all'], help='PR state filter')
     gh_prs_parser.add_argument('--sort', default='created', choices=['created', 'updated', 'popularity', 'long-running'], help='Sort order')
     gh_prs_parser.add_argument('--max', '-m', type=int, default=30, help='Max PRs to list')
-    gh_prs_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_prs_results.json)')
+    gh_prs_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/github_prs_results.json)')
     gh_prs_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_prs_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1391,7 +1391,7 @@ def main():
     gh_folder_parser.add_argument('--max-chars', type=int, default=None, help="(--include-content only) cap each file's content by character count -- mutually exclusive with --max-size")
     gh_folder_parser.add_argument('--max-size', default=None, help="(--include-content only) cap each file's content by size, e.g. 500kb -- mutually exclusive with --max-chars")
     gh_folder_parser.add_argument('--save-path-dir', default=None, help='(--include-content only) also write every fetched file to disk under this directory, preserving the repo-relative path structure. Error if given without --include-content.')
-    gh_folder_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_folder_results.json)')
+    gh_folder_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/github_folder_results.json)')
     gh_folder_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_folder_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1401,7 +1401,7 @@ def main():
     gh_issues_parser.add_argument('--labels', default=None, help='Comma-separated label filter')
     gh_issues_parser.add_argument('--max', '-m', type=int, default=30, help='Max issues to list')
     gh_issues_parser.add_argument('--include-prs', dest='include_pull_requests', action='store_true', help="Include pull requests (GitHub's issues API returns PRs too by default)")
-    gh_issues_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_issues_results.json)')
+    gh_issues_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/github_issues_results.json)')
     gh_issues_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_issues_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1410,7 +1410,7 @@ def main():
     gh_issue_parser.add_argument('--number', '-n', type=int, required=True, help='Issue number')
     gh_issue_parser.add_argument('--no-comments', dest='include_comments', action='store_false', help='Omit comments')
     gh_issue_parser.set_defaults(include_comments=True)
-    gh_issue_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_issue_results.json)')
+    gh_issue_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/github_issue_results.json)')
     gh_issue_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_issue_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1418,14 +1418,14 @@ def main():
     gh_file_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
     gh_file_parser.add_argument('--path', required=True, help='File path within the repo, e.g. src/main.py')
     gh_file_parser.add_argument('--ref', default=None, help='Branch/tag/SHA (default: repo default branch)')
-    gh_file_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_file_results.json)')
+    gh_file_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/github_file_results.json)')
     gh_file_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_file_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_search_code_parser = subparsers.add_parser('github-search-code', help='Search code across GitHub (requires GITHUB_TOKEN)')
     gh_search_code_parser.add_argument('--query', '-q', required=True, help="GitHub code search query, e.g. 'fetch_resilient language:python'")
     gh_search_code_parser.add_argument('--max', '-m', type=int, default=20, help='Max results')
-    gh_search_code_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_search_code_results.json)')
+    gh_search_code_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/github_search_code_results.json)')
     gh_search_code_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_search_code_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1433,14 +1433,14 @@ def main():
     gh_search_repos_parser.add_argument('--query', '-q', required=True, help="e.g. 'language:python topic:llm stars:>1000'")
     gh_search_repos_parser.add_argument('--sort', default='stars', choices=['stars', 'forks', 'help-wanted-issues', 'updated'], help='Sort order')
     gh_search_repos_parser.add_argument('--max', '-m', type=int, default=20, help='Max results')
-    gh_search_repos_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_search_repos_results.json)')
+    gh_search_repos_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/github_search_repos_results.json)')
     gh_search_repos_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_search_repos_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     gh_discussions_parser = subparsers.add_parser('github-discussions', help='List GitHub Discussions for a repo (requires GITHUB_TOKEN)')
     gh_discussions_parser.add_argument('--repo', required=True, help="'owner/repo' or a github.com URL")
     gh_discussions_parser.add_argument('--max', '-m', type=int, default=20, help='Max discussions')
-    gh_discussions_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/github_discussions_results.json)')
+    gh_discussions_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/github_discussions_results.json)')
     gh_discussions_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     gh_discussions_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1462,7 +1462,7 @@ def main():
     telegram_parser.add_argument('--max', '-m', type=int, default=20, help='Max posts to return (--channel mode) or max channels (--query mode)')
     telegram_parser.add_argument('--posts-per-channel', type=int, default=3, help='(--query mode) posts to preview per matched channel')
     telegram_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier')
-    telegram_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/telegram_results.json)')
+    telegram_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/telegram_results.json)')
     telegram_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     telegram_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1480,7 +1480,7 @@ def main():
     discord_parser.add_argument('--channel-id', required=True, help='Numeric Discord channel ID')
     discord_parser.add_argument('--max', '-m', type=int, default=50, help='Max messages to return')
     discord_parser.add_argument('--before', default=None, help='Only messages before this message ID (pagination)')
-    discord_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/discord_results.json)')
+    discord_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/discord_results.json)')
     discord_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     discord_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1498,7 +1498,7 @@ def main():
     reddit_parser.add_argument('--subreddit', default=None, help='Restrict search to one subreddit')
     reddit_parser.add_argument('--sort', default='relevance', choices=['relevance', 'hot', 'top', 'new', 'comments'], help='Sort order')
     reddit_parser.add_argument('--max', '-m', type=int, default=20, help='Max results')
-    reddit_parser.add_argument('--out', '-o', default=None, help='Output file (default: .data-scout/reddit_results.json)')
+    reddit_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/reddit_results.json)')
     reddit_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     reddit_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
@@ -1509,7 +1509,7 @@ def main():
         return
 
     # Centralized --out / --markdown resolution: honors an explicit --out,
-    # falls back to the command's default filename under .data-scout/, and
+    # falls back to the command's default filename under .scout-it/, and
     # rejects the --markdown + explicit --out-ending-in-.json combination.
     if args.command in COMMAND_OUTPUT_STUBS and hasattr(args, 'out'):
         stub = COMMAND_OUTPUT_STUBS[args.command]
@@ -1769,7 +1769,7 @@ def main():
                 print(f'   [ERR] {err_msg}')
             else:
                 print(f'   [ERR] {err_msg}')
-            print(f'   [HINT] Provide a valid YouTube URL: data-scout video-extract --url "https://www.youtube.com/watch?v=VIDEO_ID"')
+            print(f'   [HINT] Provide a valid YouTube URL: scout-it video-extract --url "https://www.youtube.com/watch?v=VIDEO_ID"')
             print(f'   [HINT] Other video platforms coming soon.\n')
 
             # Still save error result to output for debugging
@@ -1906,7 +1906,7 @@ def main():
             skipped = stats['discovery'].get('skipped', [])
             _cmd_timer.done(engines_run=stats['discovery'].get('engines_run', []), results=len(structured_results))
             if skipped:
-                print(f"   ⏭️  Skipped: {[s['engine'] for s in skipped]} (run `data-scout list-engines` for setup hints)")
+                print(f"   ⏭️  Skipped: {[s['engine'] for s in skipped]} (run `scout-it list-engines` for setup hints)")
             print(f'   📂 Results saved to: {out_path.resolve()}\n')
 
     # ==========================================================================
@@ -1924,7 +1924,7 @@ def main():
             "\nNote: Google/Bing/Yahoo/Opera search-result *pages* can't be scraped directly "
             "(anti-bot + ToS). The engines above use each provider's official API instead — "
             "SerpAPI additionally proxies Yahoo/Baidu/Yandex/etc. via --serpapi-engine.\n"
-            "Run `data-scout config` to set up API keys interactively.\n"
+            "Run `scout-it config` to set up API keys interactively.\n"
         )
 
     # ==========================================================================

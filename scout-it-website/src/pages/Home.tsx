@@ -35,7 +35,7 @@ const features = [
   },
   {
     title: 'credentials, stored once',
-    body: 'an interactive wizard writes to ~/.data-scout/credentials.json so you stop exporting env vars every session.',
+    body: 'an interactive wizard writes to ~/.scout-it/credentials.json so you stop exporting env vars every session.',
     href: '/docs/configuration/',
     link: 'configuration',
   },
