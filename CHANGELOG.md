@@ -9,6 +9,175 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚀 Added — the previously-deferred advanced resilience items, now implemented
+
+Follow-up to the resilience/performance round above: the four pieces
+explicitly deferred there are now built, tested (offline, with mocks —
+see the "needs live verification" note on each), and wired into
+`fetch_resilient()`.
+
+- **`tls_fingerprint.py` (opt-in, `--tls-impersonate`)**: browser-accurate
+  TLS/JA3 fingerprint impersonation via the optional `curl_cffi` package
+  (`pip install scout-it[tls-impersonate]`), inserted as a new Tier 1.5
+  between plain `requests` and Playwright. Gracefully reports "not
+  installed" rather than failing when the optional dependency is absent.
+- **`dns_resilience.py` (on by default, `--no-dns-fallback` to disable)**:
+  when a fetch fails with what looks like a DNS resolution error, retries
+  once via DNS-over-HTTPS (Cloudflare/Google) against the resolved IP with
+  the original `Host` header preserved for correct TLS SNI.
+- **`browser_profile.py` (opt-in, `--persistent-profile [--profile-name X]`)**:
+  Tier 2 can use a persistent Playwright profile under
+  `~/.scout-it/browser-profiles/` instead of a throwaway context, so
+  cookies/session state accumulate across runs.
+- **Bandit-directed tier reordering (opt-in, `--use-bandit`)**: once a
+  domain has enough recorded history in the strategy cache and Playwright
+  has clearly outperformed plain `requests` for it, skips the doomed Tier 1
+  attempt entirely instead of wasting an attempt on it first. Implemented
+  by reusing the existing, already-tested `force_js` mechanism rather than
+  restructuring the tier waterfall, to keep this a low-risk, purely additive
+  change — behavior for every existing call site is unchanged since
+  `enable_bandit` defaults to `False`.
+
+**Honesty on verification**: `tls_fingerprint.py`, `dns_resilience.py`, and
+`browser_profile.py` are built against each underlying library/API's
+documented behavior, with full offline test coverage of the
+graceful-degradation and control-flow logic — but none of the three can be
+validated against a *real* anti-bot service, broken-DNS network, or
+long-running browser-profile session without live network access, which
+this build/test environment doesn't have. If something doesn't behave as
+expected against a real site, that's exactly the kind of bug report to
+send back.
+
+Currently wired into `web-search` only (the highest-traffic command); the
+same flags will thread through `news-search`/`fetch-url`/`video-extract`/
+`multi-search` in a follow-up pass — the underlying `fetch_resilient()`
+support is already there for all of them, it's just the CLI argument
+plumbing for those specific commands that's pending.
+
+### 🚀 Added — advanced fetch resilience & performance layer (per scout-it-advanced-upgrade-spec.md)
+
+Implemented a substantial subset of the spec, each piece built and tested
+standalone before wiring into `fetch_resilient()` (the shared fetch path
+every command goes through):
+
+- **`strategy_cache` + `strategy_bandit`**: local SQLite memory of which
+  {tier, proxy, fingerprint} combination has actually worked for each
+  domain, with Thompson sampling (Beta-Bernoulli, stdlib `random.betavariate`
+  only — no model/API dependency) to pick a starting strategy once there's
+  enough history; falls back to today's fixed tier order for unknown domains.
+- **`retry_classifier`**: transient vs. permanent failure classification
+  (404/401/403 now short-circuit tier 1 immediately instead of burning the
+  full retry budget on something that can't succeed) and `Retry-After`/
+  `X-RateLimit-Reset` header parsing, replacing pure guessed backoff.
+- **`header_profiles`**: rotates whole, internally-consistent browser header
+  bundles (UA + Accept + sec-ch-ua as a matched set) instead of a bare
+  User-Agent string paired with generic headers.
+- **`proxy_pool`**: rotation through `PROXY_LIST` with per-proxy cooldown
+  after failures — transparently degrades to direct connections when
+  unconfigured (never a hard failure).
+- **Tier 4 (opt-in via `--enable-alternate-source`)**: when every direct-URL
+  tier fails, tries AMP/mobile/print URL variants and a Wayback Machine
+  snapshot before giving up.
+- **`response_cache`**: disk-backed cache under `.scout-it/cache/` with
+  per-content-type TTLs and content-hash dedup.
+- **`heuristic_extract` + `selector_cache`**: a deterministic text-density
+  DOM-scoring fallback extractor, plus per-domain memory of which CSS
+  selector successfully identified the article container (forgotten
+  automatically after 3 consecutive failures, e.g. after a site redesign).
+- **`politeness_governor`**: per-domain concurrency caps and jittered
+  inter-request delays (independent of overall worker count) plus
+  `robots.txt` compliance checking (stdlib `urllib.robotparser`, fails open
+  on an unreachable robots.txt per RFC 9309).
+- **`scout-it stats`**: per-domain fetch-strategy report (best tier/proxy,
+  success rate, attempt counts) — pure local bookkeeping, no network calls.
+- **`scout-it doctor`**: environment self-check (Playwright/Chromium
+  installed, proxy config, cache sizes, credentials configured, basic
+  connectivity) for diagnosing "why does this always fall back to tier 3"
+  questions.
+- Worker default standardized to 5 was already applied; this round adds the
+  above without changing any existing command's default *output* behavior —
+  every new layer is either transparently safe (proxy pool, header profiles,
+  retry classification, strategy-cache recording) or explicitly opt-in
+  (`--enable-alternate-source`).
+
+Deferred from the full spec for this round (noted for a future pass): TLS/
+JA3 fingerprint impersonation (would need a new `curl_cffi`-class dependency
+I can't verify without network access to test against), DNS-over-HTTPS,
+persistent browser profiles, and full bandit-directed tier reordering inside
+`fetch_resilient` itself (the bandit and cache are wired and recording real
+outcomes now; using the bandit's *recommendation* to reorder tiers per
+request is the natural next step once there's a few weeks of real usage
+data to validate it against).
+
+### 🚀 Added — adaptive resilience & performance layer (12 new modules)
+
+Implemented the highest-value subset of the advanced upgrade spec: real,
+tested, wired-in improvements to `fetch_resilient()` rather than a wide
+shallow pass across everything. Every new layer degrades gracefully to
+today's existing behavior when unconfigured/unused — nothing here changes
+default output for a user who doesn't opt in to the new flags.
+
+- **`strategy_cache.py` + `strategy_bandit.py`** — every fetch attempt's
+  outcome ({tier, proxy, fingerprint} -> success/fail/latency) is recorded
+  to a local SQLite file (`~/.scout-it/strategy_cache.db`). Thompson
+  sampling (Beta-Bernoulli, stdlib `random.betavariate`, no model/API call
+  of any kind) uses that history to pick a better starting strategy per
+  domain once there's enough data (3+ attempts); falls back to today's
+  fixed tier order otherwise. Introspect via the new `stats` command.
+- **`retry_classifier.py`** — failures are now classified transient
+  (worth retrying: 408/425/429/500/502/503/504, connection/timeout
+  exceptions) vs. permanent (404/401/403/410/etc. — retrying wastes the
+  budget, so Tier 1 now short-circuits immediately instead of burning all
+  3 attempts on a 404). Honors `Retry-After` and `X-RateLimit-Reset`
+  headers for wait time instead of guessing with fixed backoff.
+- **`header_profiles.py`** — Tier 1 requests now send a complete,
+  internally-consistent browser header bundle (matched User-Agent +
+  Accept-Language + sec-ch-ua, rotated as a whole set) instead of a bare
+  User-Agent string, which is itself a smaller anti-bot tell than
+  independently-randomized fields.
+- **`proxy_pool.py`** — rotates through `PROXY_LIST` (configure via
+  `scout-it config` or the env var) with per-proxy cooldown after
+  failures. **Transparently no-ops** (`proxy_id="direct"`, no proxy used)
+  when nothing is configured — verified this never breaks unconfigured
+  usage.
+- **Tier 4 (opt-in, `--enable-alternate-source`) — `alternate_source.py`** —
+  when every direct-URL tier fails, tries AMP/mobile/print URL variants,
+  then a Wayback Machine snapshot, before giving up. A genuinely different
+  content source, not just another retry — wired into `web-search` and
+  `fetch-url` so far.
+- **`canary_probe.py`** — a cheap HEAD/ranged-GET probe with known
+  challenge-page signature detection, for sensing whether a domain's
+  defenses have changed before committing to an expensive full attempt.
+- **`response_cache.py`** — disk-backed cache under `.scout-it/cache/`
+  with per-content-type TTL (news: 30min, static: 24h) and a stale-if-error
+  path (serve the last good copy with an explicit `stale: true` flag rather
+  than failing outright), plus content-hash dedup to detect unchanged pages.
+- **`heuristic_extract.py`** — a deterministic, zero-dependency
+  text-density DOM scoring fallback (same core idea as readability-style
+  libraries), available as an additional extraction-engine tier.
+- **`selector_cache.py`** — remembers which CSS selector successfully
+  identified a domain's article container, tried first on the next visit
+  before falling back to the full extraction cascade; forgets it after 3
+  consecutive failures (layout changed).
+- **`politeness_governor.py`** — per-domain concurrency caps and jittered
+  minimum-delay-between-requests (independent of overall worker count, so
+  parallel workers don't all hit the same domain simultaneously), plus
+  robots.txt compliance checking (stdlib `urllib.robotparser`, fails open
+  on an unreachable robots.txt per RFC 9309 section 2.3.1.4).
+- **New `scout-it stats` command** — per-domain strategy-cache
+  introspection: attempt counts, success rate, best-known strategy.
+  `--domain`, `--export`, `--reset`, `--reset-all`.
+- **New `scout-it doctor` command** — environment self-check: real
+  Playwright/Chromium launch test (not just "is the package imported"),
+  proxy pool status, response-cache disk usage, credential configuration
+  summary, and a live connectivity probe.
+
+347 tests total (110 new), covering every new module standalone plus
+dedicated integration tests for the riskiest change (the `fetch_resilient`
+rewiring itself): Retry-After honoring, permanent-failure short-circuiting,
+proxy transparency, header-profile usage, Tier 4 recovery via AMP, and
+real strategy-cache recording through an actual fetch.
+
 ### 🔴 Fixed — package rename (data-scout → scout-it) left several inconsistencies
 
 - **`--markdown` + explicit bare `.md` filename stayed at the project root** instead of moving under the default output directory like JSON output did (e.g. `--out web_default.md --markdown` wrote to `./web_default.md` instead of `./.scout-it/web_default.md`). `resolve_output_path()` now applies the same directory-relocation rule to bare filenames regardless of format.

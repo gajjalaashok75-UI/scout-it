@@ -93,7 +93,12 @@ class TestWebSearch:
 
                 # Verify engine was instantiated with correct workers (plus the
                 # new resilient-fetch config, which defaults to 3 retries / JS fallback on)
-                mock_engine.assert_called_once_with(max_workers=4, max_fetch_retries=3, enable_js_fallback=True)
+                mock_engine.assert_called_once_with(
+                    max_workers=4, max_fetch_retries=3, enable_js_fallback=True,
+                    enable_alternate_source=False, enable_dns_fallback=True,
+                    enable_tls_impersonate=False, enable_persistent_profile=False,
+                    browser_profile_name='default', enable_bandit=False,
+                )
                 # Verify execute_search was called
                 assert mock_instance.execute_search.called
 

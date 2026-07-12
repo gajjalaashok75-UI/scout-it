@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scout-it"
-version = "1.4.1"
+version = "1.4.0"
 description = "Enterprise-grade DuckDuckGo search toolkit with content extraction, cleaning, and structured JSON output"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -58,8 +58,16 @@ legacy-ddgs = [
     # scout_it tries `ddgs` first and falls back to this automatically.
     "duckduckgo-search>=3.9.0",
 ]
+tls-impersonate = [
+    # Optional: browser-accurate TLS/JA3 fingerprint impersonation for the
+    # --tls-impersonate tier (scout_it/tls_fingerprint.py). Needs live
+    # verification against a real anti-bot service -- see that module's
+    # docstring.
+    "curl_cffi>=0.7.0",
+]
 all = [
     "playwright>=1.40.0",
+    "curl_cffi>=0.7.0",
 ]
 
 [project.urls]

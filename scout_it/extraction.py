@@ -274,11 +274,23 @@ def fetch_resilient(
     retry_backoff: float = 1.5,
     console: Optional[Any] = None,
     force_js: bool = False,
+    enable_alternate_source: bool = False,
+    enable_strategy_cache: bool = True,
+    enable_dns_fallback: bool = True,
+    enable_tls_impersonate: bool = False,
+    enable_persistent_profile: bool = False,
+    browser_profile_name: str = "default",
+    enable_bandit: bool = False,
 ) -> Dict[str, Any]:
     """Multi-tier resilient HTML fetch used across every search/extraction path.
 
-    Tier 1 - requests (up to *max_retries* attempts, UA rotation, exponential
-    backoff). Handles most sites and is fast/cheap.
+    Tier 1 - requests (up to *max_retries* attempts, full consistent
+    browser-header-profile rotation via ``header_profiles``, transient/
+    permanent-aware backoff via ``retry_classifier`` -- honors a server's
+    ``Retry-After``/``X-RateLimit-Reset`` instead of guessing). Handles most
+    sites and is fast/cheap. Routed through the configured proxy pool
+    (``proxy_pool``) when ``PROXY_LIST`` is set; a transparent no-op
+    otherwise.
 
     Tier 2 - Playwright headless Chromium render (up to *max_retries* attempts),
     only attempted when tier 1 fails outright OR the response looks blocked
@@ -290,12 +302,38 @@ def fetch_resilient(
     browser-shaped requests, or block Playwright's Chromium signature but
     not a generic client).
 
+    Tier 4 (opt-in, ``enable_alternate_source=True``) - the alternate-source
+    ladder (AMP/mobile/print URL variants, then a Wayback Machine snapshot)
+    when every direct-URL tier has failed.
+
+    Also, when enabled:
+    - ``enable_dns_fallback=True`` (default): if a Tier 1 attempt fails with
+      what looks like a DNS resolution error, retries once via
+      DNS-over-HTTPS (``dns_resilience``) instead of giving up immediately.
+    - ``enable_tls_impersonate=True`` (opt-in, needs ``curl_cffi`` installed):
+      inserts a Tier 1.5 -- browser-accurate TLS/JA3 fingerprint
+      impersonation (``tls_fingerprint``) -- between Tier 1 and Tier 2.
+    - ``enable_persistent_profile=True`` (opt-in): Tier 2 uses a persistent
+      Playwright profile (``browser_profile``) instead of a throwaway
+      context, so cookies/session state accumulate across runs.
+    - ``enable_bandit=True`` (opt-in): once a domain has enough recorded
+      history, and the strategy cache shows Playwright reliably outperforms
+      plain requests for it, skips the doomed Tier 1 attempt and goes
+      straight to Tier 2 (reuses the existing ``force_js`` mechanism
+      internally -- this doesn't change behavior for domains without
+      sufficient history, or when disabled, which is the default).
+
+    Every attempt's outcome is recorded to the local strategy cache
+    (``enable_strategy_cache=True``, the default) -- pure local bookkeeping,
+    used by ``strategy_bandit`` to make smarter tier choices for this domain
+    over time. Never blocks or fails the fetch itself.
+
     Returns a dict:
         {
             "html": str,
             "final_url": str,
             "status": "success" | "failed",
-            "tier": "requests" | "playwright" | "basic-fallback" | "none",
+            "tier": "requests" | "tls-impersonate" | "playwright" | "basic-fallback" | "alternate-source" | "none",
             "attempts": int,
             "errors": List[str],
         }
@@ -304,6 +342,35 @@ def fetch_resilient(
     total_attempts = 0
     sess = session or requests
     got_any_http_response = False
+
+    from . import header_profiles as _hp
+    from . import retry_classifier as _rc
+    from . import proxy_pool as _pp
+
+    proxy_info = _pp.get_default_pool().get()
+
+    # Separate flag from force_js so the bandit's Playwright recommendation
+    # skips Tier 1 (requests) but still allows Tier 1.5 (TLS impersonation)
+    # to be attempted before falling through to Playwright.
+    _bandit_skip_tier1 = False
+    if enable_bandit and not force_js:
+        try:
+            from . import strategy_bandit as _bandit
+            choice = _bandit.choose_strategy(url, available_tiers=["requests", "playwright", "basic-fallback"])
+            if choice["source"] == "bandit" and choice["tier"] == "playwright" and choice["confidence"] >= 0.7:
+                _bandit_skip_tier1 = True
+                errs.append(f"bandit: skipping tier 1 -- playwright has a {choice['confidence']:.0%} recorded success rate for this domain")
+        except Exception:
+            pass  # the bandit recommending nothing is exactly the same as it being disabled
+
+    def _record(tier: str, success: bool, latency_ms: Optional[int] = None) -> None:
+        if not enable_strategy_cache:
+            return
+        try:
+            from . import strategy_cache as _sc
+            _sc.record_outcome(url, tier, success, proxy_id=proxy_info["proxy_id"], latency_ms=latency_ms)
+        except Exception:
+            pass  # bookkeeping must never break a real fetch
 
     def _looks_blocked(resp_text: str, status: int) -> bool:
         if status in (403, 429, 503):
@@ -318,20 +385,23 @@ def fetch_resilient(
         return False
 
     # ---------------- Tier 1: requests ----------------
-    if not force_js:
+    if not force_js and not _bandit_skip_tier1:
         for attempt in range(max(1, max_retries)):
             total_attempts += 1
+            attempt_start = time.time()
             try:
-                headers = {
-                    'User-Agent': random.choice(ExtractionEngine.USER_AGENTS),
-                    'Accept': 'text/html,application/xhtml+xml,*/*;q=0.9',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                }
-                resp = sess.get(url, headers=headers, timeout=timeout, allow_redirects=True, stream=True)
+                headers = _hp.get_profile()
+                resp = sess.get(
+                    url, headers=headers, timeout=timeout, allow_redirects=True,
+                    stream=True, proxies=proxy_info["requests_proxies"],
+                )
                 got_any_http_response = True  # server was reachable; a browser can plausibly do better
                 status = resp.status_code
                 text = resp.text
+                latency_ms = int((time.time() - attempt_start) * 1000)
                 if status < 400 and not _looks_blocked(text, status):
+                    _pp.get_default_pool().mark_success(proxy_info["proxy_id"])
+                    _record("requests", True, latency_ms)
                     return {
                         "html": text,
                         "final_url": str(resp.url),
@@ -341,13 +411,88 @@ def fetch_resilient(
                         "errors": errs,
                     }
                 errs.append(f"requests attempt {attempt + 1}: HTTP {status} (blocked-looking response)")
+                classification = _rc.classify_attempt(status_code=status, headers=dict(resp.headers))
+                _record("requests", False, latency_ms)
+                if not classification["should_retry"]:
+                    errs.append(f"requests attempt {attempt + 1}: HTTP {status} classified as permanent -- stopping tier 1 early")
+                    break
+                wait = classification["wait_seconds"] if classification["wait_seconds"] is not None else retry_backoff * (attempt + 1)
             except Exception as e:
                 errs.append(f"requests attempt {attempt + 1}: {type(e).__name__}: {e}")
+                _pp.get_default_pool().mark_failed(proxy_info["proxy_id"])
+                _record("requests", False)
+
+                if enable_dns_fallback:
+                    try:
+                        from . import dns_resilience as _dns
+                        if _dns.looks_like_dns_error(e):
+                            resolved = _dns.build_resolved_url_and_host_header(url, timeout=5)
+                            if resolved:
+                                errs.append(f"requests attempt {attempt + 1}: DNS-looking failure -- retrying via DNS-over-HTTPS resolution")
+                                try:
+                                    dns_headers = dict(_hp.get_profile())
+                                    dns_headers["Host"] = resolved["host_header"]
+                                    dns_resp = sess.get(
+                                        resolved["resolved_url"], headers=dns_headers, timeout=timeout,
+                                        allow_redirects=False,  # redirects would leak the raw-IP URL; not meaningful past the first hop
+                                        stream=True, verify=False,  # IP-based URL can't validate against the cert's hostname-based SAN
+                                    )
+                                    if dns_resp.status_code < 400 and not _looks_blocked(dns_resp.text, dns_resp.status_code):
+                                        _record("requests-dns-fallback", True)
+                                        return {
+                                            "html": dns_resp.text,
+                                            "final_url": url,  # report the original URL, not the raw-IP one, to callers
+                                            "status": "success",
+                                            "tier": "requests",
+                                            "attempts": total_attempts,
+                                            "errors": errs,
+                                        }
+                                    errs.append(f"DNS-over-HTTPS retry: HTTP {dns_resp.status_code}")
+                                except Exception as dns_exc:
+                                    errs.append(f"DNS-over-HTTPS retry: {type(dns_exc).__name__}: {dns_exc}")
+                    except Exception:
+                        pass  # DNS fallback is a bonus attempt; never let it break the normal flow
+
+                classification = _rc.classify_attempt(exception=e)
+                if not classification["should_retry"]:
+                    break
+                wait = retry_backoff * (attempt + 1)
 
             if attempt < max_retries - 1:
-                time.sleep(retry_backoff * (attempt + 1))
-    else:
+                time.sleep(wait)
+    elif force_js:
         errs.append("tier 1 (requests) skipped: force_js=True")
+    else:
+        errs.append("tier 1 (requests) skipped: bandit recommends playwright")
+
+    # ---------------- Tier 1.5 (opt-in): TLS/JA3 fingerprint impersonation ----------------
+    if enable_tls_impersonate and not force_js:
+        try:
+            from . import tls_fingerprint as _tls
+            if _tls.is_available():
+                for attempt in range(max(1, max_retries)):
+                    total_attempts += 1
+                    attempt_start = time.time()
+                    result = _tls.fetch(url, timeout=timeout, proxies=proxy_info["requests_proxies"])
+                    latency_ms = int((time.time() - attempt_start) * 1000)
+                    if result["status"] == "success" and not _looks_blocked(result["html"], result.get("status_code") or 200):
+                        _record("tls-impersonate", True, latency_ms)
+                        return {
+                            "html": result["html"],
+                            "final_url": result["final_url"],
+                            "status": "success",
+                            "tier": "tls-impersonate",
+                            "attempts": total_attempts,
+                            "errors": errs,
+                        }
+                    errs.append(f"tls-impersonate attempt {attempt + 1}: {result.get('error') or 'blocked-looking response'}")
+                    _record("tls-impersonate", False, latency_ms)
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_backoff * (attempt + 1))
+            else:
+                errs.append("tls-impersonate: curl_cffi not installed, skipping (pip install scout-it[tls-impersonate])")
+        except Exception as e:
+            errs.append(f"tls-impersonate: {type(e).__name__}: {e}")
 
     # ---------------- Tier 2: Playwright ----------------
     # Skip the (expensive) browser tier when requests never even reached the
@@ -357,7 +502,7 @@ def fetch_resilient(
     # when force_js was explicitly requested, or when at least one attempt
     # DID get a response (i.e. the server is up but something looked
     # bot-blocked, which JS-rendering can plausibly get past).
-    should_try_js = enable_js_fallback and (force_js or got_any_http_response)
+    should_try_js = enable_js_fallback and (force_js or _bandit_skip_tier1 or got_any_http_response)
     if enable_js_fallback and not should_try_js:
         errs.append("skipping Playwright tier: no tier-1 attempt reached the server (pure connection/DNS-level failure)")
 
@@ -372,18 +517,32 @@ def fetch_resilient(
         if playwright_available:
             for attempt in range(max(1, max_retries)):
                 total_attempts += 1
+                attempt_start = time.time()
                 try:
                     with sync_playwright() as pw:
-                        browser = pw.chromium.launch(headless=True)
-                        try:
-                            page = browser.new_page()
-                            page.goto(url, wait_until="load", timeout=timeout * 1000)
-                            page.wait_for_timeout(1500)
-                            html = page.content()
-                            final_url = page.url
-                        finally:
-                            browser.close()
+                        if enable_persistent_profile:
+                            from . import browser_profile as _bp
+                            context = _bp.launch_persistent(pw, profile_name=browser_profile_name, headless=True)
+                            try:
+                                page = context.new_page()
+                                page.goto(url, wait_until="load", timeout=timeout * 1000)
+                                page.wait_for_timeout(1500)
+                                html = page.content()
+                                final_url = page.url
+                            finally:
+                                context.close()
+                        else:
+                            browser = pw.chromium.launch(headless=True)
+                            try:
+                                page = browser.new_page()
+                                page.goto(url, wait_until="load", timeout=timeout * 1000)
+                                page.wait_for_timeout(1500)
+                                html = page.content()
+                                final_url = page.url
+                            finally:
+                                browser.close()
                     if html and len(html.strip()) > 200:
+                        _record("playwright", True, int((time.time() - attempt_start) * 1000))
                         return {
                             "html": html,
                             "final_url": final_url,
@@ -393,18 +552,22 @@ def fetch_resilient(
                             "errors": errs,
                         }
                     errs.append(f"playwright attempt {attempt + 1}: page rendered but content too small")
+                    _record("playwright", False)
                 except Exception as e:
                     errs.append(f"playwright attempt {attempt + 1}: {type(e).__name__}: {e}")
+                    _record("playwright", False)
 
                 if attempt < max_retries - 1:
                     time.sleep(retry_backoff * (attempt + 1))
 
     # ---------------- Tier 3: last-resort basic request ----------------
     total_attempts += 1
+    attempt_start = time.time()
     try:
         basic_headers = {'User-Agent': 'curl/8.0', 'Accept': '*/*'}
         resp = sess.get(url, headers=basic_headers, timeout=timeout, allow_redirects=True)
         if resp.status_code < 400 and resp.text:
+            _record("basic-fallback", True, int((time.time() - attempt_start) * 1000))
             return {
                 "html": resp.text,
                 "final_url": str(resp.url),
@@ -414,8 +577,39 @@ def fetch_resilient(
                 "errors": errs,
             }
         errs.append(f"basic-fallback: HTTP {resp.status_code}")
+        _record("basic-fallback", False)
     except Exception as e:
         errs.append(f"basic-fallback: {type(e).__name__}: {e}")
+        _record("basic-fallback", False)
+
+    # ---------------- Tier 4 (opt-in): alternate-source ladder ----------------
+    # AMP/mobile/print URL variants, then a Wayback Machine snapshot -- a
+    # genuinely different content source (not just another retry of the same
+    # URL), so it's only tried once every direct-URL tier is exhausted, and
+    # only when explicitly enabled (it costs extra requests to third-party
+    # services and other URL variants, so it shouldn't surprise callers who
+    # didn't ask for it).
+    if enable_alternate_source:
+        try:
+            from . import alternate_source as _alt
+
+            def _ladder_fetch(candidate_url: str) -> Dict[str, Any]:
+                return fetch_resilient(
+                    candidate_url, session=session, timeout=timeout, max_retries=1,
+                    enable_js_fallback=False, retry_backoff=retry_backoff, console=console,
+                    enable_alternate_source=False, enable_strategy_cache=False,
+                )
+
+            ladder_result = _alt.try_ladder(url, _ladder_fetch, include_wayback=True)
+            if ladder_result.get("status") == "success":
+                _record(f"alternate-source:{ladder_result.get('alternate_source_rung')}", True)
+                ladder_result["attempts"] = total_attempts + 1
+                ladder_result["errors"] = errs
+                ladder_result["tier"] = "alternate-source"
+                return ladder_result
+            errs.append(f"alternate-source ladder exhausted: tried {ladder_result.get('rungs_tried', [])}")
+        except Exception as e:
+            errs.append(f"alternate-source ladder: {type(e).__name__}: {e}")
 
     if console is not None:
         try:
@@ -632,11 +826,23 @@ def _ddgs_list_search_with_retry(
 class EnterpriseSearchEngine:
     """Complete enterprise search + extraction pipeline"""
 
-    def __init__(self, max_workers: int = 5, timeout: int = 25, max_fetch_retries: int = 3, enable_js_fallback: bool = True):
+    def __init__(
+        self, max_workers: int = 5, timeout: int = 25, max_fetch_retries: int = 3,
+        enable_js_fallback: bool = True, enable_alternate_source: bool = False,
+        enable_dns_fallback: bool = True, enable_tls_impersonate: bool = False,
+        enable_persistent_profile: bool = False, browser_profile_name: str = 'default',
+        enable_bandit: bool = False,
+    ):
         self.max_workers = min(max_workers, 12)  # CPU-aware
         self.timeout = timeout
         self.max_fetch_retries = max(1, int(max_fetch_retries))
         self.enable_js_fallback = enable_js_fallback
+        self.enable_alternate_source = enable_alternate_source
+        self.enable_dns_fallback = enable_dns_fallback
+        self.enable_tls_impersonate = enable_tls_impersonate
+        self.enable_persistent_profile = enable_persistent_profile
+        self.browser_profile_name = browser_profile_name
+        self.enable_bandit = enable_bandit
         self.console = Console()
         self.extractor = ExtractionEngine()
         self.results: List[EnterpriseResult] = []
@@ -798,6 +1004,12 @@ class EnterpriseSearchEngine:
                     timeout=self.timeout,
                     max_retries=self.max_fetch_retries,
                     enable_js_fallback=self.enable_js_fallback,
+                    enable_alternate_source=self.enable_alternate_source,
+                    enable_dns_fallback=self.enable_dns_fallback,
+                    enable_tls_impersonate=self.enable_tls_impersonate,
+                    enable_persistent_profile=self.enable_persistent_profile,
+                    browser_profile_name=self.browser_profile_name,
+                    enable_bandit=self.enable_bandit,
                 )
                 with self._stats_lock:
                     self.stats['fetch_tiers'][fetch_outcome['tier']] = (

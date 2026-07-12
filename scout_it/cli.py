@@ -49,6 +49,10 @@ try:
     from . import social
     from . import config as ds_config
     from . import output as output_mod
+    from . import strategy_cache
+    from . import proxy_pool
+    from . import response_cache
+    from . import canary_probe
 except Exception as e:
     raise ImportError("Could not import from scout_it modules: " + str(e))
 
@@ -154,6 +158,12 @@ def web_search(
     backend: str = 'auto',
     max_fetch_retries: int = 3,
     enable_js_fallback: bool = True,
+    enable_alternate_source: bool = False,
+    enable_dns_fallback: bool = True,
+    enable_tls_impersonate: bool = False,
+    enable_persistent_profile: bool = False,
+    browser_profile_name: str = 'default',
+    enable_bandit: bool = False,
 ):
     """
     Execute web search pipeline: search → extract → clean → filter.
@@ -166,6 +176,9 @@ def web_search(
             Playwright) when fetching each result page.
         enable_js_fallback: Whether to automatically fall back to Playwright
             when a plain requests fetch fails or looks blocked.
+        enable_alternate_source: When every direct-URL fetch tier fails, try
+            AMP/mobile/print URL variants and a Wayback Machine snapshot
+            before giving up (extra requests/latency, so opt-in).
     
     Returns:
         (structured_results, stats) tuple with cleaned and structured content
@@ -175,6 +188,12 @@ def web_search(
         max_workers=workers,
         max_fetch_retries=max_fetch_retries,
         enable_js_fallback=enable_js_fallback,
+        enable_alternate_source=enable_alternate_source,
+        enable_dns_fallback=enable_dns_fallback,
+        enable_tls_impersonate=enable_tls_impersonate,
+        enable_persistent_profile=enable_persistent_profile,
+        browser_profile_name=browser_profile_name,
+        enable_bandit=enable_bandit,
     )
     search_options = _compact_options({
         'region': region,
@@ -903,6 +922,7 @@ def fetch_url(
     js_render: bool = False,
     no_js_fallback: bool = False,
     max_retries: int = 3,
+    enable_alternate_source: bool = False,
 ):
     """
     Fetch a single URL and extract/clean its content.
@@ -955,6 +975,7 @@ def fetch_url(
             max_retries=max(1, int(max_retries)),
             enable_js_fallback=(not no_js_fallback) or js_render,
             force_js=js_render,
+            enable_alternate_source=enable_alternate_source,
         )
 
         if outcome["status"] != "success":
@@ -1130,6 +1151,13 @@ def main():
     web_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts when 0 successful extractions')
     web_parser.add_argument('--retry-backoff', type=float, default=1.0, help='Backoff seconds between retries')
     web_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier (requests, then Playwright) when fetching each result page')
+    web_parser.add_argument('--enable-alternate-source', action='store_true', help='If every fetch tier fails, try AMP/mobile/print URL variants and a Wayback Machine snapshot before giving up (extra requests, opt-in)')
+    web_parser.add_argument('--no-dns-fallback', dest='enable_dns_fallback', action='store_false', help='Disable the DNS-over-HTTPS retry when a fetch fails with a DNS-looking error (on by default)')
+    web_parser.set_defaults(enable_dns_fallback=True)
+    web_parser.add_argument('--tls-impersonate', dest='enable_tls_impersonate', action='store_true', help='Insert a browser-accurate TLS/JA3 fingerprint tier between requests and Playwright (needs: pip install scout-it[tls-impersonate])')
+    web_parser.add_argument('--persistent-profile', dest='enable_persistent_profile', action='store_true', help='Use a persistent Playwright profile (cookies/session survive across runs) instead of a throwaway context for the JS-render tier')
+    web_parser.add_argument('--profile-name', dest='browser_profile_name', default='default', help='Persistent profile name (only with --persistent-profile)')
+    web_parser.add_argument('--use-bandit', dest='enable_bandit', action='store_true', help="Once a domain has enough recorded history, skip straight to whichever fetch tier has actually worked best for it instead of always starting with plain requests (see 'scout-it stats')")
     web_parser.add_argument('--no-js-fallback', dest='enable_js_fallback', action='store_false', help='Disable automatic Playwright fallback when a page fetch fails or looks blocked')
     web_parser.set_defaults(enable_js_fallback=True)
     
@@ -1234,6 +1262,7 @@ def main():
     url_parser.add_argument('--js-render', action='store_true', help='Skip straight to Playwright rendering instead of trying requests first')
     url_parser.add_argument('--no-js-fallback', action='store_true', help='Disable automatic Playwright fallback when requests fails or looks blocked')
     url_parser.add_argument('--max-retries', type=int, default=3, help='Retry attempts per fetch tier (requests, then Playwright)')
+    url_parser.add_argument('--enable-alternate-source', action='store_true', help='If every fetch tier fails, try AMP/mobile/print URL variants and a Wayback Machine snapshot before giving up (extra requests, opt-in)')
 
     # ======================================================================
     # video-extract subcommand
@@ -1315,6 +1344,35 @@ def main():
     config_parser.add_argument('--show', action='store_true', help='Show configuration status for every known key (no secrets printed) instead of running the wizard')
     config_parser.add_argument('--clear', default=None, metavar='KEY', help='Remove one stored key, e.g. --clear GITHUB_TOKEN')
     config_parser.add_argument('--clear-all', action='store_true', help='Remove all stored keys')
+
+    # stats -- introspection into the local strategy cache
+    stats_parser = subparsers.add_parser(
+        'stats',
+        help='Show per-domain fetch-strategy statistics learned by the strategy cache',
+        description=(
+            "Reports what scout-it has learned about each domain it's fetched from: which "
+            "{tier, proxy, fingerprint} combination works best, overall success rate, and attempt "
+            "counts. Backed by a local SQLite file at ~/.scout-it/strategy_cache.db -- no network "
+            "calls, pure local bookkeeping accumulated across every fetch_resilient() call."
+        ),
+    )
+    stats_parser.add_argument('--domain', default=None, help='Show stats for one domain only (default: all known domains)')
+    stats_parser.add_argument('--export', default=None, metavar='PATH', help='Write the full stats dump to a JSON file instead of printing a summary')
+    stats_parser.add_argument('--reset', default=None, metavar='DOMAIN', help='Forget all recorded strategy history for one domain')
+    stats_parser.add_argument('--reset-all', action='store_true', help='Forget all recorded strategy history for every domain')
+
+    # doctor -- environment/connectivity self-check
+    subparsers.add_parser(
+        'doctor',
+        help='Run a self-check: Playwright availability, proxy config, cache health, credentials, DNS/connectivity',
+        description=(
+            "Diagnoses common setup issues before you hit them mid-command: whether Playwright's "
+            "browser is actually installed (not just the pip package), whether PROXY_LIST is set and "
+            "reachable, response-cache disk usage, which credentials are configured, and basic "
+            "internet connectivity. Every check is independent and failures are reported clearly "
+            "rather than raising."
+        ),
+    )
 
     # ======================================================================
     # GitHub extraction subcommands
@@ -1542,6 +1600,12 @@ def main():
             backend=args.backend,
             max_fetch_retries=args.max_fetch_retries,
             enable_js_fallback=args.enable_js_fallback,
+            enable_alternate_source=args.enable_alternate_source,
+            enable_dns_fallback=args.enable_dns_fallback,
+            enable_tls_impersonate=args.enable_tls_impersonate,
+            enable_persistent_profile=args.enable_persistent_profile,
+            browser_profile_name=args.browser_profile_name,
+            enable_bandit=args.enable_bandit,
         )
         
         output = {
@@ -1839,6 +1903,7 @@ def main():
             js_render=args.js_render,
             no_js_fallback=args.no_js_fallback,
             max_retries=args.max_retries,
+            enable_alternate_source=args.enable_alternate_source,
         )
 
         output = {
@@ -1943,6 +2008,97 @@ def main():
             ds_config.print_credential_status()
         else:
             ds_config.run_config_wizard()
+
+    # ==========================================================================
+    # stats -- strategy cache introspection
+    # ==========================================================================
+    elif args.command == 'stats':
+        if args.reset_all:
+            domains = strategy_cache.all_known_domains()
+            for d in domains:
+                strategy_cache.reset_domain(d)
+            print(f"✅ Cleared strategy history for {len(domains)} domain(s).\n")
+        elif args.reset:
+            removed = strategy_cache.reset_domain(args.reset)
+            print(f"✅ Cleared {removed} recorded attempt(s) for {args.reset}.\n" if removed else f"⚪ No history found for {args.reset}.\n")
+        elif args.export:
+            export = strategy_cache.export_all()
+            out_path = Path(args.export)
+            output_mod.write_json_output(out_path, export)
+            print(f"✅ Exported stats for {export['domain_count']} domain(s) to {out_path.resolve()}\n")
+        elif args.domain:
+            stats_result = strategy_cache.get_domain_stats(args.domain)
+            if not stats_result["known"]:
+                print(f"⚪ No recorded history for {args.domain} yet.\n")
+            else:
+                print(f"\n📊 {args.domain}")
+                print(f"   Attempts: {stats_result['total_attempts']}, success rate: {stats_result['overall_success_rate']:.0%}")
+                best = stats_result["best_arm"]
+                print(f"   Best strategy: tier={best['tier']}, proxy={best['proxy_id']}, success_rate={best['success_rate']:.0%}")
+                print(f"   {stats_result['arm_count']} strategy combination(s) tried total.\n")
+        else:
+            domains = strategy_cache.all_known_domains()
+            if not domains:
+                print("⚪ No strategy history recorded yet -- run some searches/fetches first.\n")
+            else:
+                print(f"\n📊 Strategy cache: {len(domains)} known domain(s)\n")
+                for d in domains:
+                    s = strategy_cache.get_domain_stats(d)
+                    best = s["best_arm"]
+                    print(f"  {d:<30} {s['total_attempts']:>4} attempts, {s['overall_success_rate']:.0%} success, best: {best['tier']}/{best['proxy_id']}")
+                print()
+
+    # ==========================================================================
+    # doctor -- environment self-check
+    # ==========================================================================
+    elif args.command == 'doctor':
+        print("\n🩺 scout-it doctor\n")
+
+        # Playwright
+        try:
+            from playwright.sync_api import sync_playwright
+            try:
+                with sync_playwright() as pw:
+                    browser = pw.chromium.launch(headless=True)
+                    browser.close()
+                print("  ✅ Playwright: installed and Chromium launches successfully")
+            except Exception as e:
+                print(f"  ⚠️  Playwright: package installed, but Chromium failed to launch ({type(e).__name__}: {e})")
+                print("      → run: playwright install chromium")
+        except ImportError:
+            print("  ⚪ Playwright: not installed (Tier 2 JS-render fallback unavailable)")
+            print("      → pip install scout-it[js-render] && playwright install chromium")
+
+        # Proxy pool
+        pool = proxy_pool.get_default_pool()
+        if pool.configured:
+            print(f"  ✅ Proxy pool: {len(pool._proxies)} proxy/proxies configured")
+        else:
+            print("  ⚪ Proxy pool: not configured (PROXY_LIST unset) -- fetches go direct, which is fine for most use")
+
+        # Response cache
+        cache_stats = response_cache.stats()
+        print(f"  ℹ️  Response cache: {cache_stats['entry_count']} entries, {cache_stats['total_size_bytes'] / 1024:.1f} KB at {cache_stats['cache_dir']}")
+
+        # Strategy cache
+        known_domains = strategy_cache.all_known_domains()
+        print(f"  ℹ️  Strategy cache: {len(known_domains)} domain(s) with recorded history")
+
+        # Credentials
+        configured_creds = [c for c in ds_config.credential_status() if c["configured"]]
+        print(f"  ℹ️  Credentials: {len(configured_creds)}/{len(ds_config.KNOWN_CREDENTIALS)} configured (run `scout-it config --show` for details)")
+
+        # Basic connectivity
+        try:
+            probe_result = canary_probe.probe("https://www.google.com", timeout=5)
+            if probe_result["reachable"]:
+                print(f"  ✅ Internet connectivity: reachable (status {probe_result['status_code']}, {probe_result['latency_ms']}ms)")
+            else:
+                print(f"  ❌ Internet connectivity: unreachable ({probe_result.get('error', 'unknown error')})")
+        except Exception as e:
+            print(f"  ❌ Internet connectivity check failed: {type(e).__name__}: {e}")
+
+        print()
 
     # ==========================================================================
     # GitHub extraction commands

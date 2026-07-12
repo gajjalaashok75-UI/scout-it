@@ -1,7 +1,7 @@
 """
 scout-it: Enterprise-grade DuckDuckGo search toolkit with content extraction, cleaning, and structured JSON output.
 
-Version: 1.4.1
+Version: 1.0.0
 Author: Ashok-gakr
 License: MIT
 
@@ -65,7 +65,7 @@ from .config import (
 )
 from .output import render_markdown, resolve_output_path, write_json_output
 
-__version__ = "1.4.1"
+__version__ = "1.4.0"
 __author__ = "Ashok-gakr"
 __license__ = "MIT"
 
