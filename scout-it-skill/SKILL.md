@@ -124,8 +124,8 @@ scout-it image-search --query "sunset landscapes" --max 10
 | `--query` / `-q` | str | *required* | Search query |
 | `--max` / `-m` | int | `5` | Max images |
 | `--download` / `-d` | flag | — | Download the images |
-| `--download-dir` | str | `downloaded_images` | Where to save downloaded images |
-| `--region` | str | `us-en` | DuckDuckGo region |
+| `--download-dir` | str | `.scout-it/downloaded_images` | Where to save downloaded images |
+| `--region` | str | *(none)* | DuckDuckGo region (e.g. us-en, wt-wt) |
 | `--safesearch` | str | `moderate` | `on`, `moderate`, or `off` |
 | `--timelimit` | str | *(none)* | `d`/`w`/`m`/`y` |
 | `--size` | str | *(none)* | `Small`, `Medium`, `Large`, `Wallpaper` |
@@ -157,6 +157,7 @@ Same core flags as `web-search` (`--region`, `--safesearch`, `--timelimit`, retr
 | `--workers` | int | `5` | Parallel workers for article content extraction |
 | `--max-fetch-retries` | int | `3` | Retry attempts per fetch tier when fetching each article |
 | `--no-js-fallback` | flag | — | Disable Playwright fallback for blocked articles |
+| `--markdown` | flag | — | Save as Markdown instead of JSON |
 | `--out` / `-o` | str | `.scout-it/news_search_results.json` | Output file |
 
 ---
@@ -175,8 +176,11 @@ scout-it video-search --query "python tutorial" --max 5
 | `--resolution` | str | *(none)* | `high` or `standard` |
 | `--duration` | str | *(none)* | `short`, `medium`, or `long` |
 | `--license-videos` | str | *(none)* | License filter |
-| `--no-retry-on-zero` / `--retry-attempts` / `--retry-backoff` | — | *(see web-search)* | Zero-result retry tuning |
+| `--no-retry-on-zero` | flag | — | Disable retries when 0 results are found |
+| `--retry-attempts` | int | `2` | Retry attempts when 0 results found |
+| `--retry-backoff` | float | `1.0` | Backoff seconds between retries |
 | `--out` / `-o` | str | `.scout-it/video_search_results.json` | Output file |
+| `--markdown` | flag | — | Save as Markdown instead of JSON |
 
 Note: `video-search` only lists videos — it doesn't extract per-video content. Use `video-extract` for a single video's full metadata/subtitles.
 
@@ -200,8 +204,11 @@ scout-it fetch-url --url "https://spa-heavy-site.com" --js-render
 | `--raw-html` | flag | — | Return prettified raw HTML instead of extracted main content |
 | `--js-render` | flag | — | Skip straight to Playwright instead of trying `requests` first |
 | `--no-js-fallback` | flag | — | Disable the automatic Playwright fallback |
+| `--enable-alternate-source` | flag | — | Try AMP/mobile/print URL variants + Wayback Machine when all tiers fail (opt-in) |
 | `--max-retries` | int | `3` | Retry attempts per fetch tier |
 | `--out` / `-o` | str | `.scout-it/url_fetch_result.json` | Output file |
+| `--markdown` | flag | — | Save as Markdown instead of JSON |
+| `--json` | flag | — | Output raw JSON to stdout |
 
 Providing both `--max-chars` and `--max-size` is an error — use at most one.
 
@@ -223,6 +230,8 @@ scout-it video-extract --url "https://youtu.be/dQw4w9WgXcQ" --subtitle-lang fr -
 | `--segments` | flag | — | Include timestamped subtitle segments |
 | `--max-fetch-retries` | int | `3` | Retry attempts per fetch tier |
 | `--no-js-fallback` | flag | — | Disable Playwright fallback |
+| `--markdown` | flag | — | Save as Markdown instead of JSON |
+| `--json` | flag | — | Output raw JSON to stdout |
 | `--out` / `-o` | str | `.scout-it/video_extract_results.json` | Output file |
 
 Non-YouTube URLs return a clear `unsupported_platform` error rather than failing silently.
@@ -246,6 +255,12 @@ scout-it multi-search --query "your query" --engines duckduckgo,brave,bing
 | `--engines` | str | `duckduckgo` | Comma-separated: `duckduckgo,brave,bing,google,serpapi` |
 | `--max` / `-m` | int | `10` | Max merged results |
 | `--workers` / `-w` | int | `5` | Parallel content-extraction workers |
+| `--serpapi-engine` | str | `google` | Underlying engine for SerpAPI (google/bing/yahoo/baidu/yandex) |
+| `--no-dedupe` | flag | — | Keep duplicate URLs across engines instead of deduping |
+| `--max-fetch-retries` | int | `3` | Retry attempts per fetch tier |
+| `--no-js-fallback` | flag | — | Disable automatic Playwright fallback |
+| `--markdown` | flag | — | Save as Markdown instead of JSON |
+| `--json` | flag | — | Output raw JSON to stdout |
 | `--out` / `-o` | str | `.scout-it/multi_search_results.json` | Output file |
 
 `duckduckgo` works with no setup; the others each need a free/paid API key configured via `scout-it config` or an environment variable — run `scout-it list-engines` to check status. Unconfigured engines are skipped (not treated as an error).
@@ -347,12 +362,17 @@ scout-it github-commit --repo gajjalaashok75-UI/scout-it --sha <commit-sha>
 ### Telegram
 ```bash
 # Fetch recent posts from a known public channel
-scout-it telegram-channel --channel "channel_name"
+scout-it telegram-channel --channel "channel_name" --max 10
 
 # Search for public channels matching a topic (via a site:t.me web search --
 # there's no official Telegram-wide search API for anonymous use)
-scout-it telegram-channel --query "Python programming"
+scout-it telegram-channel --query "Python programming" --max 5
+
+# Save to Markdown
+scout-it telegram-channel --channel "channel_name" --markdown --out channel.md
 ```
+
+### Discord (requires DISCORD_BOT_TOKEN set via `scout-it config`)
 
 ### Discord (requires DISCORD_BOT_TOKEN set via `scout-it config`)
 ```bash
@@ -380,7 +400,7 @@ For web-search/news-search/fetch-url specifically, each result also contains:
 - `extraction_status` — `"success"` or `"failed"`
 - `content_word_count` — word count of cleaned content
 
-**`--markdown` works on every command that writes output** (all 22 of them, not just web-search) — renders the same data as a Markdown document (tables, fenced code blocks, headers) instead of JSON. `--out somefile.md` does the same thing without needing the flag explicitly.
+**`--markdown` works on every command that writes output** (all 26 of them, not just web-search) — renders the same data as a Markdown document (tables, fenced code blocks, headers) instead of JSON. `--out somefile.md` does the same thing without needing the flag explicitly.
 
 ## Content-extraction fallback chain
 
