@@ -22,10 +22,16 @@ const searchCommands = [
   { usage: 'list-engines', href: '/docs/multi-engine/', description: 'Show which search engines are configured.' },
 ]
 
+const utilityCommands = [
+  ...configCommands,
+  { usage: 'scout-it stats [--domain] [--export] [--reset <domain>] [--reset-all]', description: 'Show per-domain fetch-strategy statistics from the local bandit cache.' },
+  { usage: 'scout-it doctor', description: 'Run a self-check: Playwright availability, proxy config, cache health, credentials, DNS/connectivity.' },
+]
+
 export default function CliReference() {
   return (
     <DocsLayout
-      title="scout-it CLI reference — all 22 commands"
+      title="scout-it CLI reference — all commands"
       description="Complete command reference for scout-it: every search, GitHub, social, and utility subcommand in one place, grouped by category with links to full flag documentation."
       heading="CLI reference"
       lede="Every scout-it subcommand at a glance. Each links to its full flag reference and examples."
@@ -114,7 +120,7 @@ scout-it web-search --help`}</code></pre>
             </tr>
           </thead>
           <tbody>
-            {configCommands.map(c => (
+            {utilityCommands.map(c => (
               <tr key={c.usage}>
                 <td><code>{c.usage}</code></td>
                 <td>{c.description}</td>

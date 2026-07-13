@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 📝 Website — data files audited and aligned with CLI source code
+
+- **src/data/searchFlags.ts**: Full audit against actual argparse definitions for all 7 flag groups. Fixed defaults, descriptions, flag aliases, combined entries split, missing flags added (--workers on news-search, --out/--markdown on multi-search), non-existent flags removed (--json from web/news/image/video-search), --license-image name corrected, min/max-width/height separated, retry/backoff entries split.
+- **src/data/githubCommands.ts**: All 12 github command usage strings updated with missing flags (--no-patch, --no-diff, --no-comments, --include-prs, --out, --markdown, --json, etc.).
+- **src/data/socialCommands.ts**: All 4 social command usage strings updated with --before, --sort, --max-fetch-retries, --posts-per-channel, --out, --markdown, --json.
+- **src/data/configuration.ts**: Fixed wrong env var name (SERPAPI_API_KEY → SERPAPI_KEY), added missing BING_API_KEY, GOOGLE_API_KEY, GOOGLE_CSE_ID, removed non-existent runtime tuning vars (USER_AGENT, REQUEST_TIMEOUT, MAX_WORKERS).
+- **src/pages/docs/CliReference.tsx**: Remains consistent with data file changes.
+
 ### 📝 Docs — updated all 8 documentation files for accuracy
 
 - **docs/README.md**: Updated for scout-it v1.4, new commands, env vars, output defaults.

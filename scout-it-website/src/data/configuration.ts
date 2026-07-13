@@ -8,9 +8,14 @@ export interface EnvVar {
 export const envVars: EnvVar[] = [
   { name: 'GITHUB_TOKEN', description: 'Personal access token for GitHub extraction. Unauthenticated works at 60 req/hour; with a token, 5,000/hour. Required (no exceptions) for github-discussions and github-search-code.' },
   { name: 'BRAVE_API_KEY', description: 'Enables the brave engine in multi-search.' },
-  { name: 'SERPAPI_API_KEY', description: 'Enables google/bing/yahoo/baidu/yandex engines in multi-search via SerpApi.' },
+  { name: 'BING_API_KEY', description: 'Enables the bing engine in multi-search via Azure Bing Search API.' },
+  { name: 'GOOGLE_API_KEY', description: 'Google API key for Custom Search JSON API — paired with GOOGLE_CSE_ID for the google engine in multi-search.' },
+  { name: 'GOOGLE_CSE_ID', description: 'Google Programmable Search Engine ID — paired with GOOGLE_API_KEY.' },
+  { name: 'SERPAPI_KEY', description: 'Enables the serpapi engine in multi-search, which proxies real Google/Bing/Yahoo/Baidu/Yandex results.' },
   { name: 'DISCORD_BOT_TOKEN', description: 'Bot token for discord-channel. The bot must already be a member of the target server.' },
   { name: 'REDDIT_COOKIE', description: 'Optional session cookie that improves reddit-search reliability against anonymous-request blocking.' },
+
+  { name: 'PROXY_LIST', description: 'Comma-separated proxy URLs (e.g. http://user:pass@host:port) for the auto-rotating proxy pool.' },
 ]
 
 export interface ConfigCommand {
