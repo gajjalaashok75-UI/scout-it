@@ -7,7 +7,7 @@ Web search combines DuckDuckGo search functionality with multi-strategy content 
 ## Command Syntax
 
 ```bash
-data-scout web-search [OPTIONS]
+scout-it web-search [OPTIONS]
 ```
 
 ## Required Options
@@ -22,14 +22,15 @@ data-scout web-search [OPTIONS]
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
 | `--max` | `-m` | `100` | `INT` | Maximum results to fetch and extract (1-100) |
-| `--timeout` | - | `5` | `INT` | Extraction timeout in seconds per URL (1-60) |
 | `--workers` | `-w` | `4` | `INT` | Parallel extraction workers (1-16) |
+| `--max-fetch-retries` | - | `2` | `INT` | Max retries per URL on fetch failure |
 
 ### Output
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
-| `--out` | `-o` | `web_search_results.json` | `PATH` | Output file path |
+| `--out` | `-o` | `.scout-it/struct_format_results.json` | `PATH` | Output file path |
 | `--json` | - | `false` | `BOOL` | Output raw JSON to stdout instead of saving to file |
+| `--markdown` | - | `false` | `BOOL` | Format output as Markdown |
 
 ### Retry & Fallback (Optional)
 | Option | Alias | Default | Type | Description |
@@ -46,12 +47,23 @@ data-scout web-search [OPTIONS]
 | `--timelimit` | - | - | `ENUM` | Time filter: `d` (day), `w` (week), `m` (month), `y` (year) |
 | `--backend` | - | `auto` | `ENUM` | Search backend: `auto`, `html`, `lite` |
 
+### Advanced Networking & Resilience
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--enable-alternate-source` | - | `false` | `BOOL` | Fall back to alternate search source on failure |
+| `--no-dns-fallback` | - | `false` | `BOOL` | Disable DNS fallback resolution |
+| `--tls-impersonate` | - | `false` | `BOOL` | Impersonate browser TLS fingerprint |
+| `--persistent-profile` | - | `false` | `BOOL` | Use persistent browser profile for requests |
+| `--profile-name` | - | `default` | `STRING` | Name of persistent profile to use |
+| `--use-bandit` | - | `false` | `BOOL` | Enable strategy bandit for adaptive fallback |
+| `--no-js-fallback` | - | `false` | `BOOL` | Disable JavaScript rendering fallback |
+
 ## Output File
 
 By default, results are saved to:
 
 ```
-web_search_results.json
+.scout-it/struct_format_results.json
 ```
 
 Location: Full path is displayed in console with 📂 emoji
@@ -81,7 +93,6 @@ Location: Full path is displayed in console with 📂 emoji
     }
   ],
   "metadata": {
-    "extraction_timeout": 5,
     "successful_extractions": 3,
     "failed_extractions": 0
   }
@@ -120,7 +131,7 @@ If layer 1 succeeds, layers 2-5 are skipped. This ensures fast extraction with b
 Search for articles about Python:
 
 ```bash
-data-scout web-search --query "Python programming"
+scout-it web-search --query "Python programming"
 ```
 
 ### With Custom Workers & Timeout
@@ -128,7 +139,7 @@ data-scout web-search --query "Python programming"
 Increase extraction parallelism:
 
 ```bash
-data-scout web-search --query "Python" --max 20 --workers 8 --timeout 10
+scout-it web-search --query "Python" --max 20 --workers 8
 ```
 
 ### UK Region, Safe Search Off
@@ -136,7 +147,7 @@ data-scout web-search --query "Python" --max 20 --workers 8 --timeout 10
 Search in UK region without filtering:
 
 ```bash
-data-scout web-search --query "technology" --region uk-en --safesearch off
+scout-it web-search --query "technology" --region uk-en --safesearch off
 ```
 
 ### Last Week's Articles
@@ -144,7 +155,7 @@ data-scout web-search --query "technology" --region uk-en --safesearch off
 Get recent articles:
 
 ```bash
-data-scout web-search --query "news" --timelimit w --max 20
+scout-it web-search --query "news" --timelimit w --max 20
 ```
 
 ### With Retry Configuration
@@ -152,7 +163,7 @@ data-scout web-search --query "news" --timelimit w --max 20
 Retry on failures:
 
 ```bash
-data-scout web-search --query "research" --retry-attempts 3 --retry-backoff 1.5
+scout-it web-search --query "research" --retry-attempts 3 --retry-backoff 1.5
 ```
 
 ### Custom Output Location
@@ -160,7 +171,7 @@ data-scout web-search --query "research" --retry-attempts 3 --retry-backoff 1.5
 Save to specific file:
 
 ```bash
-data-scout web-search --query "data" --out ./results/my_results.json
+scout-it web-search --query "data" --out ./results/my_results.json
 ```
 
 ### JSON Output to Console
@@ -168,7 +179,7 @@ data-scout web-search --query "data" --out ./results/my_results.json
 Output raw JSON to stdout for piping:
 
 ```bash
-data-scout web-search --query "machine learning" --json > results.json
+scout-it web-search --query "machine learning" --json > results.json
 ```
 
 ### Combined Options
@@ -176,11 +187,11 @@ data-scout web-search --query "machine learning" --json > results.json
 Comprehensive search with multiple parameters:
 
 ```bash
-data-scout web-search \
+scout-it web-search \
   --query "renewable energy" \
   --max 20 \
   --workers 8 \
-  --timeout 15 \
+  --max-fetch-retries 3 \
   --region "us-en" \
   --safesearch "on" \
   --json
@@ -191,8 +202,8 @@ data-scout web-search \
 ### Python Example
 
 ```python
-from data_scout.extraction import EnterpriseSearchEngine
-from data_scout.cleaner import process_results
+from scout_it.extraction import EnterpriseSearchEngine
+from scout_it.cleaner import process_results
 
 # Create search engine
 engine = EnterpriseSearchEngine()
@@ -200,8 +211,7 @@ engine = EnterpriseSearchEngine()
 # Perform search
 results = engine.search(
     query="machine learning applications",
-    max_results=10,
-    extraction_timeout=5
+    max_results=10
 )
 
 # Clean and process results
@@ -219,7 +229,7 @@ for result in cleaned_results:
 ### Custom Extraction from Results
 
 ```python
-from data_scout.extraction import EnterpriseSearchEngine
+from scout_it.extraction import EnterpriseSearchEngine
 
 engine = EnterpriseSearchEngine()
 results = engine.search(query="Python", max_results=3)
@@ -276,7 +286,7 @@ Common region codes for `--region` parameter:
 | Factor | Impact | Notes |
 |--------|--------|-------|
 | `--max` | High | More results = longer execution time. Start with 5-10. |
-| `--timeout` | Medium | Higher timeout allows complex pages but slows search. Default 5s is good for most sites. |
+| `--max-fetch-retries` | Low | More retries improve reliability but may delay failure detection |
 | Network Speed | High | Slow internet significantly increases total time |
 | Target Websites | High | Some sites extract faster than others |
 
@@ -307,7 +317,7 @@ Common region codes for `--region` parameter:
 - Content behind login or paywall
 
 **Solutions:**
-- Try `--timeout 15` for complex pages
+- Try `--enable-alternate-source` for better extraction coverage
 - Try different search query
 - Check if URL is accessible in browser manually
 
@@ -317,7 +327,7 @@ Common region codes for `--region` parameter:
 
 **Solutions:**
 - Reduce `--max` to 5
-- Decrease `--timeout` to 3 (faster but potentially incomplete)
+- Reduce `--workers` to 2
 - Check your internet speed
 - Try during off-peak hours
 
@@ -332,7 +342,7 @@ Common region codes for `--region` parameter:
 
 **Solutions:**
 - These sites may not be suitable for automated extraction
-- Try with `--timeout 15` to allow more time
+- Try with `--enable-alternate-source` or `--no-js-fallback` for better results
 - Manual extraction may be necessary for such sites
 
 ## Advanced Usage
@@ -341,20 +351,20 @@ Common region codes for `--region` parameter:
 
 ```bash
 for query in "Python" "JavaScript" "Go programming"; do
-  data-scout web-search --query "$query" --max 5
+  scout-it web-search --query "$query" --max 5
 done
 ```
 
 ### Processing Results with JQ
 
 ```bash
-data-scout web-search --query "AI" --json | jq '.results[] | {title, confidence_score}'
+scout-it web-search --query "AI" --json | jq '.results[] | {title, confidence_score}'
 ```
 
 ### Extracting Only High-Confidence Results
 
 ```bash
-data-scout web-search --query "news" --json | \
+scout-it web-search --query "news" --json | \
   jq '.results[] | select(.confidence_score > 0.8)'
 ```
 
@@ -383,13 +393,13 @@ If the search still returns zero results:
 sleep 300
 
 # Try with simplified query
-data-scout web-search --query "simplified query" --max 5
+scout-it web-search --query "simplified query" --max 5
 
 # Try different region
-data-scout web-search --query "original query" --region "wt-wt" --max 5
+scout-it web-search --query "original query" --region "wt-wt" --max 5
 
 # Try with fewer retries but more backoff
-data-scout web-search --query "original query" \
+scout-it web-search --query "original query" \
   --retry-attempts 3 \
   --retry-backoff 2.0
 ```

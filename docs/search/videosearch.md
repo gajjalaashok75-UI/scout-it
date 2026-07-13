@@ -7,7 +7,7 @@ Video search retrieves videos from DuckDuckGo matching your query. Results inclu
 ## Command Syntax
 
 ```bash
-data-scout video-search [OPTIONS]
+scout-it video-search [OPTIONS]
 ```
 
 ## Required Options
@@ -22,8 +22,9 @@ data-scout video-search [OPTIONS]
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
 | `--max` | `-m` | `50` | `INT` | Maximum videos to return |
-| `--out` | `-o` | `video_search_results.json` | `PATH` | Output file path |
+| `--out` | `-o` | `.scout-it/video_search_results.json` | `PATH` | Output file path |
 | `--json` | - | `false` | `BOOL` | Output to stdout as JSON |
+| `--markdown` | - | `false` | `BOOL` | Format output as Markdown |
 
 ### Search Parameters
 | Option | Alias | Default | Type | Description |
@@ -33,6 +34,7 @@ data-scout video-search [OPTIONS]
 | `--timelimit` | - | - | `ENUM` | Time filter: `d` (day), `w` (week), `m` (month), `y` (year) |
 | `--duration` | - | - | `ENUM` | Video duration: `short` (< 5 min), `medium` (5-30 min), `long` (> 30 min) |
 | `--resolution` | - | - | `ENUM` | Resolution: `high`, `standard`, `any` |
+| `--license-videos` | - | `false` | `BOOL` | Filter by Creative Commons licensed videos |
 
 ### Retry Options
 | Option | Alias | Default | Type | Description |
@@ -46,7 +48,7 @@ data-scout video-search [OPTIONS]
 By default, results are saved to:
 
 ```
-video_search_results.json
+.scout-it/video_search_results.json
 ```
 
 Location: Full path is displayed in console with 📂 emoji
@@ -98,7 +100,7 @@ Location: Full path is displayed in console with 📂 emoji
 Search for Python tutorials:
 
 ```bash
-data-scout video-search --query "Python tutorial"
+scout-it video-search --query "Python tutorial"
 ```
 
 ### Short Videos Only
@@ -106,7 +108,7 @@ data-scout video-search --query "Python tutorial"
 Find short-form content (< 5 minutes):
 
 ```bash
-data-scout video-search --query "motivation" --duration short --max 20
+scout-it video-search --query "motivation" --duration short --max 20
 ```
 
 ### Long-form Content (Courses)
@@ -114,7 +116,7 @@ data-scout video-search --query "motivation" --duration short --max 20
 Find full courses and lectures:
 
 ```bash
-data-scout video-search --query "web development" --duration long --max 10
+scout-it video-search --query "web development" --duration long --max 10
 ```
 
 ### High Resolution Videos
@@ -122,7 +124,7 @@ data-scout video-search --query "web development" --duration long --max 10
 Find HD videos:
 
 ```bash
-data-scout video-search --query "music" --resolution high --max 15
+scout-it video-search --query "music" --resolution high --max 15
 ```
 
 ### Recent Videos
@@ -130,7 +132,7 @@ data-scout video-search --query "music" --resolution high --max 15
 Get videos from the past day:
 
 ```bash
-data-scout video-search --query "breaking news" --timelimit d --max 10
+scout-it video-search --query "breaking news" --timelimit d --max 10
 ```
 
 ### Weekly Videos
@@ -138,7 +140,7 @@ data-scout video-search --query "breaking news" --timelimit d --max 10
 Get trending videos:
 
 ```bash
-data-scout video-search --query "trending" --timelimit w --max 30
+scout-it video-search --query "trending" --timelimit w --max 30
 ```
 
 ### Custom Output
@@ -146,7 +148,7 @@ data-scout video-search --query "trending" --timelimit w --max 30
 Save to specific file:
 
 ```bash
-data-scout video-search --query "Python" --out ./results/python_videos.json
+scout-it video-search --query "Python" --out ./results/python_videos.json
 ```
 
 ### JSON Output
@@ -154,7 +156,7 @@ data-scout video-search --query "Python" --out ./results/python_videos.json
 Output to stdout:
 
 ```bash
-data-scout video-search --query "tutorial" --json
+scout-it video-search --query "tutorial" --json
 ```
 
 ### Comprehensive Video Research
@@ -162,7 +164,7 @@ data-scout video-search --query "tutorial" --json
 Get detailed video results:
 
 ```bash
-data-scout video-search \
+scout-it video-search \
   --query "machine learning course" \
   --duration "long" \
   --resolution "high" \
@@ -190,7 +192,7 @@ data-scout video-search \
 Get 30 videos:
 
 ```bash
-data-scout video-search --query "yoga exercises" --max 30
+scout-it video-search --query "yoga exercises" --max 30
 ```
 
 ### JSON Output
@@ -198,26 +200,26 @@ data-scout video-search --query "yoga exercises" --max 30
 Get raw JSON for processing:
 
 ```bash
-data-scout video-search --query "photography tips" --json > video_results.json
+scout-it video-search --query "photography tips" --json > video_results.json
 ```
 
 ### Different Topics
 
 ```bash
 # Educational
-data-scout video-search --query "quantum physics explained"
+scout-it video-search --query "quantum physics explained"
 
 # Entertainment
-data-scout video-search --query "funny cat videos"
+scout-it video-search --query "funny cat videos"
 
 # Gaming
-data-scout video-search --query "Minecraft building tutorial"
+scout-it video-search --query "Minecraft building tutorial"
 
 # Music
-data-scout video-search --query "guitar lesson for beginners"
+scout-it video-search --query "guitar lesson for beginners"
 
 # Fitness
-data-scout video-search --query "30 minute workout"
+scout-it video-search --query "30 minute workout"
 ```
 
 ## Programmatic API
@@ -225,7 +227,7 @@ data-scout video-search --query "30 minute workout"
 ### Python Example - Basic Search
 
 ```python
-from data_scout.extraction import DDGS
+from scout_it.extraction import DDGS
 
 ddgs = DDGS()
 results = ddgs.videos(query="python programming", max_results=10)
@@ -242,7 +244,7 @@ for result in results:
 ### Python Example - Filter by Duration
 
 ```python
-from data_scout.extraction import DDGS
+from scout_it.extraction import DDGS
 
 ddgs = DDGS()
 results = ddgs.videos(query="tutorial", max_results=20)
@@ -266,7 +268,7 @@ for video in results:
 
 ```python
 import subprocess
-from data_scout.extraction import DDGS
+from scout_it.extraction import DDGS
 
 ddgs = DDGS()
 results = ddgs.videos(query="web development crash course", max_results=5)
@@ -284,7 +286,7 @@ with open('playlist.txt', 'w') as f:
 ### Python Example - Analyze Video Results
 
 ```python
-from data_scout.extraction import DDGS
+from scout_it.extraction import DDGS
 import re
 
 ddgs = DDGS()
@@ -311,7 +313,7 @@ for platform, videos in sorted(sources.items(), key=lambda x: -len(x[1])):
 Search for tutorial series:
 
 ```bash
-data-scout video-search \
+scout-it video-search \
   --query "web development bootcamp" \
   --max 15
 ```
@@ -321,7 +323,7 @@ data-scout video-search \
 Find educational videos:
 
 ```bash
-data-scout video-search \
+scout-it video-search \
   --query "climate change science" \
   --max 10
 ```
@@ -331,7 +333,7 @@ data-scout video-search \
 Find music or movies:
 
 ```bash
-data-scout video-search \
+scout-it video-search \
   --query "trailer science fiction movie 2026" \
   --max 5
 ```
@@ -341,7 +343,7 @@ data-scout video-search \
 Find code walkthroughs:
 
 ```bash
-data-scout video-search \
+scout-it video-search \
   --query "React hooks tutorial" \
   --max 20 \
   --json > react_videos.json
@@ -352,7 +354,7 @@ data-scout video-search \
 Create a list of videos for later:
 
 ```bash
-data-scout video-search \
+scout-it video-search \
   --query "stand-up comedy special" \
   --max 30 \
   --json > comedy_videos.json
@@ -436,7 +438,7 @@ Search multiple topics:
 topics=("Python" "JavaScript" "Go" "Rust" "Kotlin")
 
 for lang in "${topics[@]}"; do
-  data-scout video-search \
+  scout-it video-search \
     --query "${lang} tutorial" \
     --max 10 \
     --json > "videos_${lang}.json"
@@ -448,7 +450,7 @@ done
 Get just the URLs for batch downloading:
 
 ```bash
-data-scout video-search --query "course" --json | \
+scout-it video-search --query "course" --json | \
   jq -r '.results[] | .url' > urls.txt
 
 # Download with youtube-dl
@@ -460,7 +462,7 @@ youtube-dl -a urls.txt
 Extract video URLs in playlist format:
 
 ```bash
-data-scout video-search --query "music" --json | \
+scout-it video-search --query "music" --json | \
   jq -r '.results[] | .url' > my_playlist.m3u
 ```
 
@@ -469,7 +471,7 @@ data-scout video-search --query "music" --json | \
 Find which platforms have most content:
 
 ```bash
-data-scout video-search --query "tutorial" --max 50 --json | \
+scout-it video-search --query "tutorial" --max 50 --json | \
   jq '.results[] | .source' | sort | uniq -c | sort -rn
 ```
 
@@ -478,7 +480,7 @@ data-scout video-search --query "tutorial" --max 50 --json | \
 ```bash
 # Create a research collection
 for query in "machine learning" "deep learning" "neural networks"; do
-  data-scout video-search \
+  scout-it video-search \
     --query "$query" \
     --max 20 \
     --json > "research_${query// /_}.json"
@@ -506,16 +508,16 @@ Video search is **rate-limited** by DuckDuckGo. If you encounter zero results:
 sleep 300
 
 # Try basic search without filters
-data-scout video-search --query "simple keywords" --max 5
+scout-it video-search --query "simple keywords" --max 5
 
 # Try without duration filter
-data-scout video-search --query "original query" --max 10
+scout-it video-search --query "original query" --max 10
 
 # Try different region
-data-scout video-search --query "original query" --region "us-en" --max 10
+scout-it video-search --query "original query" --region "us-en" --max 10
 
 # Try with broader query
-data-scout video-search --query "broad search term" --max 20
+scout-it video-search --query "broad search term" --max 20
 ```
 
 ### Best Practices

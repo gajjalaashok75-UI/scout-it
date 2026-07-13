@@ -7,7 +7,7 @@ News search retrieves recent news articles related to your query from DuckDuckGo
 ## Command Syntax
 
 ```bash
-data-scout news-search [OPTIONS]
+scout-it news-search [OPTIONS]
 ```
 
 ## Required Options
@@ -22,8 +22,9 @@ data-scout news-search [OPTIONS]
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
 | `--max` | `-m` | `50` | `INT` | Maximum articles to return |
-| `--out` | `-o` | `news_search_results.json` | `PATH` | Output file path |
+| `--out` | `-o` | `.scout-it/news_search_results.json` | `PATH` | Output file path |
 | `--json` | - | `false` | `BOOL` | Output to stdout as JSON |
+| `--markdown` | - | `false` | `BOOL` | Format output as Markdown |
 
 ### Search Parameters
 | Option | Alias | Default | Type | Description |
@@ -31,6 +32,13 @@ data-scout news-search [OPTIONS]
 | `--region` | - | `us-en` | `STRING` | Region/locale for news sources |
 | `--safesearch` | - | `moderate` | `ENUM` | Safe search: `on`, `moderate`, `off` |
 | `--timelimit` | - | - | `ENUM` | Time filter: `d` (today), `w` (week), `m` (month), `y` (year) |
+
+### Performance & Resilience
+| Option | Alias | Default | Type | Description |
+|--------|-------|---------|------|-------------|
+| `--workers` | - | `4` | `INT` | Number of parallel workers |
+| `--max-fetch-retries` | - | `2` | `INT` | Max retries per URL on fetch failure |
+| `--no-js-fallback` | - | `false` | `BOOL` | Disable JavaScript rendering fallback |
 
 ### Retry Options
 | Option | Alias | Default | Type | Description |
@@ -44,7 +52,7 @@ data-scout news-search [OPTIONS]
 By default, results are saved to:
 
 ```
-news_search_results.json
+.scout-it/news_search_results.json
 ```
 
 Location: Full path is displayed in console with 📂 emoji
@@ -94,7 +102,7 @@ Location: Full path is displayed in console with 📂 emoji
 Get the latest news on a topic:
 
 ```bash
-data-scout news-search --query "AI breakthrough"
+scout-it news-search --query "AI breakthrough"
 ```
 
 ### Regional News (UK)
@@ -102,7 +110,7 @@ data-scout news-search --query "AI breakthrough"
 Search for news from UK region:
 
 ```bash
-data-scout news-search --query "technology" --region uk-en
+scout-it news-search --query "technology" --region uk-en
 ```
 
 ### Last 24 Hours
@@ -110,7 +118,7 @@ data-scout news-search --query "technology" --region uk-en
 Get today's news:
 
 ```bash
-data-scout news-search --query "politics" --timelimit d --max 20
+scout-it news-search --query "politics" --timelimit d --max 20
 ```
 
 ### Last Week's News
@@ -118,7 +126,7 @@ data-scout news-search --query "politics" --timelimit d --max 20
 Get news from the past week:
 
 ```bash
-data-scout news-search --query "finance" --timelimit w --max 30
+scout-it news-search --query "finance" --timelimit w --max 30
 ```
 
 ### Safe Search Enabled
@@ -126,7 +134,7 @@ data-scout news-search --query "finance" --timelimit w --max 30
 Filter adult content:
 
 ```bash
-data-scout news-search --query "general interest" --safesearch on
+scout-it news-search --query "general interest" --safesearch on
 ```
 
 ### Custom Output
@@ -134,7 +142,7 @@ data-scout news-search --query "general interest" --safesearch on
 Save to specific file:
 
 ```bash
-data-scout news-search --query "technology" --out ./news/tech_news.json --max 50
+scout-it news-search --query "technology" --out ./news/tech_news.json --max 50
 ```
 
 ### JSON Output
@@ -142,7 +150,7 @@ data-scout news-search --query "technology" --out ./news/tech_news.json --max 50
 Output to stdout:
 
 ```bash
-data-scout news-search --query "AI breakthrough" --json
+scout-it news-search --query "AI breakthrough" --json
 ```
 
 ### With Retry Configuration
@@ -150,7 +158,7 @@ data-scout news-search --query "AI breakthrough" --json
 Retry on failures:
 
 ```bash
-data-scout news-search --query "research" --retry-attempts 3 --retry-backoff 1.5
+scout-it news-search --query "research" --retry-attempts 3 --retry-backoff 1.5
 ```
 
 ## Programmatic API
@@ -158,7 +166,7 @@ data-scout news-search --query "research" --retry-attempts 3 --retry-backoff 1.5
 ### Python Example - Basic Search
 
 ```python
-from data_scout.extraction import DDGS
+from scout_it.extraction import DDGS
 
 ddgs = DDGS()
 results = ddgs.news(query="artificial intelligence", max_results=10)
@@ -174,7 +182,7 @@ for result in results:
 ### Python Example - Recent News Only
 
 ```python
-from data_scout.extraction import DDGS
+from scout_it.extraction import DDGS
 from datetime import datetime, timedelta
 
 ddgs = DDGS()
@@ -195,7 +203,7 @@ for article in today_news:
 ### Python Example - News by Source
 
 ```python
-from data_scout.extraction import DDGS
+from scout_it.extraction import DDGS
 
 ddgs = DDGS()
 results = ddgs.news(query="finance", max_results=30)
@@ -221,7 +229,7 @@ for source, articles in by_source.items():
 Get latest news on a specific topic:
 
 ```bash
-data-scout news-search \
+scout-it news-search \
   --query "electric vehicles" \
   --max 20 \
   --json > ev_news.json
@@ -233,7 +241,7 @@ Check for updates on an ongoing story:
 
 ```bash
 # Run periodically (e.g., in a cron job)
-data-scout news-search \
+scout-it news-search \
   --query "natural disaster" \
   --max 10 \
   --json > breaking_news.json
@@ -244,7 +252,7 @@ data-scout news-search \
 Track news in your industry:
 
 ```bash
-data-scout news-search \
+scout-it news-search \
   --query "software development trends" \
   --max 15
 ```
@@ -254,7 +262,7 @@ data-scout news-search \
 Monitor competitor news:
 
 ```bash
-data-scout news-search \
+scout-it news-search \
   --query "major_competitor_name" \
   --max 25
 ```
@@ -265,16 +273,16 @@ Search different news categories:
 
 ```bash
 # Technology
-data-scout news-search --query "technology innovation" --max 10
+scout-it news-search --query "technology innovation" --max 10
 
 # Health
-data-scout news-search --query "medical breakthrough" --max 10
+scout-it news-search --query "medical breakthrough" --max 10
 
 # Finance
-data-scout news-search --query "stock market" --max 10
+scout-it news-search --query "stock market" --max 10
 
 # Politics
-data-scout news-search --query "government policy" --max 10
+scout-it news-search --query "government policy" --max 10
 ```
 
 ## Performance Considerations
@@ -357,7 +365,7 @@ Monitor multiple topics:
 topics=("AI" "Climate" "Space" "Medicine")
 
 for topic in "${topics[@]}"; do
-  data-scout news-search \
+  scout-it news-search \
     --query "$topic" \
     --max 10 \
     --json > "news_${topic}.json"
@@ -370,7 +378,7 @@ done
 Extract headlines and sources:
 
 ```bash
-data-scout news-search --query "technology" --json | \
+scout-it news-search --query "technology" --json | \
   jq '.results[] | {title, source, date}'
 ```
 
@@ -379,7 +387,7 @@ data-scout news-search --query "technology" --json | \
 Find news from the last 24 hours:
 
 ```bash
-data-scout news-search --query "urgent" --json | \
+scout-it news-search --query "urgent" --json | \
   jq '.results[] | 
       select(
         (now - (.date | fromdateiso8601)) < 86400
@@ -391,7 +399,7 @@ data-scout news-search --query "urgent" --json | \
 
 ```bash
 # Collect news
-data-scout news-search --query "AI" --max 30 --json > ai_news.json
+scout-it news-search --query "AI" --max 30 --json > ai_news.json
 
 # Extract unique sources
 jq '.results[] | .source' ai_news.json | sort -u
@@ -421,13 +429,13 @@ News search is **rate-limited** by DuckDuckGo. If you get zero results:
 sleep 300
 
 # Try with basic query
-data-scout news-search --query "simple keywords" --max 5
+scout-it news-search --query "simple keywords" --max 5
 
 # Try without time filter
-data-scout news-search --query "original query" --max 5
+scout-it news-search --query "original query" --max 5
 
 # Try different region
-data-scout news-search --query "original query" --region "wt-wt" --max 10
+scout-it news-search --query "original query" --region "wt-wt" --max 10
 ```
 
 ### Best Practices

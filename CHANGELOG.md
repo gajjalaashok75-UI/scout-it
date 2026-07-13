@@ -9,7 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### 🔧 Fixed — bare .md output filenames now route under .scout-it/ like .json does
+### 📝 Docs — updated all 8 documentation files for accuracy
+
+- **docs/README.md**: Updated for scout-it v1.4, new commands, env vars, output defaults.
+- **docs/INSTALL.md**: Updated install instructions, credentials flow, config wizard.
+- **docs/search/README.md**: Updated all flag tables, defaults, examples across search types.
+- **docs/search/websearch.md**: Updated resilience flags, defaults, examples.
+- **docs/search/newssearch.md**: Updated for news-search parity with web-search flags.
+- **docs/search/imagesearch.md**: Updated flag tables, default output paths.
+- **docs/search/videosearch.md**: Updated flag tables, retry flags, default output paths.
+- **docs/search/fetch.md**: Updated flag descriptions, default output paths, alternate source docs.
+
+### 🔧 Fixed — output path routing for bare .md filenames
 
 - `resolve_output_path()` in `output.py` now routes bare `.md` filenames under `.scout-it/` (e.g. `--out result.md` → `.scout-it/result.md`), matching the existing behavior for `.json` files. Previously they landed at the project root.
 - The same fix applies to `--markdown --out name` (no extension) → `.scout-it/name.md`, and `--markdown --out custom.txt` → `.scout-it/custom.md`.

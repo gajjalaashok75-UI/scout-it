@@ -4,8 +4,8 @@
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/Ashok-gakr/data-scout.git
-cd data-scout
+git clone https://github.com/gajjalaashok75-UI/scout-it.git
+cd scout-it
 ```
 
 2. **Create virtual environment:**
@@ -31,12 +31,12 @@ pytest tests/ -v
 
 ### From PyPI (Once published):
 ```bash
-pip install data-scout
+pip install scout-it
 ```
 
 ### From GitHub:
 ```bash
-pip install git+https://github.com/Ashok-gakr/data-scout.git
+pip install git+https://github.com/gajjalaashok75-UI/scout-it.git
 ```
 
 ### From local source:
@@ -63,8 +63,8 @@ twine upload dist/*
 ## Project Structure
 
 ```
-data-scout/
-├── data_scout/              # Main package
+scout-it/
+├── scout_it/              # Main package
 │   ├── __init__.py        # Package initialization
 │   ├── extraction.py      # Web/image search & extraction
 │   ├── cleaner.py         # Content cleaning & structuring
@@ -84,17 +84,28 @@ data-scout/
 After installation, use:
 
 ```bash
-data-scout web-search --query "your query" --max 10
-data-scout image-search --query "your query" --max 20
-data-scout news-search --query "your query" --max 10
-data-scout video-search --query "your query" --max 10
-data-scout fetch-url --url "https://example.com"
+# Check version
+scout-it --version          # Shows scout-it 1.4.0
+scout-it -v                 # Short flag
+
+# Search commands
+scout-it web-search --query "your query" --max 10
+scout-it image-search --query "your query" --max 20
+scout-it news-search --query "your query" --max 10
+scout-it video-search --query "your query" --max 10
+scout-it fetch-url --url "https://example.com"
+
+# Utility commands
+scout-it list-engines       # List available search engines and their status
+scout-it config             # View or modify scout-it configuration
+scout-it stats              # Show usage statistics
+scout-it doctor             # Run diagnostics to verify your setup
 ```
 
 ## Programmatic Usage
 
 ```python
-from data_scout import EnterpriseSearchEngine, ImageSearchEngine
+from scout_it import EnterpriseSearchEngine, ImageSearchEngine
 
 # Web search
 engine = EnterpriseSearchEngine(max_workers=8)

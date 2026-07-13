@@ -1,6 +1,6 @@
 # Search Documentation
 
-Comprehensive guides for all data-scout search types.
+Comprehensive guides for all scout-it search types.
 
 ## Available Search Types
 
@@ -12,40 +12,31 @@ Comprehensive guides for all data-scout search types.
 | [Video Search](./videosearch.md) | `videosearch.md` | Search for videos |
 | [URL Fetch](./fetch.md) | `fetch.md` | Extract and clean content from a single URL |
 
-## Complete Reference
-
-**[Extended Options Reference →](./OPTIONS.md)** - Complete reference of ALL supported parameters for all search types, including:
-- Full parameter documentation tables
-- Default values for each option
-- All filter options (regions, safe search, time limits, etc.)
-- Enum values and choices
-- Combined usage examples
-
 ## Quick Command Reference
 
 ### Web Search
 ```bash
-data-scout web-search --query "your query" --max 10 --timeout 5
+scout-it web-search --query "your query" --max 10
 ```
 
 ### Image Search
 ```bash
-data-scout image-search --query "your query" --max 10 --min-width 800 --min-height 600
+scout-it image-search --query "your query" --max 10 --min-width 800 --min-height 600
 ```
 
 ### News Search
 ```bash
-data-scout news-search --query "your query" --max 10
+scout-it news-search --query "your query" --max 10
 ```
 
 ### Video Search
 ```bash
-data-scout video-search --query "your query" --max 10
+scout-it video-search --query "your query" --max 10
 ```
 
 ### URL Fetch
 ```bash
-data-scout fetch-url --url "https://example.com" --timeout 5
+scout-it fetch-url --url "https://example.com"
 ```
 
 ## Common Features
@@ -53,18 +44,18 @@ data-scout fetch-url --url "https://example.com" --timeout 5
 All search commands support:
 
 - **JSON Output**: Add `--json` flag to output raw JSON instead of formatted results
-- **Timeout**: Control request timeout with `--timeout SECONDS` (default: 5)
+- **Markdown Output**: Add `--markdown` flag to format output as Markdown
 - **Max Results**: Limit results with `--max N` (default: 10)
 
 ## Output Format
 
-By default, results are saved to JSON files:
+By default, results are saved to JSON files in the `.scout-it/` directory:
 
-- `web_search_results.json` - Web search results
-- `image_search_results.json` - Image search results
-- `news_search_results.json` - News search results
-- `video_search_results.json` - Video search results
-- `url_fetch_result.json` - Single URL fetch result
+- `.scout-it/struct_format_results.json` - Web search results
+- `.scout-it/image_search_results.json` - Image search results
+- `.scout-it/news_search_results.json` - News search results
+- `.scout-it/video_search_results.json` - Video search results
+- `.scout-it/url_fetch_result.json` - Single URL fetch result
 
 Use `--json` flag to output to stdout instead.
 
@@ -88,19 +79,18 @@ export MAX_WORKERS="8"
 When using the Python API, pass parameters directly:
 
 ```python
-from data_scout.extraction import EnterpriseSearchEngine
+from scout_it.extraction import EnterpriseSearchEngine
 
 engine = EnterpriseSearchEngine()
 results = engine.search(
     query="your query",
-    max_results=10,
-    extraction_timeout=5
+    max_results=10
 )
 ```
 
 ## Performance Tips
 
-1. **Use appropriate timeout**: Increase for complex pages, decrease for speed
+1. **Use appropriate timeout**: Increase for complex pages (default fetch timeout: 25s)
 2. **Limit results**: Start with small `--max` for testing
 3. **Parallel extraction**: Uses ThreadPoolExecutor with optimal worker count
 4. **Content extraction**: Multi-strategy fallback ensures best extraction quality

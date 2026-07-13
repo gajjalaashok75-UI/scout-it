@@ -7,7 +7,7 @@ Image search retrieves images from DuckDuckGo with advanced filtering options. I
 ## Command Syntax
 
 ```bash
-data-scout image-search [OPTIONS]
+scout-it image-search [OPTIONS]
 ```
 
 ## Required Options
@@ -46,14 +46,15 @@ data-scout image-search [OPTIONS]
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
 | `--download` | `-d` | `false` | `BOOL` | Download matched images |
-| `--download-dir` | - | `downloaded_images` | `PATH` | Directory for downloads |
+| `--download-dir` | - | `.scout-it/downloaded_images` | `PATH` | Directory for downloads |
 
 ### Output & Retry
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
 | `--max` | `-m` | `50` | `INT` | Maximum images to return |
-| `--out` | `-o` | `image_search_results.json` | `PATH` | Output file path |
+| `--out` | `-o` | `.scout-it/image_search_results.json` | `PATH` | Output file path |
 | `--json` | - | `false` | `BOOL` | Output to stdout as JSON |
+| `--markdown` | - | `false` | `BOOL` | Format output as Markdown |
 | `--no-retry-on-zero` | - | `false` | `BOOL` | Disable retry on zero results |
 | `--retry-attempts` | - | `2` | `INT` | Number of retry attempts |
 | `--retry-backoff` | - | `1.0` | `FLOAT` | Backoff multiplier |
@@ -63,7 +64,7 @@ data-scout image-search [OPTIONS]
 By default, results are saved to:
 
 ```
-image_search_results.json
+.scout-it/image_search_results.json
 ```
 
 Location: Full path is displayed in console with 📂 emoji
@@ -120,7 +121,7 @@ Location: Full path is displayed in console with 📂 emoji
 Get any images:
 
 ```bash
-data-scout image-search --query "cat"
+scout-it image-search --query "cat"
 ```
 
 ### Minimum Width
@@ -128,7 +129,7 @@ data-scout image-search --query "cat"
 Find images at least 1024px wide:
 
 ```bash
-data-scout image-search --query "wallpaper" --min-width 1024
+scout-it image-search --query "wallpaper" --min-width 1024
 ```
 
 ### Minimum Height
@@ -136,7 +137,7 @@ data-scout image-search --query "wallpaper" --min-width 1024
 Find images at least 768px tall:
 
 ```bash
-data-scout image-search --query "portrait" --min-height 768
+scout-it image-search --query "portrait" --min-height 768
 ```
 
 ### Both Width and Height
@@ -144,7 +145,7 @@ data-scout image-search --query "portrait" --min-height 768
 Find HD images (1920×1080 or larger):
 
 ```bash
-data-scout image-search --query "landscape" --min-width 1920 --min-height 1080
+scout-it image-search --query "landscape" --min-width 1920 --min-height 1080
 ```
 
 ### Filtering Behavior
@@ -161,7 +162,7 @@ data-scout image-search --query "landscape" --min-width 1920 --min-height 1080
 Search for dog images:
 
 ```bash
-data-scout image-search --query "dog"
+scout-it image-search --query "dog"
 ```
 
 ### HD Images Only (1920×1080+)
@@ -169,7 +170,7 @@ data-scout image-search --query "dog"
 Find high-resolution wallpapers:
 
 ```bash
-data-scout image-search --query "wallpaper" --min-width 1920 --min-height 1080 --max 20
+scout-it image-search --query "wallpaper" --min-width 1920 --min-height 1080 --max 20
 ```
 
 ### Specific Visual Characteristics
@@ -177,7 +178,7 @@ data-scout image-search --query "wallpaper" --min-width 1920 --min-height 1080 -
 Find blue clipart logos:
 
 ```bash
-data-scout image-search --query "logo" --type-image "clipart" --color "Blue" --layout "Square"
+scout-it image-search --query "logo" --type-image "clipart" --color "Blue" --layout "Square"
 ```
 
 ### Size + Layout
@@ -185,7 +186,7 @@ data-scout image-search --query "logo" --type-image "clipart" --color "Blue" --l
 Find panoramic landscape images:
 
 ```bash
-data-scout image-search --query "landscape" --size "Wallpaper" --layout "Wide" --max 10
+scout-it image-search --query "landscape" --size "Wallpaper" --layout "Wide" --max 10
 ```
 
 ### License Filtered
@@ -193,7 +194,7 @@ data-scout image-search --query "landscape" --size "Wallpaper" --layout "Wide" -
 Find Creative Commons images:
 
 ```bash
-data-scout image-search --query "photo" --license-image "creative_commons" --max 15
+scout-it image-search --query "photo" --license-image "creative_commons" --max 15
 ```
 
 ### Download Images
@@ -201,7 +202,7 @@ data-scout image-search --query "photo" --license-image "creative_commons" --max
 Download matching images:
 
 ```bash
-data-scout image-search \
+scout-it image-search \
   --query "nature" \
   --max 20 \
   --min-width 1024 \
@@ -214,7 +215,7 @@ data-scout image-search \
 Find ultra-wide images:
 
 ```bash
-data-scout image-search --query "mountain" --layout "Panoramic" --size "Wallpaper"
+scout-it image-search --query "mountain" --layout "Panoramic" --size "Wallpaper"
 ```
 
 ### Last Week's Images
@@ -222,7 +223,7 @@ data-scout image-search --query "mountain" --layout "Panoramic" --size "Wallpape
 Find recently added images:
 
 ```bash
-data-scout image-search --query "news" --timelimit w --max 30
+scout-it image-search --query "news" --timelimit w --max 30
 ```
 
 ### JSON Output
@@ -230,7 +231,7 @@ data-scout image-search --query "news" --timelimit w --max 30
 Output raw JSON for processing:
 
 ```bash
-data-scout image-search --query "city" --json > city_images.json
+scout-it image-search --query "city" --json > city_images.json
 ```
 
 ### Professional Photo Database
@@ -238,7 +239,7 @@ data-scout image-search --query "city" --json > city_images.json
 Find high-quality commercial images:
 
 ```bash
-data-scout image-search \
+scout-it image-search \
   --query "business professional" \
   --type-image "photo" \
   --license-image "commercial" \
@@ -252,7 +253,7 @@ data-scout image-search \
 Create a wallpaper collection:
 
 ```bash
-data-scout image-search \
+scout-it image-search \
   --query "nature landscape" \
   --size "Wallpaper" \
   --layout "Wide" \
@@ -320,7 +321,7 @@ Available licenses for `--license-image` filter:
 ### Python Example - Basic Search
 
 ```python
-from data_scout.extraction import ImageSearchEngine
+from scout_it.extraction import ImageSearchEngine
 
 engine = ImageSearchEngine()
 results = engine.search(
@@ -338,7 +339,7 @@ for result in results:
 ### Python Example - With Dimension Filtering
 
 ```python
-from data_scout.extraction import ImageSearchEngine
+from scout_it.extraction import ImageSearchEngine
 
 engine = ImageSearchEngine()
 results = engine.search(
@@ -358,7 +359,7 @@ for result in results:
 ### Python Example - Filtering Results
 
 ```python
-from data_scout.extraction import ImageSearchEngine
+from scout_it.extraction import ImageSearchEngine
 
 engine = ImageSearchEngine()
 results = engine.search(query="nature", max_results=20)
@@ -380,7 +381,7 @@ for img in landscape_images:
 
 ```bash
 # Collect 50 high-quality cat images
-data-scout image-search \
+scout-it image-search \
   --query "cat" \
   --max 50 \
   --min-width 800 \
@@ -392,7 +393,7 @@ data-scout image-search \
 
 ```bash
 # Find professional design images
-data-scout image-search \
+scout-it image-search \
   --query "modern interior design" \
   --max 20 \
   --min-width 1280 \
@@ -403,7 +404,7 @@ data-scout image-search \
 
 ```bash
 # Find 4K wallpapers
-data-scout image-search \
+scout-it image-search \
   --query "space universe" \
   --max 10 \
   --min-width 3840 \
@@ -414,7 +415,7 @@ data-scout image-search \
 
 ```bash
 # Get images that will work as thumbnails
-data-scout image-search \
+scout-it image-search \
   --query "logo" \
   --max 30 \
   --min-width 128 \
@@ -486,7 +487,7 @@ data-scout image-search \
 ```bash
 # Collect images for multiple queries
 for topic in "dog" "cat" "bird"; do
-  data-scout image-search \
+  scout-it image-search \
     --query "$topic" \
     --max 20 \
     --min-width 1280 \
@@ -500,7 +501,7 @@ done
 Find all landscape images:
 
 ```bash
-data-scout image-search --query "nature" --json | \
+scout-it image-search --query "nature" --json | \
   jq '.results[] | 
       select(.dimensions.width > .dimensions.height) | 
       {title, dimensions, image_url}'
@@ -511,7 +512,7 @@ data-scout image-search --query "nature" --json | \
 Get images with 16:9 aspect ratio (1920×1080 is 16:9):
 
 ```bash
-data-scout image-search --query "landscape" --json | \
+scout-it image-search --query "landscape" --json | \
   jq '.results[] | 
       select((.dimensions.width / .dimensions.height) > 1.7 and 
              (.dimensions.width / .dimensions.height) < 1.8)'
@@ -541,13 +542,13 @@ DuckDuckGo image search is **rate-limited**. If you encounter zero results:
 sleep 300
 
 # Step 2: Try with minimal filters
-data-scout image-search --query "simple keywords" --max 5
+scout-it image-search --query "simple keywords" --max 5
 
 # Step 3: Try different region
-data-scout image-search --query "original query" --region "us-en" --max 5
+scout-it image-search --query "original query" --region "us-en" --max 5
 
 # Step 4: No filters at all
-data-scout image-search --query "broad query" --max 10
+scout-it image-search --query "broad query" --max 10
 ```
 
 ### Best Practices

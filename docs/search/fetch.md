@@ -7,7 +7,7 @@ URL fetch extracts main content from a single URL and cleans it for analysis. It
 ## Command Syntax
 
 ```bash
-data-scout fetch-url [OPTIONS]
+scout-it fetch-url [OPTIONS]
 ```
 
 ## Required Options
@@ -20,11 +20,17 @@ data-scout fetch-url [OPTIONS]
 
 | Option | Alias | Default | Type | Description |
 |--------|-------|---------|------|-------------|
-| `--timeout` | - | `5` | `INT` | Request timeout in seconds (e.g., 10, 30) |
+| `--timeout` | - | `25` | `INT` | Request timeout in seconds (e.g., 10, 30) |
 | `--max-chars` | - | - | `INT` | Maximum characters to extract (e.g., 10000, 50000) - truncates content if exceeded |
 | `--max-size` | - | - | `STRING` | Maximum response size to accept (e.g., `100kb`, `1mb`, `500mb`) - truncates if exceeded |
 | `--json` | - | `false` | `BOOL` | Output raw JSON to stdout instead of saving to file |
-| `--out` | `-o` | `url_fetch_result.json` | `PATH` | Custom output file path |
+| `--markdown` | - | `false` | `BOOL` | Format output as Markdown |
+| `--raw-html` | - | `false` | `BOOL` | Output raw HTML instead of extracted text |
+| `--out` | `-o` | `.scout-it/url_fetch_result.json` | `PATH` | Custom output file path |
+| `--max-retries` | - | `3` | `INT` | Maximum retry attempts on fetch failure |
+| `--js-render` | - | `false` | `BOOL` | Enable JavaScript rendering for dynamic pages |
+| `--no-js-fallback` | - | `false` | `BOOL` | Disable JavaScript rendering fallback |
+| `--enable-alternate-source` | - | `false` | `BOOL` | Fall back to alternate fetch strategy on failure |
 
 **⚠️ Important:** Only one of `--max-chars` OR `--max-size` can be used at a time. Using both together will return an error. Choose one parameter based on your constraint type:
 - Use `--max-chars` to limit by character count in extracted content
@@ -35,7 +41,7 @@ data-scout fetch-url [OPTIONS]
 By default, results are saved to:
 
 ```
-url_fetch_result.json
+.scout-it/url_fetch_result.json
 ```
 
 Location: Full path is displayed in console with 📂 emoji
@@ -133,7 +139,7 @@ URL fetch uses the same 5-layer fallback approach as web search:
 Fetch and extract an article:
 
 ```bash
-data-scout fetch-url --url "https://en.wikipedia.org/wiki/Machine_learning"
+scout-it fetch-url --url "https://en.wikipedia.org/wiki/Machine_learning"
 ```
 
 **Output:**
@@ -143,7 +149,7 @@ Confidence: 98%
 Method: trafilatura
 Words: 3245
 ...
-📂 Results saved to: C:\path\to\url_fetch_result.json
+:- file saved to .scout-it/url_fetch_result.json
 ```
 
 ### News Article
@@ -151,7 +157,7 @@ Words: 3245
 Extract from a news site:
 
 ```bash
-data-scout fetch-url --url "https://technews.com/ai-breakthrough"
+scout-it fetch-url --url "https://technews.com/ai-breakthrough"
 ```
 
 ### Blog Post
@@ -159,7 +165,7 @@ data-scout fetch-url --url "https://technews.com/ai-breakthrough"
 Extract from a blog:
 
 ```bash
-data-scout fetch-url --url "https://medium.com/@author/how-to-learn-python"
+scout-it fetch-url --url "https://medium.com/@author/how-to-learn-python"
 ```
 
 ### With Max Characters Limit
@@ -167,7 +173,7 @@ data-scout fetch-url --url "https://medium.com/@author/how-to-learn-python"
 Extract but limit to first 5000 characters:
 
 ```bash
-data-scout fetch-url --url "https://example.com/article" --max-chars 5000
+scout-it fetch-url --url "https://example.com/article" --max-chars 5000
 ```
 
 ### With Max Size Constraint
@@ -175,7 +181,7 @@ data-scout fetch-url --url "https://example.com/article" --max-chars 5000
 Fetch only if response is under 2 MB:
 
 ```bash
-data-scout fetch-url --url "https://example.com/document" --max-size 2mb
+scout-it fetch-url --url "https://example.com/document" --max-size 2mb
 ```
 
 ### With Custom Timeout
@@ -183,7 +189,7 @@ data-scout fetch-url --url "https://example.com/document" --max-size 2mb
 Increase timeout for slow-loading pages:
 
 ```bash
-data-scout fetch-url --url "https://example.com" --timeout 30
+scout-it fetch-url --url "https://example.com" --timeout 30
 ```
 
 ### With Custom Output Location
@@ -191,7 +197,7 @@ data-scout fetch-url --url "https://example.com" --timeout 30
 Save to custom file:
 
 ```bash
-data-scout fetch-url --url "https://example.com" --out ./results/my_fetch.json
+scout-it fetch-url --url "https://example.com" --out ./results/my_fetch.json
 ```
 
 ### With JSON Output to Console
@@ -199,14 +205,14 @@ data-scout fetch-url --url "https://example.com" --out ./results/my_fetch.json
 Output JSON to stdout instead of file:
 
 ```bash
-data-scout fetch-url --url "https://example.com" --json
+scout-it fetch-url --url "https://example.com" --json
 ```
 
 ### ❌ INVALID: Both constraints together
 
 ```bash
 # This will ERROR - only use ONE constraint parameter
-data-scout fetch-url --url "https://example.com" --max-chars 10000 --max-size 5mb
+scout-it fetch-url --url "https://example.com" --max-chars 10000 --max-size 5mb
 # ERROR: Cannot use both --max-chars and --max-size together. Use only ONE parameter at a time
 ```
 
@@ -215,7 +221,7 @@ data-scout fetch-url --url "https://example.com" --max-chars 10000 --max-size 5m
 Extract from documentation:
 
 ```bash
-data-scout fetch-url --url "https://docs.python.org/3/tutorial/"
+scout-it fetch-url --url "https://docs.python.org/3/tutorial/"
 ```
 
 ### Longer Timeout
@@ -223,7 +229,7 @@ data-scout fetch-url --url "https://docs.python.org/3/tutorial/"
 For slow or complex pages:
 
 ```bash
-data-scout fetch-url \
+scout-it fetch-url \
   --url "https://example.com/heavy-page" \
   --timeout 15
 ```
@@ -233,7 +239,7 @@ data-scout fetch-url \
 Get raw JSON for processing:
 
 ```bash
-data-scout fetch-url \
+scout-it fetch-url \
   --url "https://example.com/article" \
   --json > article.json
 ```
@@ -243,7 +249,7 @@ data-scout fetch-url \
 Extract knowledge base article:
 
 ```bash
-data-scout fetch-url --url "https://en.wikipedia.org/wiki/Artificial_intelligence"
+scout-it fetch-url --url "https://en.wikipedia.org/wiki/Artificial_intelligence"
 ```
 
 ## Programmatic API
@@ -251,12 +257,12 @@ data-scout fetch-url --url "https://en.wikipedia.org/wiki/Artificial_intelligenc
 ### Python Example - Basic Extraction
 
 ```python
-from data_scout.extraction import ExtractionEngine
+from scout_it.extraction import ExtractionEngine
 
 engine = ExtractionEngine()
 content, method, confidence = engine.extract(
     url="https://example.com/article",
-    timeout=5
+    timeout=25
 )
 
 print(f"Extraction Method: {method}")
@@ -268,7 +274,7 @@ print(f"\nFirst 500 characters:\n{content[:500]}")
 ### Python Example - Cleaned Content
 
 ```python
-from data_scout.cli import fetch_url
+from scout_it.cli import fetch_url
 
 # Use CLI function directly
 result = fetch_url(url="https://en.wikipedia.org/wiki/Dogs")
@@ -284,14 +290,14 @@ if result and "result" in result:
 ### Python Example - Error Handling
 
 ```python
-from data_scout.extraction import ExtractionEngine
+from scout_it.extraction import ExtractionEngine
 
 engine = ExtractionEngine()
 
 try:
     content, method, confidence = engine.extract(
         url="https://invalid-url-example.test",
-        timeout=5
+        timeout=25
     )
     
     if confidence < 0.5:
@@ -306,7 +312,7 @@ except Exception as e:
 ### Python Example - Batch URL Processing
 
 ```python
-from data_scout.extraction import ExtractionEngine
+from scout_it.extraction import ExtractionEngine
 
 engine = ExtractionEngine()
 
@@ -340,7 +346,7 @@ print(f"\nProcessed {len(results)}/{len(urls)} URLs successfully")
 Extract a specific article for analysis:
 
 ```bash
-data-scout fetch-url \
+scout-it fetch-url \
   --url "https://example.com/tech-article" \
   --json > analysis.json
 ```
@@ -350,7 +356,7 @@ data-scout fetch-url \
 Extract research papers or documentation:
 
 ```bash
-data-scout fetch-url \
+scout-it fetch-url \
   --url "https://arxiv.org/pdf/2306.12345" \
   --timeout 15
 ```
@@ -360,7 +366,7 @@ data-scout fetch-url \
 Create a local copy of web content:
 
 ```bash
-data-scout fetch-url \
+scout-it fetch-url \
   --url "https://important-blog.com/article" \
   --json > backup.json
 ```
@@ -371,7 +377,7 @@ Check if a page is still accessible and extractable:
 
 ```bash
 # Run periodically
-data-scout fetch-url \
+scout-it fetch-url \
   --url "https://critical-page.com" \
   --json > status.json
 ```
@@ -384,7 +390,7 @@ Extract multiple URLs in batch:
 # Read URLs from file
 while IFS= read -r url; do
   echo "Fetching: $url"
-  data-scout fetch-url --url "$url" --json > "result_${counter}.json"
+  scout-it fetch-url --url "$url" --json > "result_${counter}.json"
   ((counter++))
 done < urls.txt
 ```
@@ -486,7 +492,7 @@ done < urls.txt
 
 ```bash
 # Get JSON output
-data-scout fetch-url --url "https://example.com/article" --json | \
+scout-it fetch-url --url "https://example.com/article" --json | \
   jq '.result | {title, confidence_score, word_count: .metrics.word_count}'
 ```
 
@@ -494,10 +500,10 @@ data-scout fetch-url --url "https://example.com/article" --json | \
 
 ```bash
 # Store current version
-data-scout fetch-url --url "https://example.com" --json > version_1.json
+scout-it fetch-url --url "https://example.com" --json > version_1.json
 
 # Later, check again
-data-scout fetch-url --url "https://example.com" --json > version_2.json
+scout-it fetch-url --url "https://example.com" --json > version_2.json
 
 # Compare
 diff version_1.json version_2.json
@@ -507,7 +513,7 @@ diff version_1.json version_2.json
 
 ```bash
 # Extract HTML and parse links
-data-scout fetch-url --url "https://example.com" --json | \
+scout-it fetch-url --url "https://example.com" --json | \
   jq '.result.main_content' | \
   grep -oP 'https?://[^\s)]+' | sort -u
 ```
@@ -517,7 +523,7 @@ data-scout fetch-url --url "https://example.com" --json | \
 ```bash
 # Check multiple URLs and compare quality
 for url in "https://site1.com/article" "https://site2.com/article"; do
-  data-scout fetch-url --url "$url" --json | \
+  scout-it fetch-url --url "$url" --json | \
     jq "{url: .url, quality: .result.cleaned_content.quality_score}"
 done
 ```
@@ -526,7 +532,7 @@ done
 
 ```bash
 # Extract sentiment from fetched content
-data-scout fetch-url --url "https://example.com" --json | \
+scout-it fetch-url --url "https://example.com" --json | \
   jq '.result.cleaned_content.sentiment'
 ```
 
@@ -555,13 +561,13 @@ Extraction may fail or return limited content for:
 
 ```bash
 # For pages with strict size limits
-data-scout fetch-url --url "https://example.com" --max-chars 5000
+scout-it fetch-url --url "https://example.com" --max-chars 5000
 
 # For problematic sites, increase timeout
-data-scout fetch-url --url "https://example.com" --timeout 30
+scout-it fetch-url --url "https://example.com" --timeout 30
 
 # Check extraction result metadata
-data-scout fetch-url --url "https://example.com" --json | \
+scout-it fetch-url --url "https://example.com" --json | \
   jq '.result.extraction_metadata'
 ```
 
@@ -570,7 +576,7 @@ data-scout fetch-url --url "https://example.com" --json | \
 - **Verify URL works** - Test URL in browser first
 - **Check robots.txt** - Respect the site's robots.txt
 - **Space requests** - Don't hammer sites with rapid requests
-- **Reasonable timeouts** - 5-30 seconds is typical
+- **Reasonable timeouts** - 10-60 seconds is typical (default: 25)
 - **Monitor success rate** - Track which sites extract well
 
 ## Related Documentation

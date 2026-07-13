@@ -1,6 +1,6 @@
 # Documentation
 
-This folder contains comprehensive documentation for the data-scout package.
+This folder contains comprehensive documentation for the scout-it package.
 
 ## Files
 
@@ -11,6 +11,14 @@ Complete installation guide including:
 - CLI usage examples
 - Programmatic API usage
 - Testing instructions
+
+### search/ (Directory)
+Detailed reference for each CLI search command:
+- [websearch.md](search/websearch.md) - Web search with extraction
+- [fetch.md](search/fetch.md) - URL content fetching
+- [imagesearch.md](search/imagesearch.md) - Image search with download support
+- [newssearch.md](search/newssearch.md) - News article search
+- [videosearch.md](search/videosearch.md) - Video search and filtering
 
 ### PACKAGE_CONVERSION_SUMMARY.md
 Detailed technical summary of the package conversion including:
