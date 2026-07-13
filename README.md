@@ -13,6 +13,7 @@ scout-it searches the web via DuckDuckGo (and Brave/Bing/Google/SerpAPI), fetche
 ## Table of Contents
 
 - [What is scout-it?](#what-is-scout-it)
+- [Architecture](#architecture)
 - [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
@@ -43,6 +44,105 @@ scout-it is a Python CLI toolkit that provides a complete search-to-structured-d
 5. **Output** — JSON or Markdown files, or stdout
 
 It is designed for data collection, AI training pipelines, research, and any workflow where you need clean web content at scale.
+
+---
+
+## Architecture
+
+```mermaid
+graph TB
+    subgraph CLI["CLI Layer"]
+        CLI_Entry["scout-it &lt;command&gt; [options]"]
+        Parser["Argparse<br/>26 subcommands"]
+    end
+
+    subgraph SEARCH["Search Engines"]
+        DDG["DuckDuckGo<br/>web / news / images / videos"]
+        BRAVE["Brave Search API"]
+        BING["Bing Search API"]
+        GOOGLE["Google Custom Search"]
+        SERP["SerpAPI<br/>(proxied engines)"]
+        MULTI["multi-search<br/>parallel + dedupe"]
+    end
+
+    subgraph FETCH["Resilience Fetch Chain<br/>(5 tiers)"]
+        T1["Tier 1: requests<br/>stdlib HTTP"]
+        T2["Tier 2: TLS Impersonation<br/>curl_cffi JA3 fingerprint"]
+        T3["Tier 3: Playwright<br/>Full browser JS render"]
+        T4["Tier 4: Bandit<br/>domain history pick"]
+        T5["Tier 5: Alternate Sources<br/>AMP / mobile / print / Wayback"]
+        DNS["DNS-over-HTTPS<br/>fallback on error"]
+        PROXY["Proxy Pool<br/>auto-rotate"]
+    end
+
+    subgraph EXTRACT["Content Extraction<br/>(5 strategies)"]
+        S1["Trafilatura<br/>confidence: 1.0"]
+        S2["Justext<br/>confidence: 0.95"]
+        S3["BoilerPy3<br/>confidence: 0.90"]
+        S4["Readability<br/>confidence: 0.85"]
+        S5["BeautifulSoup<br/>confidence: 0.70"]
+    end
+
+    subgraph SOCIAL["Social Platforms"]
+        TG["Telegram Channel<br/>public t.me/s/"]
+        DC["Discord Channel<br/>bot required"]
+        RD["Reddit Search<br/>best-effort"]
+    end
+
+    subgraph GITHUB["GitHub Extractors"]
+        GH_REPO["Repo overview"]
+        GH_COMMITS["Commits"]
+        GH_COMMIT["Single commit + diff"]
+        GH_PR["Pull request + diff"]
+        GH_PRS["PR list"]
+        GH_ISSUES["Issue list"]
+        GH_ISSUE["Single issue + comments"]
+        GH_FILE["File contents"]
+        GH_FOLDER["Folder tree + contents"]
+        GH_CODE["Code search"]
+        GH_REPOS["Repo search"]
+        GH_DISC["Discussions"]
+    end
+
+    subgraph OUTPUT["Output Layer"]
+        JSON_OUT["JSON files<br/>.scout-it/*.json"]
+        MD_OUT["Markdown files<br/>.scout-it/*.md"]
+        STDOUT["stdout<br/>--json flag"]
+        CLEANER["ContentCleaner<br/>confidence scoring"]
+    end
+
+    CLI_Entry --> Parser
+    Parser --> SEARCH
+    Parser --> FETCH
+    Parser --> SOCIAL
+    Parser --> GITHUB
+    SEARCH --> FETCH
+    FETCH --> EXTRACT
+    EXTRACT --> CLEANER
+    CLEANER --> OUTPUT
+
+    style CLI_Entry fill:#4a90d9,color:#fff
+    style CLEANER fill:#e6a23c,color:#fff
+    style T1 fill:#67c23a,color:#fff
+    style T2 fill:#67c23a,color:#fff
+    style T3 fill:#67c23a,color:#fff
+    style T4 fill:#e6a23c,color:#fff
+    style T5 fill:#e6a23c,color:#fff
+    style DNS fill:#909399,color:#fff
+    style PROXY fill:#909399,color:#fff
+```
+
+### Core data flow
+
+| Step | Component | What happens |
+|------|-----------|-------------|
+| 1. **Search** | DuckDuckGo / multi-search API | Query dispatched to selected engine(s); raw results returned |
+| 2. **Fetch** | Resilience chain (5 tiers) | Each URL fetched through tiers until one succeeds; DoH fallback and proxy pool active throughout |
+| 3. **Extract** | 5-strategy extraction pipeline | Page HTML processed by each strategy in priority order; first with sufficient confidence wins |
+| 4. **Clean** | ContentCleaner | Extracted text scored, structured, and formatted; confidence, quality, and sentiment metrics computed |
+| 5. **Output** | JSON / Markdown writer | Results written to file under `.scout-it/` or to stdout with `--json` |
+
+The entire pipeline supports **parallel extraction** via `ThreadPoolExecutor` (configurable with `--workers`, default 4) and **extraction-only mode** where pre-fetched URLs can be re-extracted without re-fetching.
 
 ---
 
