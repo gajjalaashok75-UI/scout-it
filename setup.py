@@ -6,7 +6,7 @@ from setuptools import setup
 
 setup(
     name="scout-it",
-    version="1.4.0",
+    version="1.5.0",
     author="Ashok-gakr",
     description="Enterprise-grade DuckDuckGo search toolkit with content extraction, cleaning, and structured JSON output",
     long_description=open("README.md", encoding="utf-8").read(),

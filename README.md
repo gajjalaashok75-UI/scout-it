@@ -1,862 +1,594 @@
-# Web Search Toolkit
+# scout-it
 
-A production-style Python search toolkit that combines DuckDuckGo search, web content extraction, content cleaning, and structured JSON output.
+[![PyPI version](https://img.shields.io/badge/version-1.5.0-blue)](https://pypi.org/project/scout-it/)
+[![Python](https://img.shields.io/badge/python-%3E%3D3.9-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-This project supports multiple query types:
+**Enterprise-grade web search, content extraction, and data collection toolkit for AI pipelines and research.**
 
-1. Web search with content extraction and cleaning
-2. Image search with optional dimension filtering and download
-3. News search
-4. Video search
-5. Single URL fetch and extraction
+scout-it searches the web via DuckDuckGo (and Brave/Bing/Google/SerpAPI), fetches and extracts page content through a multi-tier resilience chain, cleans and structures the results, and outputs JSON or Markdown — all from a single CLI command.
+
+---
 
 ## Table of Contents
 
-- [What This Project Does](#what-this-project-does)
-- [Query Types](#query-types)
-- [Key Features](#key-features)
-- [Project Structure](#project-structure)
-- [Architecture and Data Flow](#architecture-and-data-flow)
-- [Requirements](#requirements)
+- [What is scout-it?](#what-is-scout-it)
+- [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [CLI Reference](#cli-reference)
-  - [Global Help](#global-help)
-  - [web-search](#web-search)
-  - [image-search](#image-search)
-  - [news-search](#news-search)
-  - [video-search](#video-search)
-  - [fetch-url](#fetch-url)
+  - [Global Help & Version](#global-help--version)
+  - [Search Commands](#search-commands)
+  - [GitHub Commands](#github-commands)
+  - [Social Commands](#social-commands)
+  - [Utility Commands](#utility-commands)
+- [Credentials & Configuration](#credentials--configuration)
+- [Resilience Layer](#resilience-layer)
 - [Programmatic API](#programmatic-api)
-- [Output Files and JSON Shapes](#output-files-and-json-shapes)
-- [Retry and Fallback Behavior](#retry-and-fallback-behavior)
-- [Image Dimension Filtering Rules](#image-dimension-filtering-rules)
-- [Examples](#examples)
+- [Project Structure](#project-structure)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
-- [Performance Notes](#performance-notes)
 - [Limitations](#limitations)
 
-## What This Project Does
+---
 
-The toolkit gives you an end-to-end search pipeline:
+## What is scout-it?
 
-- Search DuckDuckGo
-- Fetch page HTML
-- Extract main content using multi-strategy extraction
-- Clean and structure extracted text
-- Save structured outputs as JSON
+scout-it is a Python CLI toolkit that provides a complete search-to-structured-data pipeline:
 
-It is designed for data collection and analysis workflows where you need more than just links.
+1. **Search** — DuckDuckGo (web, news, images, videos) plus Brave, Bing, Google Custom Search, and SerpAPI via multi-search
+2. **Fetch** — Resilient page fetching through a 5-tier fallback chain (requests → TLS impersonation → Playwright → bandit-picked tier → alternate sources)
+3. **Extract** — Multi-strategy content extraction (Trafilatura, justext, BoilerPy3, Readability, BeautifulSoup)
+4. **Clean** — Confidence-scored, structured text output
+5. **Output** — JSON or Markdown files, or stdout
 
-## Query Types
+It is designed for data collection, AI training pipelines, research, and any workflow where you need clean web content at scale.
 
-There are 5 query/search modes available through `search.py`:
+---
 
-1. `web-search`: DuckDuckGo text search plus content extraction and cleaning
-2. `image-search`: DuckDuckGo image search with rich filters and optional download
-3. `news-search`: DuckDuckGo news search
-4. `video-search`: DuckDuckGo video search
-5. `fetch-url`: Direct extraction from a single URL
+## Features
 
-## Key Features
+- **8 search modes**: web, news, images, videos, YouTube metadata, single URL fetch, multi-engine search, engine listing
+- **12 GitHub extractors**: repos, commits, PRs, issues, discussions, code search, repo search, files, folders
+- **3 social platform extractors**: Telegram channels (public), Discord channels (bot), Reddit search
+- **5-tier content extraction**: Trafilatura → justext → BoilerPy3 → Readability → BeautifulSoup, with confidence scoring
+- **5-tier resilience chain**: plain requests → TLS impersonation → Playwright JS render → bandit-strategy cache → alternate source fallback (AMP/mobile/Wayback)
+- **Auto-rotating proxy pool** via `PROXY_LIST` env var
+- **DNS-over-HTTPS fallback** on DNS-looking errors
+- **Strategy bandit**: per-domain tier selection based on past success history
+- **Zero-result retry**: progressively relaxes filters when a search returns nothing
+- **Parallel extraction**: ThreadPoolExecutor for concurrent page fetching
+- **Markdown and JSON output** with configurable paths under `.scout-it/`
+- **Output path routing**: all output files default to `.scout-it/`; `--out` with a bare filename routes there too
 
-- Multi-mode CLI with subcommands
-- Automatic compatibility fallback for DDGS call signatures
-- Retry-on-zero-success logic for web and image search
-- Advanced DuckDuckGo options (region, safesearch, timelimit, backend)
-- Image metadata filtering by `min/max width` and `min/max height`
-- Multi-engine HTML content extraction (`trafilatura`, `justext`, `boilerpy3`, heuristic fallbacks)
-- Structured content cleaning and quality scoring
-- JSON-first outputs for downstream data science workflows
-- Test suite with mocked integration behavior
-
-## Project Structure
-
-```text
-scout-it/
-  scout_it/
-    __init__.py               # Package initialization + public API
-    cli.py                    # CLI entry point (scout-it command)
-    extraction.py             # Search engines + extraction engines
-    cleaner.py                # Content cleaning + structuring
-  tests/
-    test_cli.py               # Pytest suite (38+ test cases)
-  docs/                       # User documentation
-  references/                 # Legacy code archive
-  pyproject.toml              # PEP 517/518 build config
-  setup.py                    # Legacy setup script
-  README.md                   # Main documentation
-  AGENTS.md                   # AI agent instructions
-  LICENSE                     # MIT License
-```
-
-## Architecture and Data Flow
-
-### Web Search Pipeline
-
-1. `search.py web-search` starts request
-2. `EnterpriseSearchEngine` queries DDGS text
-3. URLs are fetched in parallel
-4. `ExtractionEngine` extracts main content using layered methods
-5. `main_content_cleaner.process_results` filters failed extraction records and structures text
-6. Output is written as JSON
-
-### Image Search Pipeline
-
-1. `search.py image-search` runs DDGS image query
-2. Results are normalized into `ImageSearchResult`
-3. Optional dimension filters are applied
-4. Optional retry occurs when 0 valid images
-5. Optional download saves files locally
-6. Output JSON is written
-
-### News and Video Pipelines
-
-1. `search.py news-search` or `video-search`
-2. Generic DDGS wrapper executes compatible method calls
-3. Raw result list and stats are returned as JSON
-
-### Fetch URL Pipeline
-
-1. `search.py fetch-url --url ...`
-2. URL is validated (`http`/`https`)
-3. HTML is fetched
-4. Content extraction + cleaner processing runs
-5. Single structured record is written
-
-## Requirements
-
-- Python 3.11+ (tested in this workspace with Python 3.13)
-- Internet access for live search/fetch
-
-Python packages used by the project:
-
-- `ddgs` (falls back to `duckduckgo_search` automatically if unavailable)
-- `trafilatura`
-- `requests`
-- `beautifulsoup4`
-- `justext`
-- `boilerpy3`
-- `rich`
-- `youtube-transcript-api` (for `video-extract` subtitles)
-- `playwright` — *optional*, only needed for the Tier-2 JS-render fallback. Install with `pip install scout-it[js-render]` then `playwright install chromium`.
-- `pytest` (for tests)
+---
 
 ## Installation
 
-### Option 1: Install from Repository (Development Mode)
-
-```bash
-# Clone repository
-git clone https://github.com/gajjalaashok75-UI/scout-it.git
-cd scout-it
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install in development mode
-pip install -e ".[dev]"
-```
-
-### Option 2: Install from PyPI
+### From PyPI (recommended)
 
 ```bash
 pip install scout-it
+
+# Optional: TLS impersonation support
+pip install scout-it[tls-impersonate]
 ```
 
-### Verify Installation
+### From source
 
 ```bash
-scout-it --help
+git clone https://github.com/gajjalaashok75-UI/scout-it.git
+cd scout-it
+pip install -e ".[dev]"
 ```
+
+### Verify installation
+
+```bash
+scout-it --version          # Shows scout-it 1.5.0
+scout-it -v                 # Short flag
+scout-it --help             # Full command list
+```
+
+### Playwright (required for JS-render fallback)
+
+```bash
+playwright install chromium
+```
+
+---
 
 ## Quick Start
 
-### 1) Web Search (3 results)
-
 ```bash
-scout-it web-search --query "dog" --max-results 3
+# Web search with content extraction
+scout-it web-search --query "machine learning transformers" --max 3
+
+# Web search with Markdown output
+scout-it web-search --query "Python async programming" --markdown
+
+# Image search with dimension filters
+scout-it image-search --query "mountain landscape" --min-width 1920 --min-height 1080
+
+# Single URL fetch with full extraction
+scout-it fetch-url --url "https://example.com/article"
+
+# Multi-engine search (requires API keys)
+scout-it multi-search --query "rust vs go" --engines duckduckgo,brave
+
+# YouTube metadata and transcript
+scout-it video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --segments
+
+# Use resilience features for difficult sites
+scout-it fetch-url --url "https://heavy-js-site.com" --js-render --tls-impersonate
+
+# Check what's configured
+scout-it doctor
 ```
 
-### 2) Image Search (3 results)
-
-```bash
-scout-it image-search --query "dog" --max-results 3
-```
-
-### 3) News Search
-
-```bash
-scout-it news-search --query "dog" --max-results 5
-```
-
-### 4) Video Search
-
-```bash
-scout-it video-search --query "dog" --max-results 5
-```
-
-### 5) Fetch and Extract a Single URL
-
-```bash
-scout-it fetch-url --url "https://en.wikipedia.org/wiki/Dog"
-```
-
-### 6) Web Search with JSON Output
-
-```bash
-scout-it web-search --query "machine learning" --max-results 10 --json
-```
+---
 
 ## CLI Reference
 
-### Global Help
+### Global Help & Version
 
 ```bash
-scout-it --help
+scout-it --help              # List all subcommands
+scout-it <command> --help    # Flags for one command
+scout-it --version           # Show version
 ```
 
-Subcommands:
+### Search Commands
 
-- `web-search` - Search the web with content extraction
-- `image-search` - Search for images
-- `news-search` - Search for news articles
-- `video-search` - Search for videos
-- `fetch-url` - Extract content from a single URL
+#### `web-search`
 
-### web-search
+DuckDuckGo text search plus full content extraction and cleaning for every result.
 
 ```bash
 scout-it web-search --query "<text>" [options]
 ```
 
-Options:
+| Flag | Description |
+|------|-------------|
+| `--query, -q` `<text>` | Search query (required) |
+| `--max, -m` `<n>` | Max results (1-100) |
+| `--workers, -w` `<n>` | Parallel workers for content extraction |
+| `--region` `<region>` | DuckDuckGo region (e.g. us-en, wt-wt) |
+| `--safesearch` `<level>` | Safe search: on, moderate, off |
+| `--timelimit` `<range>` | Time limit: d, w, m, y |
+| `--backend` `<backend>` | DDGS backend: auto, html, lite |
+| `--no-retry-on-zero` | Disable retries on 0 results (retries on by default) |
+| `--retry-attempts` `<n>` | Retry attempts when 0 successful extractions |
+| `--retry-backoff` `<seconds>` | Backoff seconds between retries |
+| `--max-fetch-retries` `<n>` | Retry attempts per fetch tier |
+| `--no-js-fallback` | Disable Playwright fallback |
+| `--enable-alternate-source` | Try AMP/mobile/print/Wayback variants on failure |
+| `--no-dns-fallback` | Disable DNS-over-HTTPS retry (on by default) |
+| `--tls-impersonate` | Browser-accurate TLS/JA3 fingerprint tier (needs `scout-it[tls-impersonate]`) |
+| `--persistent-profile` | Persistent Playwright profile (cookies survive runs) |
+| `--profile-name` `<name>` | Persistent profile name (with `--persistent-profile`) |
+| `--use-bandit` | Skip to best-performing tier per domain from history |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/struct_format_results.json`) |
 
-- `--query, -q` (required): search query
-- `--max, -m` (default: `10`): number of results to fetch
-- `--workers` (default: `8`): parallel content-extraction workers
-- `--region`, `--safesearch`, `--timelimit`, `--backend`: DDGS search parameters
-- `--retry-on-zero` / `--no-retry-on-zero` (default: on): retry the DDGS search itself if it comes back with 0 results
-- `--retry-attempts` (default: `2`), `--retry-backoff` (default: `1.0`): tuning for the above
-- `--max-fetch-retries` (default: `3`): retry attempts *per tier* (requests, then Playwright) when fetching each result's page content
-- `--no-js-fallback`: disable the automatic Playwright fallback for blocked/failed page fetches
-- `--json`: output as JSON to stdout
+#### `news-search`
 
-**Example:**
-```bash
-scout-it web-search --query "machine learning" --max 5
-scout-it web-search --query "site behind cloudflare" --max-fetch-retries 4
-```
-
-### image-search
-
-```bash
-scout-it image-search --query "<text>" [options]
-```
-
-Options:
-
-- `--query, -q` (required): search query
-- `--max, -m` (default: `10`): number of images
-- `--min-width`, `--min-height`, `--max-width`, `--max-height`: dimension filters
-- `--color`, `--type-image`, `--layout`, `--license-images`: DDGS image filters
-- `--retry-on-zero` / `--no-retry-on-zero`, `--retry-attempts`, `--retry-backoff`: zero-result retry tuning
-- `--json`: output as JSON to stdout
-
-**Example:**
-```bash
-scout-it image-search --query "landscape" --max 10 --min-width 1024 --min-height 768
-```
-
-### news-search
+DuckDuckGo news search with article text extraction.
 
 ```bash
 scout-it news-search --query "<text>" [options]
 ```
 
-Options:
+| Flag | Description |
+|------|-------------|
+| `--query, -q` `<text>` | Search query (required) |
+| `--max, -m` `<n>` | Max news items (1-50) |
+| `--workers` `<n>` | Parallel workers for content extraction |
+| `--region` `<region>` | DuckDuckGo region |
+| `--safesearch` `<level>` | Safe search: on, moderate, off |
+| `--timelimit` `<range>` | Time limit: d, w, m, y |
+| `--no-retry-on-zero` | Disable retries on 0 results |
+| `--retry-attempts` `<n>` | Retry attempts on zero results |
+| `--retry-backoff` `<seconds>` | Backoff seconds between retries |
+| `--max-fetch-retries` `<n>` | Retry attempts per fetch tier |
+| `--no-js-fallback` | Disable Playwright fallback |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/news_search_results.json`) |
 
-- `--query, -q` (required): search query
-- `--max, -m` (default: `10`): number of articles
-- `--region`, `--safesearch`, `--timelimit`: DDGS search parameters
-- `--retry-on-zero` / `--no-retry-on-zero`, `--retry-attempts`, `--retry-backoff`: zero-result retry tuning (previously news-search made only a single DDGS attempt; it now has the same retry parity as web-search/image-search)
-- `--max-fetch-retries` (default: `3`), `--no-js-fallback`: same resilient-fetch controls as web-search, applied to fetching each article's full text
-- `--json`: output as JSON to stdout
+#### `image-search`
 
-**Example:**
+DuckDuckGo image search with dimension, color, and license filters.
+
 ```bash
-scout-it news-search --query "artificial intelligence" --max 5
+scout-it image-search --query "<text>" [options]
 ```
 
-### video-search
+| Flag | Description |
+|------|-------------|
+| `--query, -q` `<text>` | Search query (required) |
+| `--max, -m` `<n>` | Max images (1-50) |
+| `--region` `<region>` | DuckDuckGo region |
+| `--safesearch` `<level>` | Safe search: on, moderate, off |
+| `--timelimit` `<range>` | Time limit: d, w, m, y |
+| `--size` `<size>` | Image size: Small, Medium, Large, Wallpaper |
+| `--color` `<color>` | Color filter |
+| `--type-image` `<type>` | Image type: photo, clipart, gif, transparent, line |
+| `--layout` `<layout>` | Layout: Square, Tall, Wide |
+| `--license-image` `<license>` | License filter |
+| `--min-width` `<px>` | Minimum width |
+| `--max-width` `<px>` | Maximum width |
+| `--min-height` `<px>` | Minimum height |
+| `--max-height` `<px>` | Maximum height |
+| `--download, -d` | Download images to disk |
+| `--download-dir` `<path>` | Download directory (default: `.scout-it/downloaded_images`) |
+| `--no-retry-on-zero` | Disable retries on 0 results |
+| `--retry-attempts` `<n>` | Retry attempts when 0 valid images found |
+| `--retry-backoff` `<seconds>` | Backoff seconds between retries |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/image_search_results.json`) |
+
+#### `video-search`
+
+DuckDuckGo video search with duration and resolution filters.
 
 ```bash
 scout-it video-search --query "<text>" [options]
 ```
 
-Options:
+| Flag | Description |
+|------|-------------|
+| `--query, -q` `<text>` | Search query (required) |
+| `--max, -m` `<n>` | Max videos (1-50) |
+| `--region` `<region>` | DuckDuckGo region |
+| `--safesearch` `<level>` | Safe search: on, moderate, off |
+| `--timelimit` `<range>` | Time limit: d, w, m, y |
+| `--resolution` `<res>` | Resolution: high, standard |
+| `--duration` `<duration>` | Duration: short, medium, long |
+| `--license-videos` `<license>` | License filter |
+| `--no-retry-on-zero` | Disable retries on 0 results |
+| `--retry-attempts` `<n>` | Retry attempts when 0 results found |
+| `--retry-backoff` `<seconds>` | Backoff seconds between retries |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/video_search_results.json`) |
 
-- `--query, -q` (required): search query
-- `--max, -m` (default: `10`): number of videos
-- `--region`, `--safesearch`, `--timelimit`, `--resolution`, `--duration`, `--license-videos`: DDGS video filters
-- `--retry-on-zero` / `--no-retry-on-zero`, `--retry-attempts`, `--retry-backoff`: zero-result retry tuning (previously video-search had no retry logic at all)
-- `--json`: output as JSON to stdout
+#### `video-extract`
 
-**Example:**
-```bash
-scout-it video-search --query "python tutorial" --max 5
-```
-
-### video-extract
+YouTube metadata and subtitles/transcript extraction.
 
 ```bash
 scout-it video-extract --url "<youtube-url>" [options]
 ```
 
-Extracts full metadata (title, channel, view/like counts, description, upload date) and, where available, subtitles/transcript for a YouTube video.
+| Flag | Description |
+|------|-------------|
+| `--url` `<url>` | Video URL to extract (e.g. `https://www.youtube.com/watch?v=VIDEO_ID`) |
+| `--subtitle-lang` `<code>` | Subtitle language code (default: en) |
+| `--segments` | Include subtitle segments with timestamps |
+| `--max-fetch-retries` `<n>` | Retry attempts per fetch tier |
+| `--no-js-fallback` | Disable Playwright fallback |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/video_extract_results.json`) |
+| `--json` | Output raw JSON to stdout |
 
-Options:
+#### `fetch-url`
 
-- `--url` (required): YouTube video URL (`youtube.com/watch?v=...` or `youtu.be/...`)
-- `--subtitle-lang` (default: `en`): preferred subtitle language code
-- `--segments`: include timestamped subtitle segments in the output
-- `--max-fetch-retries` (default: `3`), `--no-js-fallback`: resilient-fetch controls for the underlying YouTube page fetch
-- `--json`: output as JSON to stdout
-
-**Example:**
-```bash
-scout-it video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --segments
-```
-
-Only YouTube is currently supported; other platforms return a clear `unsupported_platform` error rather than failing silently.
-
-### fetch-url
+Direct extraction from a single URL through the full resilience chain.
 
 ```bash
 scout-it fetch-url --url "https://example.com" [options]
 ```
 
-Options:
+| Flag | Description |
+|------|-------------|
+| `--url, -u` `<url>` | URL to fetch |
+| `--timeout` `<seconds>` | Extraction timeout (increase for JS-rendered SPAs) |
+| `--max-chars` `<n>` | Max characters to extract (e.g. 10000) |
+| `--max-size` `<size>` | Max response size (e.g. 100kb, 1mb, 500mb) |
+| `--raw-html` | Return raw HTML instead of extracted content |
+| `--js-render` | Skip straight to Playwright rendering |
+| `--no-js-fallback` | Disable Playwright fallback |
+| `--enable-alternate-source` | Try AMP/mobile/print/Wayback variants on failure |
+| `--max-retries` `<n>` | Retry attempts per fetch tier |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/url_fetch_result.json`) |
+| `--json` | Output raw JSON to stdout |
 
-- `--url, -u` (required): URL to fetch and extract
-- `--timeout` (default: `25`): fetch timeout in seconds, applied per attempt/tier
-- `--max-chars`: truncate extracted content to N characters (mutually exclusive with `--max-size`)
-- `--max-size`: cap the raw response size, e.g. `5mb`, `500kb` (mutually exclusive with `--max-chars`)
-- `--raw-html`: return prettified raw HTML instead of extracted main content
-- `--js-render`: skip straight to Playwright rendering instead of trying `requests` first
-- `--no-js-fallback`: disable the automatic Playwright fallback that normally kicks in when `requests` fails or looks blocked
-- `--max-retries` (default: `3`): retry attempts per tier (requests, then Playwright)
-- `--json`: output as JSON to stdout
+#### `multi-search`
 
-**Example:**
-```bash
-scout-it fetch-url --url "https://example.com/article"
-scout-it fetch-url --url "https://spa-heavy-site.com" --js-render
-```
-
-### multi-search — search across multiple engines
-
-```bash
-scout-it multi-search --query "<text>" --engines duckduckgo,brave,google [options]
-```
-
-Queries several search engines **in parallel**, merges/dedupes by URL, then runs the same
-content-extraction pipeline as `web-search`. `duckduckgo` needs no setup; the others need a
-free/paid API key set as an environment variable — run `scout-it list-engines` to see what's
-configured and what each one needs.
-
-Options: `--query/-q`, `--engines` (comma-separated), `--max/-m`, `--workers/-w`,
-`--serpapi-engine` (google/bing/yahoo/baidu/yandex/... when `serpapi` is in `--engines`),
-`--no-dedupe`, `--max-fetch-retries`, `--no-js-fallback`, `--json`.
+Queries several search engines in parallel, merges and dedupes by URL, then runs content extraction.
 
 ```bash
-scout-it multi-search --query "rust vs go performance" --engines duckduckgo,brave --max 15
-BRAVE_API_KEY=xxx scout-it list-engines   # check what's configured
+scout-it multi-search --query "<text>" --engines duckduckgo,brave [options]
 ```
 
-### Credential setup — `scout-it config`
+| Flag | Description |
+|------|-------------|
+| `--query, -q` `<text>` | Search query (required) |
+| `--engines` `<list>` | Comma-separated engines: duckduckgo, brave, bing, google, serpapi |
+| `--max, -m` `<n>` | Max merged results |
+| `--workers, -w` `<n>` | Parallel content-extraction workers |
+| `--serpapi-engine` `<engine>` | Underlying engine for SerpAPI (google/bing/yahoo/baidu/yandex) |
+| `--no-dedupe` | Keep duplicate URLs across engines |
+| `--max-fetch-retries` `<n>` | Retry attempts per fetch tier |
+| `--no-js-fallback` | Disable Playwright fallback |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/multi_search_results.json`) |
+| `--json` | Output raw JSON to stdout |
 
-Several commands need an API key or token (multi-engine search, GitHub Discussions/code search,
-Discord). Instead of exporting environment variables every session, run:
+#### `list-engines`
+
+Show which search engines are configured and available.
 
 ```bash
-scout-it config              # interactive wizard -- Enter to skip any key you don't have
-scout-it config --show       # check what's configured (no secrets printed)
-scout-it config --clear GITHUB_TOKEN   # remove one stored key
-scout-it config --clear-all            # remove everything
+scout-it list-engines
 ```
 
-Values are stored at `~/.data-scout/credentials.json` (owner-only file permissions on POSIX) and
-loaded automatically on every future run. A real environment variable always takes precedence
-over a stored value, so CI/scripting setups that export env vars directly are unaffected. Every
-command that needs a key tells you exactly which one and how to get it if it isn't configured yet.
-
-### GitHub extraction
-
-Uses GitHub's official REST + GraphQL APIs (no scraping). Works unauthenticated at 60
-requests/hour; set `GITHUB_TOKEN` (a personal access token, no special scopes needed for public
-repos) for 5,000/hour. GitHub Discussions specifically **requires** `GITHUB_TOKEN` — GraphQL has
-no anonymous access at all, even for public repos, which is a GitHub platform rule. Run
-`scout-it config` to store `GITHUB_TOKEN` once instead of exporting it every session.
-
-| Command | What it does |
-|---|---|
-| `github-repo --repo owner/repo` | **Full repo overview by default**: metadata, branches, ~commit count, accurately-split open issue/PR counts, top contributors, latest release, language breakdown. Pass `--quick` for just the fast single-call metadata. Pass `--file-tree` for the full, untruncated file tree (capped by `--max-chars`/`--max-size` if the repo is huge — mutually exclusive, error if both given). |
-| `github-commits --repo owner/repo [--branch][--path][--author][--since][--until][--max]` | List commits (full, untruncated commit messages) |
-| `github-commit --repo owner/repo --sha SHA` | **Full diff**: every changed file, +/- counts, raw unified `patch` text AND a structured `patch_lines` array (each line tagged `added`/`removed`/`context`/`hunk_header`) |
-| `github-pr --repo owner/repo --number N` | PR metadata + full diff/changed files (same `patch_lines` structuring) |
-| `github-prs --repo owner/repo [--state][--sort][--max]` | List pull requests (draft status, base/head branch — PR-specific fields `github-issues` doesn't carry) |
-| `github-issues --repo owner/repo [--state][--labels][--max]` | List issues |
-| `github-issue --repo owner/repo --number N` | Full issue body + all comments |
-| `github-file --repo owner/repo --path PATH [--ref REF]` | Fetch & decode one file's contents |
-| `github-folder --repo owner/repo --path src/ [--no-recursive][--include-content][--max-files][--max-chars/--max-size][--save-path-dir]` | List (and optionally fetch) every file under a folder. `--max-files` requires `--include-content` (error otherwise); without `--max-files`, `--include-content` fetches ALL files found. `--save-path-dir` (requires `--include-content`) also writes fetched files to disk, preserving the repo-relative tree. Each fetched file gets a `detected_type` (python/markdown/json/yaml/etc.) |
-| `github-search-code --query "..."` | Code search (needs `GITHUB_TOKEN`, 10 req/min) |
-| `github-search-repos --query "language:python stars:>1000"` | Repo search — each hit carries the same full metadata as `github-repo` |
-| `github-discussions --repo owner/repo` | List discussions (**requires** `GITHUB_TOKEN`) |
-
-```bash
-scout-it github-repo --repo pytorch/pytorch              # full overview: branches, contributors, releases, etc.
-scout-it github-commit --repo psf/requests --sha <sha>   # full diff for one commit, line-by-line +/- structure
-scout-it github-folder --repo psf/requests --path src/ --include-content --max-files 10
-GITHUB_TOKEN=ghp_xxx scout-it github-discussions --repo pytorch/pytorch
-```
-
-### Social / platform commands
-
-| Command | Tier | Needs |
-|---|---|---|
-| `telegram-channel --channel NAME [--max]` | 0 — works now | nothing (public `t.me/s/` preview; retries 3x then falls back to a richer parser if 0 posts found) |
-| `telegram-channel --query "..." [--max][--posts-per-channel]` | 0 — works now | nothing (finds public channels via a `site:t.me` search) |
-| `discord-channel --channel-id ID [--max]` | 1 — needs a key | `DISCORD_BOT_TOKEN` (bot must be in the server) |
-| `reddit-search --query "..." [--subreddit][--max]` | 2 — best-effort | Reddit blocks most anonymous requests as of 2026; optionally set `REDDIT_COOKIE` |
-
-```bash
-scout-it telegram-channel --channel durov --max 10
-scout-it telegram-channel --query "machine learning" --max 10   # find & preview matching public channels
-DISCORD_BOT_TOKEN=xxx scout-it discord-channel --channel-id 123456789012345678
-scout-it reddit-search --query "python" --subreddit programming   # best-effort, see --help
-```
-
-Discord intentionally has no `--query` topic-search mode: unlike Telegram's public preview pages,
-Discord has no anonymous read API of any kind — you always need a bot already invited into the
-specific server, so there's no cross-server search this library could legitimately offer.
-
-Twitter/X, Instagram, TikTok, and similar platforms are **not implemented** — none of them
-currently offer a working zero-config or affordable-API path (all require either a paid official
-API or a logged-in browser session with cookie management, which is out of scope for this
-library). Adding one for real would mean either paying for API access or building an
-authenticated Playwright session manager — happy to scope that separately if you need it.
-
-## Detailed Search Documentation
-
-For comprehensive documentation on each search type with all available options, examples, and advanced usage, see the detailed guides in `docs/search/`:
-
-| Document | Coverage |
-|----------|----------|
-| **[Extended Options Reference](./docs/search/OPTIONS.md)** | ⭐ START HERE - Complete reference of ALL supported parameters for all search types |
-| [Web Search Guide](./docs/search/websearch.md) | Full web search documentation with extraction strategy, 6+ examples, Python API |
-| [Image Search Guide](./docs/search/imagesearch.md) | Complete image filtering (dimensions, colors, layouts, licenses), 7+ examples |
-| [News Search Guide](./docs/search/newssearch.md) | News aggregation with date filtering, monitoring, analysis examples |
-| [Video Search Guide](./docs/search/videosearch.md) | Video search with duration/resolution filtering, playlist creation |
-| [URL Fetch Guide](./docs/search/fetch.md) | Single URL extraction with content cleaning, batch processing |
-
-### All Supported Options by Search Type
-
-Quick reference of common options:
-- **Query** (`--query, -q`): Search term (required)
-- **Results** (`--max-results, -m`): Limit results (default: 10)
-- **Output** (`--out, -o`): Save to file (defaults provided per type)
-- **JSON** (`--json`): Output raw JSON to stdout
-- **Timeout** (`--timeout`): Extraction timeout in seconds (default: 5)
-- **Region** (`--region`): Geographic region (default: `us-en`)
-- **Safe Search** (`--safesearch`): Filter level: `on|moderate|off` (default: `moderate`)
-- **Time Filter** (`--timelimit`): Time range: `d|w|m|y`
-- **Image Dimensions** (`--min-width`, `--max-width`, `--min-height`, `--max-height`): Image search only
-- **Workers** (`--workers, -w`): Parallel extraction workers for web search
-- **Retry** (`--retry-attempts`, `--retry-backoff`): Automatic retry configuration
-
-See [Extended Options Reference](./docs/search/OPTIONS.md) for complete parameter listings with all enums and examples.
-
-## Programmatic API
-
-You can import and use the search engines and extraction functions directly from the package.
-
-### Web Search with Content Extraction
-
-```python
-from scout_it.extraction import EnterpriseSearchEngine
-from scout_it.cleaner import process_results
-
-engine = EnterpriseSearchEngine()
-results = engine.search(
-    query="machine learning",
-    max_results=5,
-    extraction_timeout=10
-)
-
-# Clean and structure results
-cleaned_results = process_results(results)
-
-for result in cleaned_results:
-    print(f"Title: {result['title']}")
-    print(f"URL: {result['url']}")
-    print(f"Quality Score: {result['quality_score']}")
-    print()
-```
-
-### Image Search
-
-```python
-from scout_it.extraction import ImageSearchEngine
-
-engine = ImageSearchEngine()
-results = engine.search(
-    query="mountain landscape",
-    max_results=10,
-    min_width=1024,
-    min_height=768
-)
-
-for result in results:
-    print(f"Title: {result.title}")
-    print(f"Size: {result.dimensions}")
-    print(f"Image URL: {result.image_url}")
-    print()
-```
-
-### Direct Content Extraction from URL
-
-```python
-from scout_it.extraction import ExtractionEngine
-
-engine = ExtractionEngine()
-content, method, confidence = engine.extract(
-    url="https://example.com/article",
-    timeout=5
-)
-
-print(f"Extraction Method: {method}")
-print(f"Confidence Score: {confidence:.2%}")
-print(f"Content:\n{content[:500]}...")
-```
-
-### Text Cleaning and Processing
-
-```python
-from scout_it.cleaner import advanced_clean_text
-
-raw_text = "   Hello   world   with   extra    spaces   "
-cleaned = advanced_clean_text(raw_text)
-print(cleaned)  # Output: "Hello world with extra spaces"
-```
-
-## Output Files and JSON Shapes
-
-### Where output goes, and in what format
-
-Every command's default `--out` path lives under `.data-scout/` (created automatically next to
-wherever you run the command), e.g. `.data-scout/web_search_results.json` — an explicit
-`--out some/path.json` is always honored exactly as given instead.
-
-**Line-length-safe JSON**: any string field over 500 characters (a long article body, extracted
-page content, etc.) is broken into an array of <=500-char chunks at word boundaries instead of
-one giant single-line value — still fully standard, valid JSON (an array just serializes one
-element per line). Diff `patch` text is left as-is since it already has a structured `patch_lines`
-breakdown for readability instead.
-
-**Markdown export**: add `--markdown` to any command to save a readable `.md` file instead of
-JSON (tables for lists of uniform records, fenced code blocks for file/diff content). `--out
-file.md` also works without `--markdown`. Combining `--markdown` with an explicit `--out
-....json` is rejected with a clear error.
-
-```bash
-scout-it github-repo --repo psf/requests --markdown          # .data-scout/github_repo_results.md
-scout-it web-search --query "rust vs go" --out report.md     # markdown, no --markdown flag needed
-scout-it web-search --query "x" --markdown --out result.json # ERROR: conflicting formats
-```
-
-### Web Search Output (`results.json`)
-
-Top-level structure:
-
-- `query`
-- `search_type` = `web`
-- `parameters`
-- `stats`
-- `structured_results` (list)
-
-Each item in `structured_results` contains cleaned and structured text fields from `main_content_cleaner.py`, including:
-
-- `title`, `url`, `final_url`
-- `cleaned_content`
-- `paragraphs`, `content_sections`
-- `top_keywords`
-- `readability_metrics`
-- `quality_signals`
-- `content_quality_score`
-
-### Image Search Output (`image_search_results.json`)
-
-Top-level structure:
-
-- `query`
-- `search_type` = `image`
-- `parameters`
-- `stats`
-- `image_results`
-
-Each image item includes:
-
-- `title`
-- `image_url`
-- `source_url`
-- `thumbnail_url`
-- `width`, `height`
-- `image_size`
-
-### News/Video Output
-
-`news_results.json` and `video_results.json` include:
-
-- `query`
-- `search_type` (`news` or `video`)
-- `parameters`
-- `stats`
-- result array (`news_results` or `video_results`)
-
-### Fetch URL Output
-
-`url_fetch_result.json` includes:
-
-- `url`
-- `search_type` = `fetch`
-- `result` object containing extracted/cleaned fields and fetch stats
-
-## Retry and Fallback Behavior
-
-scout-it retries and falls back at **two independent layers**, and it's worth understanding the difference:
-
-1. **Search/discovery layer** — did DDGS return any results at all?
-2. **Content-fetch layer** — for each individual result URL, can we actually download and extract its page content?
-
-### 1. Search-layer retry (zero-results retry)
-
-`web-search`, `image-search`, `news-search`, and `video-search` all share the same retry-on-zero-results behavior (via `_ddgs_list_search_with_retry`):
-
-- Attempt 1 uses your configured options (`region`, `safesearch`, `timelimit`, etc.)
-- If DDGS returns 0 results, later attempts progressively relax filters (drop `timelimit`, then relax `safesearch`) to maximize the chance of a non-empty result set
-- Stops as soon as an attempt returns results
-- Controlled by `--retry-on-zero/--no-retry-on-zero`, `--retry-attempts` (default `2`), `--retry-backoff` (default `1.0`s)
-- **Previously**, only `web-search`/`image-search` had this. `news-search` made exactly one DDGS attempt and `video-search` had no retry logic or flags at all — both now have full parity.
-
-### 2. Content-fetch layer: the `fetch_resilient()` fallback chain
-
-Every individual page fetch — web-search result extraction, news-search article extraction, `fetch-url`, and the YouTube page fetch behind `video-extract` — goes through a shared, multi-tier fallback chain:
-
-```
-Tier 1:   requests                          (up to --max-fetch-retries attempts, rotating full
-          │                                  browser header profiles, transient/permanent-aware
-          │                                  backoff honoring Retry-After, transparent proxy
-          │                                  rotation if PROXY_LIST is configured, automatic
-          │                                  DNS-over-HTTPS retry on DNS-looking failures)
-          │  fails / looks bot-blocked (403/429/503, captcha, "enable JS", tiny body, etc.)
-          ▼
-Tier 1.5: TLS/JA3 impersonation             (opt-in: --tls-impersonate, needs
-          │                                  pip install scout-it[tls-impersonate])
-          ▼
-Tier 2:   Playwright (headless Chromium)    (up to --max-fetch-retries attempts; optionally a
-          │                                  persistent profile via --persistent-profile)
-          │  fails, or Playwright isn't installed, or the failure was a pure
-          │  connection/DNS-level error where a browser can't do any better
-          ▼
-Tier 3:   last-resort basic request         (one attempt, minimal non-fingerprinted headers)
-          ▼
-Tier 4:   alternate-source ladder           (opt-in: --enable-alternate-source — AMP/mobile/
-                                              print URL variants, then a Wayback Machine snapshot)
-```
-
-Notes on the design:
-
-- **Tier 2 is skipped automatically** when every Tier 1 attempt failed at the connection level (DNS failure, connection refused, timeout) rather than getting an actual HTTP response — a browser hitting the same broken network path won't succeed either, so this avoids wasting 3× browser launches (~tens of seconds) on an unreachable host. It's still tried whenever at least one Tier 1 attempt *did* get a response (e.g. a 403 or a bot-check page), since that's exactly the case Playwright is good at getting past.
-- Every result records which tier actually succeeded, e.g. `extraction_method: "trafilatura (playwright)"`, so you can see in the output how much the fallback chain is being used.
-- `--no-js-fallback` disables Tier 2 entirely (useful if Playwright/Chromium isn't installed in your environment, or you want fast-fail behavior).
-- Playwright is optional: `pip install scout-it[js-render] && playwright install chromium`. If it isn't installed, Tier 2 is skipped with a note in the diagnostics and the chain still falls through to Tier 3.
-- `fetch-url --js-render` skips straight to Tier 2 instead of trying `requests` first (useful when you already know a page needs JS).
-- **`--use-bandit`**: once a domain has enough recorded fetch history (`scout-it stats` to see it), and Playwright has clearly outperformed plain `requests` for that specific domain, skips the doomed Tier 1 attempt and goes straight to Tier 2. Off by default; without it, or for domains without enough history yet, behavior is exactly the fixed waterfall above.
-- **`scout-it doctor`** checks whether Playwright/Chromium is actually installed (not just the pip package), whether a proxy pool is configured, cache sizes, and configured credentials — useful before debugging "why does this always fall back to Tier 3."
-- **`scout-it stats`** shows what's been learned per domain: which tier/proxy combination has the best success rate, and how many attempts have been recorded.
-
-Every layer beyond Tier 1-3 that isn't explicitly marked "opt-in" above degrades transparently: a `PROXY_LIST`-less setup, a DNS-over-HTTPS lookup that fails, or a missing `curl_cffi` install all just fall through to the next tier rather than erroring.
-
-### DDGS Signature Compatibility
-
-The project prefers the `ddgs` package and falls back to the older `duckduckgo_search` package name automatically, and attempts multiple call signatures for DDGS methods to support version differences between them.
-
-## Image Dimension Filtering Rules
-
-When any dimension filter is enabled:
-
-- Images missing width/height are excluded
-- Range checks are inclusive
-- Invalid negative/unknown numeric dimensions are treated as missing
-
-If no dimension filters are enabled:
-
-- Missing dimensions are allowed
-
-## Examples
-
-### Example A: Web Search for Articles
-
-```bash
-scout-it web-search --query "artificial intelligence" --max-results 5
-```
-
-**Output:**
-```
-Title: AI Article 1
-URL: https://example.com/ai-1
-Confidence: 95%
-Content: [extracted article text...]
-📂 Results saved to: /path/to/results.json
-```
-
-### Example B: High-Resolution Image Search
-
-```bash
-scout-it image-search --query "mountain scenery" --max-results 10 --min-width 1920 --min-height 1080
-```
-
-### Example C: News Search
-
-```bash
-scout-it news-search --query "technology breakthroughs" --max-results 5
-```
-
-### Example D: Video Search
-
-```bash
-scout-it video-search --query "python programming tutorial" --max-results 5
-```
-
-### Example E: Extract Content from Specific URL
-
-```bash
-scout-it fetch-url --url "https://en.wikipedia.org/wiki/Artificial_intelligence"
-```
-
-### Example F: Programmatic Web Search (Python)
-
-```python
-from scout_it.extraction import EnterpriseSearchEngine
-
-engine = EnterpriseSearchEngine()
-results = engine.search(
-    query="Python web frameworks",
-    max_results=5,
-    extraction_timeout=10
-)
-
-for result in results:
-    print(f"{result.title} ({result.confidence_score:.0%})")
-    print(f"{result.url}")
-```
-
-## Testing
-
-Run all tests:
-
-```bash
-pytest tests/ -v
-```
-
-Run with coverage:
-
-```bash
-pytest tests/ --cov=scout_it --cov-report=html
-```
-
-Current test suite includes:
-
-- 38+ comprehensive test cases
-- Web search functionality
-- Image search with dimension filtering
-- News and video search
-- URL extraction and content cleaning
-- Confidence scoring
-- Error handling and timeouts
-- Mock API responses (no external API calls)
-
-**Minimum Coverage Requirement:** 80%
-
-## Troubleshooting
-
-### 1) No search results returned
-
-**Check:**
-- Verify internet connection
-- Try a different, simpler query
-- Check DuckDuckGo is accessible
-
-### 2) Low confidence scores
-
-**Possible causes:**
-- Website uses heavy JavaScript
-- Poor HTML structure
-- Extraction method not suitable for site
-
-**Solutions:**
-- Increase extraction timeout: `--timeout 15`
-- Check if content is accessible in browser
-
-### 3) Slow extraction times
-
-**Solutions:**
-- Reduce `--max-results` to fewer articles
-- Decrease `--timeout` for faster (but less complete) results
-- Check your internet speed
-
-### 4) Package installation issues
-
-**If getting import errors:**
-```bash
-# Reinstall in development mode
-pip install -e ".[dev]"
-
-# Or verify installation
-python -c "from scout_it import EnterpriseSearchEngine; print('OK')"
-```
-
-### 5) Python version mismatch
-
-**Check installed Python:**
-```bash
-python --version
-```
-
-**Required:** Python 3.8+
-
-## Performance Notes
-
-- Web extraction uses parallel workers (`--workers`)
-- Higher `--max` increases runtime and network load
-- Content extraction quality favors richer pages and can vary by domain
-- Retry increases resilience but can increase total runtime
-
-## Limitations
-
-- Actual DuckDuckGo support depends on installed package versions (`ddgs`, `duckduckgo_search`)
-- Some DDGS capabilities (for example maps/answers/suggestions) are not guaranteed in all installed versions
-- `fetch-url` returns sanitized errors by design (`fetch_url failed`) to avoid leaking internals
-- Search output quality depends on network, source pages, and extractor heuristics
+No flags.
 
 ---
 
-If you extend the CLI with additional DDGS methods (for example maps), update this README by adding:
+### GitHub Commands
 
-1. New query type in the Query Types section
-2. Full CLI option reference
-3. Example commands
-4. JSON output shape
+All GitHub commands require `GITHUB_TOKEN` for high rate limits (5,000 req/hour). Without a token, unauthenticated access works at 60 req/hour. `github-discussions` and `github-search-code` require a token — they have no anonymous access.
+
+```bash
+scout-it github-repo --repo owner/repo [options]
+scout-it github-commits --repo owner/repo [options]
+scout-it github-commit --repo owner/repo --sha SHA [options]
+scout-it github-pr --repo owner/repo --number N [options]
+scout-it github-prs --repo owner/repo [options]
+scout-it github-folder --repo owner/repo --path src/ [options]
+scout-it github-issues --repo owner/repo [options]
+scout-it github-issue --repo owner/repo --number N [options]
+scout-it github-file --repo owner/repo --path PATH [options]
+scout-it github-search-code --query "..." [options]
+scout-it github-search-repos --query "..." [options]
+scout-it github-discussions --repo owner/repo [options]
+```
+
+| Command | Description |
+|---------|-------------|
+| `github-repo` | Full repo overview: metadata, branches, commit count, issue/PR counts, contributors, releases, languages, file tree. `--quick` for fast single-call metadata; `--file-tree` for the full tree. |
+| `github-commits` | List commits with full untruncated messages. Filter by `--branch`, `--path`, `--author`, `--since`, `--until`. |
+| `github-commit` | Full details for one commit: stats, changed files, unified diff. `--no-patch` to skip diff text. |
+| `github-pr` | Pull request with full diff and changed files. `--no-diff` to skip diff. |
+| `github-prs` | List PRs with PR-specific fields. Filter by `--state`, `--sort`. |
+| `github-folder` | List (and optionally fetch) every file under a folder. `--include-content` fetches file bodies; `--save-path-dir` writes them to disk. |
+| `github-issues` | List issues. Filter by `--state`, `--labels`. `--include-prs` also returns pull requests. |
+| `github-issue` | One issue with full body and comments. `--no-comments` to skip comments. |
+| `github-file` | Fetch a single file's contents. `--ref` to specify a branch/tag. |
+| `github-search-code` | Code search across GitHub. Requires token. |
+| `github-search-repos` | Repository search with full metadata on each hit. | 
+| `github-discussions` | List GitHub Discussions. Requires token — GraphQL has no anonymous access. |
+
+All GitHub commands support `--out`, `--markdown`, and `--json`.
+
+---
+
+### Social Commands
+
+```bash
+# Telegram public channel — tier 0 (works now, needs nothing)
+scout-it telegram-channel --channel NAME [--max] [--max-fetch-retries] [--out] [--markdown] [--json]
+scout-it telegram-channel --query "..." [--max] [--posts-per-channel] [--out] [--markdown] [--json]
+
+# Discord channel — tier 1 (needs DISCORD_BOT_TOKEN)
+scout-it discord-channel --channel-id ID [--max] [--before] [--out] [--markdown] [--json]
+
+# Reddit search — tier 2 (best-effort, optional REDDIT_COOKIE)
+scout-it reddit-search --query "..." [--subreddit] [--sort] [--max] [--out] [--markdown] [--json]
+```
+
+Unsupported platforms (return clear errors): Twitter/X, Instagram, TikTok.
+
+---
+
+### Utility Commands
+
+#### `config`
+
+Interactive credential management wizard.
+
+```bash
+scout-it config                  # Interactive wizard
+scout-it config --show           # Check what's configured (never prints secrets)
+scout-it config --clear KEY      # Remove one stored key
+scout-it config --clear-all      # Remove all stored credentials
+```
+
+#### `stats`
+
+Per-domain fetch-strategy statistics from the bandit cache.
+
+```bash
+scout-it stats                   # Summary for all domains
+scout-it stats --domain DOMAIN   # Stats for one domain
+scout-it stats --export PATH     # Full stats dump as JSON
+scout-it stats --reset DOMAIN    # Forget history for one domain
+scout-it stats --reset-all       # Forget all history
+```
+
+#### `doctor`
+
+Self-check for Playwright availability, proxy config, cache health, credentials, DNS/connectivity.
+
+```bash
+scout-it doctor
+```
+
+---
+
+## Credentials & Configuration
+
+scout-it reads credentials from environment variables. Use `scout-it config` to set them interactively (stored in `~/.scout-it/config.ini`). Environment variables take precedence.
+
+| Variable | Purpose |
+|----------|---------|
+| `GITHUB_TOKEN` | GitHub API access (5,000 req/hour with token; required for discussions & code search) |
+| `BRAVE_API_KEY` | Brave Search API for multi-search |
+| `BING_API_KEY` | Azure Bing Search API for multi-search |
+| `GOOGLE_API_KEY` | Google Custom Search JSON API (paired with `GOOGLE_CSE_ID`) |
+| `GOOGLE_CSE_ID` | Google Programmable Search Engine ID |
+| `SERPAPI_KEY` | SerpAPI for proxied Google/Bing/Yahoo/Baidu/Yandex results |
+| `DISCORD_BOT_TOKEN` | Bot token for Discord channel extraction |
+| `REDDIT_COOKIE` | Optional cookie to improve Reddit search reliability |
+| `PROXY_LIST` | Comma-separated proxy URLs for auto-rotating proxy pool |
+
+### Credential Precedence
+
+1. Environment variable (highest)
+2. `~/.scout-it/config.ini` (set via `scout-it config`)
+3. Built-in default (if any)
+
+---
+
+## Resilience Layer
+
+scout-it uses a multi-tier fetch strategy to extract content from even the most difficult sites. Each tier is tried in order; if all tiers fail, the command returns a clear error.
+
+| # | Tier | What it does | When it activates |
+|---|------|-------------|-------------------|
+| 1 | **requests** | Standard HTTP request with rotating User-Agent | Always tried first |
+| 2 | **TLS impersonation** | Browser-accurate TLS/JA3 fingerprint via `curl_cffi` | `--tls-impersonate` |
+| 3 | **Playwright** | Full browser rendering (JS, SPAs, Cloudflare) | Automatic on requests failure, or `--js-render` |
+| 4 | **Bandit** | Skips to best-performing tier per domain | `--use-bandit` |
+| 5 | **Alternate sources** | AMP/mobile/print URL variants + Wayback Machine | `--enable-alternate-source` |
+
+Additional protections:
+
+- **DNS-over-HTTPS fallback**: Automatically retries failed fetches via DoH when the error looks DNS-related (on by default; disable with `--no-dns-fallback`)
+- **Zero-result retry**: When a search returns 0 results, retries with progressively relaxed filters (on by default; disable with `--no-retry-on-zero`)
+- **Proxy pool**: Auto-rotates through proxies from `PROXY_LIST` env var
+
+---
+
+## Programmatic API
+
+scout-it can be used as a Python library:
+
+```python
+from scout_it import (
+    EnterpriseSearchEngine,
+    ImageSearchEngine,
+    ExtractionEngine,
+    ContentCleaner,
+)
+
+# Search and extract
+engine = EnterpriseSearchEngine()
+results = engine.search_and_extract(
+    query="machine learning transformers",
+    max_results=3,
+)
+
+# Each result has: title, url, content, confidence, score, sentiment
+for r in results:
+    print(f"{r.title} (confidence: {r.confidence:.2f})")
+    print(r.content[:200])
+    print("---")
+
+# Image search
+img_engine = ImageSearchEngine()
+images = img_engine.search(
+    query="mountain landscape",
+    max_results=5,
+    min_width=1920,
+    min_height=1080,
+)
+
+# Direct URL extraction
+extractor = ExtractionEngine()
+content = extractor.extract_content(
+    url="https://example.com/article",
+    max_fetch_retries=3,
+)
+```
+
+### Key Classes
+
+| Class | Purpose |
+|-------|---------|
+| `EnterpriseSearchEngine` | Web/news search + parallel content extraction |
+| `ImageSearchEngine` | Image search with dimension/color/license filters |
+| `ExtractionEngine` | Multi-strategy URL content extraction |
+| `ContentCleaner` | Text cleaning, structuring, and confidence scoring |
+
+---
+
+## Project Structure
+
+```
+scout-it/
+├── scout_it/                    # Main package
+│   ├── __init__.py              # Public API + exports
+│   ├── cli.py                   # Argeparse CLI (26 subcommands)
+│   ├── extraction.py            # Search engines + extraction
+│   ├── cleaner.py               # Content cleaning
+│   ├── config.py                # Credential management
+│   ├── output.py                # Output path routing + markdown rendering
+│   ├── proxy_pool.py            # Auto-rotating proxy pool
+│   ├── social.py                # Telegram, Discord, Reddit extraction
+│   ├── github_extract.py        # All 12 GitHub extractors
+│   ├── video_utils.py           # YouTube metadata extraction
+│   ├── engines.py               # Brave, Bing, Google, SerpAPI engine wrappers
+│   └── domain_stats.py          # Strategy bandit cache persistence
+├── tests/                       # Test suite (151+ tests)
+│   ├── test_cli.py
+│   ├── test_output.py
+│   ├── test_social.py
+│   ├── test_github_extract.py
+│   ├── test_advanced_evasion.py
+│   └── ...
+├── docs/                        # Search-specific documentation
+├── scout-it-website/            # React TypeScript landing page & docs site
+├── pyproject.toml
+├── setup.py
+├── CHANGELOG.md
+├── README.md
+├── AGENTS.md
+└── LICENSE
+```
+
+---
+
+## Testing
+
+```bash
+# Run full test suite
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ --cov=scout_it --cov-report=term-missing
+
+# Run specific test file
+pytest tests/test_output.py -v
+```
+
+Minimum coverage target: 80%. The test suite includes unit tests, integration tests with mocked APIs, and real tests for live CLI commands.
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| `ModuleNotFoundError: playwright` | Playwright not installed | `pip install playwright && playwright install chromium` |
+| Empty results / 0 returned | Site blocks requests | Try `--tls-impersonate` or `--js-render` |
+| `github-discussions` returns error | No token | Set `GITHUB_TOKEN` — GraphQL requires authentication |
+| DNS-looking error on fetch | DNS resolution failed | Retries automatically via DoH; disable with `--no-dns-fallback` |
+| `PROXY_LIST` not working | Bad proxy format | Use `http://user:pass@host:port` format, comma-separated |
+| Content extraction too short | JS-rendered page | Add `--js-render` to enable Playwright |
+
+---
+
+## Limitations
+
+- **YouTube only** for `video-extract` — other platforms return `unsupported_platform` error
+- **Telegram**: public channels only (via `t.me/s/` preview); no private channel access
+- **Discord**: requires a bot token; no cross-server topic search
+- **Reddit**: reliability varies as of 2026 — Reddit blocks most anonymous requests
+- **GitHub Discussions**: requires a token (GraphQL-only, no anonymous access)
+- **GitHub code search**: 10 requests/minute rate limit even with a token
+- **Multi-search**: requires API keys for Brave, Bing, Google, and/or SerpAPI engines
+- **No Twitter/Instagram/TikTok**: these platforms are not supported and return clear errors
+- **scout-it must be installed** (`pip install`) — standalone script use is not supported

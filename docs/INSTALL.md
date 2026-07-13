@@ -85,7 +85,7 @@ After installation, use:
 
 ```bash
 # Check version
-scout-it --version          # Shows scout-it 1.4.0
+scout-it --version          # Shows scout-it 1.5.0
 scout-it -v                 # Short flag
 
 # Search commands

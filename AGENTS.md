@@ -1,6 +1,6 @@
 # 🤖 AGENTS.md - Instructions for AI Coding Agents
 
-**Project:** scout-it v1.4.0  
+**Project:** scout-it v1.5.0  
 **Author:** Ashok-gakr  
 **Date:** June 12, 2026  
 **Status:** Production Ready

@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 📝 README — complete rewrite for v1.5.0 accuracy
+
+- Full rewrite of root README.md (was outdated with old defaults, flag names, output paths, and missing features).
+- Added all 7 search command flag tables, 12 GitHub commands, 3 social commands, 3 utility commands.
+- Added resilience layer documentation (5-tier fallback chain, DoH, bandit, proxy pool).
+- Added credentials & configuration section with all env vars and precedence rules.
+- Added programmatic API examples, updated project structure, testing, troubleshooting.
+
+### 🚀 Version bump 1.4.0 → 1.5.0
+
+- Bumped version in `pyproject.toml`, `setup.py`, `scout_it/__init__.py`.
+- Updated version references in `AGENTS.md` and `docs/INSTALL.md`.
+
 ### 📝 Website — data files audited and aligned with CLI source code
 
 - **src/data/searchFlags.ts**: Full audit against actual argparse definitions for all 7 flag groups. Fixed defaults, descriptions, flag aliases, combined entries split, missing flags added (--workers on news-search, --out/--markdown on multi-search), non-existent flags removed (--json from web/news/image/video-search), --license-image name corrected, min/max-width/height separated, retry/backoff entries split.

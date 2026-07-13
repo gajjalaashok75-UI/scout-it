@@ -65,7 +65,7 @@ from .config import (
 )
 from .output import render_markdown, resolve_output_path, write_json_output
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 __author__ = "Ashok-gakr"
 __license__ = "MIT"
 
