@@ -18,17 +18,23 @@ from scout_it import browser_profile as bp
 
 class TestTlsFingerprint:
     def test_is_available_false_when_not_installed(self):
-        # Mock is_available to False to test the graceful-degradation path
-        # regardless of whether curl_cffi is actually installed.
-        with mock.patch.object(tls, "is_available", return_value=False):
-            assert tls.is_available() is False
+        try:
+            import curl_cffi  # noqa: F401
+            pytest.skip("curl_cffi is installed -- cannot test the not-installed path")
+        except ImportError:
+            pass
+        assert tls.is_available() is False
 
     def test_fetch_reports_clear_error_when_unavailable(self):
-        with mock.patch.object(tls, "is_available", return_value=False):
-            result = tls.fetch("https://example.com")
-            assert result["status"] == "failed"
-            assert "curl_cffi" in result["error"]
-            assert "pip install" in result["error"]
+        try:
+            import curl_cffi  # noqa: F401
+            pytest.skip("curl_cffi is installed -- cannot test the not-installed path")
+        except ImportError:
+            pass
+        result = tls.fetch("https://example.com")
+        assert result["status"] == "failed"
+        assert "curl_cffi" in result["error"]
+        assert "pip install" in result["error"]
 
     def test_fetch_never_raises_even_when_unavailable(self):
         try:

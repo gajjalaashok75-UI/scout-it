@@ -32,8 +32,7 @@ def _amp_candidates(url: str) -> List[str]:
     # Common AMP URL conventions.
     if not parsed.path.rstrip("/").endswith("amp"):
         candidates.append(urlunparse(parsed._replace(path=parsed.path.rstrip("/") + "/amp")))
-    new_query = ("&" if parsed.query else "") + "output=amp"
-    candidates.append(urlunparse(parsed._replace(query=parsed.query + new_query)))
+    candidates.append(url + ("&" if parsed.query else "?") + "output=amp")
     return candidates
 
 
@@ -46,8 +45,7 @@ def _mobile_candidates(url: str) -> List[str]:
 
 def _print_candidates(url: str) -> List[str]:
     parsed = urlparse(url)
-    new_query = ("&" if parsed.query else "") + "print=1"
-    candidates = [urlunparse(parsed._replace(query=parsed.query + new_query))]
+    candidates = [url + ("&" if parsed.query else "?") + "print=1"]
     if not parsed.netloc.startswith("print."):
         candidates.append(urlunparse(parsed._replace(netloc="print." + parsed.netloc)))
     return candidates

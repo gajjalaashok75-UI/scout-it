@@ -349,16 +349,12 @@ def fetch_resilient(
 
     proxy_info = _pp.get_default_pool().get()
 
-    # Separate flag from force_js so the bandit's Playwright recommendation
-    # skips Tier 1 (requests) but still allows Tier 1.5 (TLS impersonation)
-    # to be attempted before falling through to Playwright.
-    _bandit_skip_tier1 = False
     if enable_bandit and not force_js:
         try:
             from . import strategy_bandit as _bandit
             choice = _bandit.choose_strategy(url, available_tiers=["requests", "playwright", "basic-fallback"])
             if choice["source"] == "bandit" and choice["tier"] == "playwright" and choice["confidence"] >= 0.7:
-                _bandit_skip_tier1 = True
+                force_js = True
                 errs.append(f"bandit: skipping tier 1 -- playwright has a {choice['confidence']:.0%} recorded success rate for this domain")
         except Exception:
             pass  # the bandit recommending nothing is exactly the same as it being disabled
@@ -385,7 +381,7 @@ def fetch_resilient(
         return False
 
     # ---------------- Tier 1: requests ----------------
-    if not force_js and not _bandit_skip_tier1:
+    if not force_js:
         for attempt in range(max(1, max_retries)):
             total_attempts += 1
             attempt_start = time.time()
@@ -460,10 +456,8 @@ def fetch_resilient(
 
             if attempt < max_retries - 1:
                 time.sleep(wait)
-    elif force_js:
-        errs.append("tier 1 (requests) skipped: force_js=True")
     else:
-        errs.append("tier 1 (requests) skipped: bandit recommends playwright")
+        errs.append("tier 1 (requests) skipped: force_js=True")
 
     # ---------------- Tier 1.5 (opt-in): TLS/JA3 fingerprint impersonation ----------------
     if enable_tls_impersonate and not force_js:
@@ -502,7 +496,7 @@ def fetch_resilient(
     # when force_js was explicitly requested, or when at least one attempt
     # DID get a response (i.e. the server is up but something looked
     # bot-blocked, which JS-rendering can plausibly get past).
-    should_try_js = enable_js_fallback and (force_js or _bandit_skip_tier1 or got_any_http_response)
+    should_try_js = enable_js_fallback and (force_js or got_any_http_response)
     if enable_js_fallback and not should_try_js:
         errs.append("skipping Playwright tier: no tier-1 attempt reached the server (pure connection/DNS-level failure)")
 

@@ -653,17 +653,28 @@ scout-it retries and falls back at **two independent layers**, and it's worth un
 
 ### 2. Content-fetch layer: the `fetch_resilient()` fallback chain
 
-Every individual page fetch — web-search result extraction, news-search article extraction, `fetch-url`, and the YouTube page fetch behind `video-extract` — goes through a shared **three-tier fallback chain**:
+Every individual page fetch — web-search result extraction, news-search article extraction, `fetch-url`, and the YouTube page fetch behind `video-extract` — goes through a shared, multi-tier fallback chain:
 
 ```
-Tier 1: requests            (up to --max-fetch-retries attempts, UA rotation, backoff)
-   │  fails / looks bot-blocked (403/429/503, captcha, "enable JS", tiny body, etc.)
-   ▼
-Tier 2: Playwright (headless Chromium)   (up to --max-fetch-retries attempts)
-   │  fails, or Playwright isn't installed, or the failure was a pure
-   │  connection/DNS-level error where a browser can't do any better
-   ▼
-Tier 3: last-resort basic request        (one attempt, minimal non-fingerprinted headers)
+Tier 1:   requests                          (up to --max-fetch-retries attempts, rotating full
+          │                                  browser header profiles, transient/permanent-aware
+          │                                  backoff honoring Retry-After, transparent proxy
+          │                                  rotation if PROXY_LIST is configured, automatic
+          │                                  DNS-over-HTTPS retry on DNS-looking failures)
+          │  fails / looks bot-blocked (403/429/503, captcha, "enable JS", tiny body, etc.)
+          ▼
+Tier 1.5: TLS/JA3 impersonation             (opt-in: --tls-impersonate, needs
+          │                                  pip install scout-it[tls-impersonate])
+          ▼
+Tier 2:   Playwright (headless Chromium)    (up to --max-fetch-retries attempts; optionally a
+          │                                  persistent profile via --persistent-profile)
+          │  fails, or Playwright isn't installed, or the failure was a pure
+          │  connection/DNS-level error where a browser can't do any better
+          ▼
+Tier 3:   last-resort basic request         (one attempt, minimal non-fingerprinted headers)
+          ▼
+Tier 4:   alternate-source ladder           (opt-in: --enable-alternate-source — AMP/mobile/
+                                              print URL variants, then a Wayback Machine snapshot)
 ```
 
 Notes on the design:
@@ -673,6 +684,11 @@ Notes on the design:
 - `--no-js-fallback` disables Tier 2 entirely (useful if Playwright/Chromium isn't installed in your environment, or you want fast-fail behavior).
 - Playwright is optional: `pip install scout-it[js-render] && playwright install chromium`. If it isn't installed, Tier 2 is skipped with a note in the diagnostics and the chain still falls through to Tier 3.
 - `fetch-url --js-render` skips straight to Tier 2 instead of trying `requests` first (useful when you already know a page needs JS).
+- **`--use-bandit`**: once a domain has enough recorded fetch history (`scout-it stats` to see it), and Playwright has clearly outperformed plain `requests` for that specific domain, skips the doomed Tier 1 attempt and goes straight to Tier 2. Off by default; without it, or for domains without enough history yet, behavior is exactly the fixed waterfall above.
+- **`scout-it doctor`** checks whether Playwright/Chromium is actually installed (not just the pip package), whether a proxy pool is configured, cache sizes, and configured credentials — useful before debugging "why does this always fall back to Tier 3."
+- **`scout-it stats`** shows what's been learned per domain: which tier/proxy combination has the best success rate, and how many attempts have been recorded.
+
+Every layer beyond Tier 1-3 that isn't explicitly marked "opt-in" above degrades transparently: a `PROXY_LIST`-less setup, a DNS-over-HTTPS lookup that fails, or a missing `curl_cffi` install all just fall through to the next tier rather than erroring.
 
 ### DDGS Signature Compatibility
 

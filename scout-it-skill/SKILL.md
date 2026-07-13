@@ -24,18 +24,20 @@ scout-it <subcommand> [options]
 
 | Subcommand | Purpose |
 |------------|---------|
-| `web-search` | Web search with full content extraction (5-layer pipeline) |
+| `web-search` | Web search with full content extraction and a multi-tier resilient fetch chain |
 | `news-search` | News search with full article content extraction |
 | `image-search` | Image search (with optional download) |
 | `video-search` | Video search with duration/resolution filters |
 | `fetch-url` | Extract readable content from a single URL |
 | `video-extract` | Extract video transcripts/subtitles (YouTube) |
 | `multi-search` | Search across DuckDuckGo + Brave/Bing/Google/SerpAPI in parallel |
-| `list-engines` | List available engines and their config status |
+| `list-engines` | List available search engines and their config status |
 | `config` | Set up API keys/tokens for all platforms |
+| `stats` | Show per-domain fetch-strategy stats learned by the local strategy cache |
+| `doctor` | Environment self-check: Playwright, proxy config, cache health, credentials, connectivity |
 | `github-repo` | Get comprehensive GitHub repo details |
 | `github-commits` | List commits in a GitHub repo |
-| `github-commit` | Full details for one commit with unified diff |
+| `github-commit` | Full details for one commit with unified diff (+ line numbers) |
 | `github-pr` | Get PR with full diff and changed files |
 | `github-prs` | List PRs in a repo |
 | `github-folder` | List/fetch every file under a repo folder |
@@ -45,7 +47,7 @@ scout-it <subcommand> [options]
 | `github-search-code` | Search code across GitHub (requires GITHUB_TOKEN) |
 | `github-search-repos` | Search GitHub repositories |
 | `github-discussions` | List GitHub Discussions (requires GITHUB_TOKEN) |
-| `telegram-channel` | Fetch posts from a public Telegram channel |
+| `telegram-channel` | Fetch posts from a public Telegram channel, or search for channels by topic |
 | `discord-channel` | Fetch messages from a Discord channel (requires DISCORD_BOT_TOKEN) |
 | `reddit-search` | Best-effort Reddit search |
 
@@ -78,6 +80,12 @@ scout-it web-search --query "your search query"
 | `--retry-backoff` | float | `1.0` | Backoff seconds between retries |
 | `--max-fetch-retries` | int | `3` | Retry attempts per fetch tier (requests → Playwright) |
 | `--no-js-fallback` | flag | — | Disable Playwright fallback on blocked pages |
+| `--enable-alternate-source` | flag | — | If every fetch tier fails, try AMP/mobile/print URL variants + a Wayback Machine snapshot before giving up (extra requests, opt-in) |
+| `--no-dns-fallback` | flag | — | Disable the DNS-over-HTTPS retry that otherwise kicks in on DNS-looking failures (on by default) |
+| `--tls-impersonate` | flag | — | Insert a browser-accurate TLS/JA3 fingerprint tier between requests and Playwright — needs `pip install scout-it[tls-impersonate]` |
+| `--persistent-profile` | flag | — | Use a persistent Playwright profile (cookies/session survive across runs) instead of a throwaway context for the JS-render tier |
+| `--profile-name` | str | `default` | Persistent profile name — only meaningful with `--persistent-profile` |
+| `--use-bandit` | flag | — | Once a domain has enough recorded history, skip straight to whichever fetch tier has actually worked best for it instead of always starting with plain requests — see `scout-it stats` |
 
 **Examples:**
 ```bash
@@ -95,6 +103,12 @@ scout-it web-search --query "climate policy" --region us-en --timelimit w
 
 # HTML backend with aggressive retry
 scout-it web-search --query "niche topic" --backend html --retry-attempts 5 --retry-backoff 2.0
+
+# Struggling with a heavily-protected site: layer on more resilience
+scout-it web-search --query "site:example.com" --tls-impersonate --enable-alternate-source
+
+# Let the bandit route requests to whatever's actually worked before for these domains
+scout-it web-search --query "recurring research topic" --use-bandit
 ```
 
 ---
@@ -215,6 +229,8 @@ Non-YouTube URLs return a clear `unsupported_platform` error rather than failing
 
 ---
 
+## multi-search
+
 Search across multiple engines (DuckDuckGo + optional Brave/Bing/Google/SerpAPI) in parallel. DuckDuckGo works with no setup; the others need a free/paid API key each, configured via `scout-it config`.
 
 **Basic usage:**
@@ -257,6 +273,39 @@ scout-it config --clear-all
 ```
 
 A real environment variable (e.g. `GITHUB_TOKEN`) always takes precedence over a stored value. Use `scout-it list-engines` to see which search engines are configured specifically.
+
+---
+
+## stats
+
+Shows what scout-it has learned about each domain it's fetched from — which `{tier, proxy, fingerprint}` combination has worked best, overall success rate, and attempt counts. Backed by a local SQLite file at `~/.scout-it/strategy_cache.db` — pure local bookkeeping, no network calls. This is what `--use-bandit` (on `web-search`) reads from to decide whether to skip a doomed fetch tier.
+
+```bash
+scout-it stats                          # summary across all known domains
+scout-it stats --domain example.com     # stats for one domain only
+scout-it stats --export stats.json      # full dump to a JSON file
+scout-it stats --reset example.com      # forget learned history for one domain
+scout-it stats --reset-all              # forget everything
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--domain` | str | *(none)* | Show stats for one domain only |
+| `--export` | str | *(none)* | Write the full stats dump to this JSON path instead of printing a summary |
+| `--reset` | str | *(none)* | Forget all recorded strategy history for one domain |
+| `--reset-all` | flag | — | Forget all recorded strategy history for every domain |
+
+---
+
+## doctor
+
+Runs a battery of lightweight, local-first checks (no destructive actions) to diagnose "why does this always fall back to tier 3" type questions: whether Playwright/Chromium is actually installed (not just the pip package), whether `PROXY_LIST` is configured and reachable, response-cache and strategy-cache size, which credentials are configured, and basic internet connectivity.
+
+```bash
+scout-it doctor
+```
+
+No flags — always runs the full check. Every check is independent, so one failing (e.g. Playwright not installed) doesn't stop the others from reporting.
 
 ---
 
@@ -345,12 +394,38 @@ Once a page's HTML is fetched, extracting the *main content* tries these in orde
 5. Heuristic (BeautifulSoup-based) — ultimate fallback, always produces *something*
 ```
 
-This is separate from the **fetch** fallback chain (getting the raw HTML in the first place), which is requests → Playwright → a last-resort basic request — see `--no-js-fallback`/`--max-fetch-retries` on web-search/news-search/fetch-url/video-extract.
+This is separate from the **fetch** fallback chain (getting the raw HTML in the first place) — see below.
 
-## Config directory
+## Fetch resilience chain (the "layers")
 
-Credentials stored at `~/.scout-it/credentials.json` (owner-only file permissions on POSIX; see `scout-it config`).
-Output files default to `.scout-it/` in the current working directory (created automatically).
+Getting a page's raw HTML tries these layers in order, all inside a single `fetch_resilient()` call shared by every command that fetches a URL:
+
+```
+Tier 1    requests                     — cheap, fast; full consistent browser-header-profile
+                                          rotation; honors Retry-After/rate-limit headers instead
+                                          of guessing backoff; routed through PROXY_LIST if set
+                                          (transparently direct if not)
+   ↳ on a DNS-looking failure: one DNS-over-HTTPS retry against the resolved IP (on by default)
+Tier 1.5  TLS/JA3 impersonation        — opt-in (--tls-impersonate), needs curl_cffi installed
+Tier 2    Playwright (headless)        — only when Tier 1/1.5 fail or look blocked; optionally a
+                                          persistent profile (--persistent-profile) instead of a
+                                          throwaway context
+Tier 3    Basic last-resort request    — minimal, non-fingerprinted headers
+Tier 4    Alternate-source ladder      — opt-in (--enable-alternate-source): AMP/mobile/print URL
+                                          variants, then a Wayback Machine snapshot
+```
+
+With `--use-bandit`, once a domain has enough recorded history (see `scout-it stats`) showing Playwright reliably outperforms plain requests for it, Tier 1 is skipped entirely instead of wasting an attempt on it — this only changes behavior for domains with real accumulated history; everything else follows the tiers above unchanged.
+
+Every attempt (success or failure) is recorded to the local strategy cache regardless of whether `--use-bandit` is on — `scout-it stats` reads that history any time, and `--use-bandit` just chooses to *act* on it during the fetch itself.
+
+## Config / cache directories
+
+- Credentials: `~/.scout-it/credentials.json` (owner-only file permissions; see `scout-it config`)
+- Strategy cache (per-domain fetch history): `~/.scout-it/strategy_cache.db` (see `scout-it stats`)
+- Response cache: `~/.scout-it/cache/`
+- Persistent browser profiles: `~/.scout-it/browser-profiles/<name>/` (only created with `--persistent-profile`)
+- Output files default to `.scout-it/` in the current working directory (created automatically)
 
 ## Rate limiting
 
@@ -359,3 +434,4 @@ DuckDuckGo may rate-limit aggressive usage. Recommendations:
 - Use `--retry-attempts 5 --retry-backoff 2.0` for important queries
 - If you see zero results, try `--backend html` or `--no-js-fallback`
 - For high-volume needs, use `multi-search` with additional engines
+- For a single heavily-protected domain, layer on `--tls-impersonate` and/or `--enable-alternate-source`; run `scout-it doctor` first to confirm Playwright/curl_cffi are actually available before relying on them
