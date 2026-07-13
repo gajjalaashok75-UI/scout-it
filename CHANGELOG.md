@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔧 Fixed — bare .md output filenames now route under .scout-it/ like .json does
+
+- `resolve_output_path()` in `output.py` now routes bare `.md` filenames under `.scout-it/` (e.g. `--out result.md` → `.scout-it/result.md`), matching the existing behavior for `.json` files. Previously they landed at the project root.
+- The same fix applies to `--markdown --out name` (no extension) → `.scout-it/name.md`, and `--markdown --out custom.txt` → `.scout-it/custom.md`.
+
+### 🔧 Fixed — --download-dir, --export, --save-path-dir now route under .scout-it/
+
+- `--download-dir` default changed from `downloaded_images` to `.scout-it/downloaded_images`; bare dir names now route under `.scout-it/`.
+- `stats --export` bare `.json` filenames now route under `.scout-it/`.
+- `github-folder --save-path-dir` bare dir names now route under `.scout-it/`.
+
+### 🚀 Added — scout-it --version / -v
+
+- New `-v`/`--version` flag on the root CLI reports the installed version (e.g. `scout-it 1.4.0`).
+
+### 📝 Added — curl_cffi listed in requirements.txt
+
+- Added `curl_cffi>=0.7.0` as a commented optional dependency (TLS impersonation), matching the existing `playwright` pattern.
+
+### 🧪 Tests — output path routing coverage
+
+- Added 6 new tests to `TestResolveOutputPath` in `tests/test_output.py` covering bare `.md` filenames, `--markdown` with bare name (no ext), directory-prefixed paths, and absolute paths.
+
 ### 🚀 Added — the previously-deferred advanced resilience items, now implemented
 
 Follow-up to the resilience/performance round above: the four pieces

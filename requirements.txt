@@ -14,6 +14,10 @@ youtube-transcript-api>=0.6.2
 # playwright>=1.40.0
 # then run: playwright install chromium
 
+# Optional: TLS impersonation for anti-bot evasion (--tls-impersonate flag)
+# (pip install -r requirements.txt does NOT install this by default; see tls-impersonate extra)
+# curl_cffi>=0.7.0
+
 # Legacy fallback (only needed if `ddgs` is unavailable in your environment;
 # data_scout automatically falls back to this package name if present)
 # duckduckgo-search>=3.9.0

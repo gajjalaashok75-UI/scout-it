@@ -89,6 +89,9 @@ class TestWriteJsonOutput:
 
 
 class TestResolveOutputPath:
+
+    # --- default (no --out, no --markdown) ---
+
     def test_default_no_markdown(self):
         r = om.resolve_output_path(".scout-it/web_search_results.json", False, "web_search_results")
         assert r["format"] == "json"
@@ -99,27 +102,68 @@ class TestResolveOutputPath:
         assert r["format"] == "markdown"
         assert r["path"] == Path(".scout-it/web_search_results.md")
 
+    # --- --markdown conflict with explicit .json ---
+
     def test_explicit_json_out_with_markdown_flag_errors(self):
         r = om.resolve_output_path("custom.json", True, "web_search_results")
         assert "error" in r
 
-    def test_explicit_md_out_without_markdown_flag(self):
+    # --- bare .md filename (fix: now routes under .scout-it/) ---
+
+    def test_explicit_md_out_routes_under_scout_it(self):
+        """--out custom.md without --markdown -> .scout-it/custom.md"""
         r = om.resolve_output_path("custom.md", False, "web_search_results")
         assert r["format"] == "markdown"
-        assert r["path"] == Path("custom.md")
+        assert r["path"] == Path(".scout-it/custom.md")
 
-    def test_bare_filename_lands_under_scout_it_dir(self):
+    def test_markdown_with_explicit_md_out_routes_under_scout_it(self):
+        """--markdown --out custom.md -> .scout-it/custom.md"""
+        r = om.resolve_output_path("custom.md", True, "web_search_results")
+        assert r["format"] == "markdown"
+        assert r["path"] == Path(".scout-it/custom.md")
+
+    # --- bare .json filename ---
+
+    def test_bare_json_filename_lands_under_scout_it(self):
         r = om.resolve_output_path("myfile.json", False, "web_search_results")
         assert r["path"] == Path(".scout-it/myfile.json")
+
+    # --- --markdown with bare name (no extension) ---
+
+    def test_markdown_with_bare_name_forces_scout_it_md(self):
+        """--markdown --out my_output (no ext) -> .scout-it/my_output.md"""
+        r = om.resolve_output_path("my_output", True, "web_search_results")
+        assert r["format"] == "markdown"
+        assert r["path"] == Path(".scout-it/my_output.md")
+
+    # --- paths with directory component are respected as-is ---
 
     def test_path_with_directory_honored_as_is(self):
         r = om.resolve_output_path("output/custom.json", False, "web_search_results")
         assert r["path"] == Path("output/custom.json")
 
+    def test_md_path_with_directory_honored_as_is(self):
+        r = om.resolve_output_path("output/custom.md", False, "web_search_results")
+        assert r["format"] == "markdown"
+        assert r["path"] == Path("output/custom.md")
+
+    def test_absolute_path_honored_as_is(self):
+        r = om.resolve_output_path("/tmp/result.json", False, "web_search_results")
+        assert r["path"] == Path("/tmp/result.json")
+
+    def test_absolute_md_path_honored_as_is(self):
+        r = om.resolve_output_path("/tmp/result.md", False, "web_search_results")
+        assert r["format"] == "markdown"
+        assert r["path"] == Path("/tmp/result.md")
+
+    # --- --markdown with custom non-.json out ---
+
     def test_markdown_flag_with_custom_non_json_out_forces_md_extension(self):
+        """--markdown --out custom.txt -> .scout-it/custom.md"""
         r = om.resolve_output_path("custom.txt", True, "web_search_results")
         assert r["format"] == "markdown"
         assert r["path"].suffix == ".md"
+        assert r["path"] == Path(".scout-it/custom.md")
 
 
 class TestRenderMarkdown:

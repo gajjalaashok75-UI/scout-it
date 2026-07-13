@@ -20,6 +20,7 @@ try:
     sys.stderr.reconfigure(encoding="utf-8")
 except Exception:
     pass  # Fallback: ignore if not supported
+import importlib.metadata
 import json
 import random
 import re
@@ -1124,6 +1125,11 @@ def main():
     parser = argparse.ArgumentParser(
         description='Complete search pipeline: web, image, news, video search + URL fetch'
     )
+    try:
+        ver = importlib.metadata.version("scout-it")
+    except Exception:
+        ver = "unknown"
+    parser.add_argument('-v', '--version', action='version', version=f'scout-it {ver}')
     
     # Subcommands for different search types
     subparsers = parser.add_subparsers(dest='command', help='Search commands')
@@ -1175,7 +1181,7 @@ def main():
     img_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/image_search_results.json)')
     img_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     img_parser.add_argument('--download', '-d', action='store_true', help='Download images')
-    img_parser.add_argument('--download-dir', default='downloaded_images', help='Download directory')
+    img_parser.add_argument('--download-dir', default='.scout-it/downloaded_images', help='Download directory (default: .scout-it/downloaded_images)')
     img_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
     img_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     img_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
@@ -1704,7 +1710,12 @@ def main():
             from .extraction import ImageSearchResult
             engine = ImageSearchEngine()
             engine.results = [ImageSearchResult(**r) for r in image_results]
-            engine.download_images(args.download_dir, min(10, len(image_results)))
+            # Route bare dir name under .scout-it/
+            dl_dir = args.download_dir
+            dl_path = Path(dl_dir)
+            if not dl_path.is_absolute() and dl_path.parent == Path("."):
+                dl_dir = str(Path(output_mod.DEFAULT_OUTPUT_DIR) / dl_path)
+            engine.download_images(dl_dir, min(10, len(image_results)))
         
         print()
 
@@ -2024,6 +2035,9 @@ def main():
         elif args.export:
             export = strategy_cache.export_all()
             out_path = Path(args.export)
+            # Bare filename lands under .scout-it/
+            if not out_path.is_absolute() and out_path.parent == Path("."):
+                out_path = Path(output_mod.DEFAULT_OUTPUT_DIR) / out_path
             output_mod.write_json_output(out_path, export)
             print(f"✅ Exported stats for {export['domain_count']} domain(s) to {out_path.resolve()}\n")
         elif args.domain:
@@ -2186,10 +2200,16 @@ def main():
     elif args.command == 'github-folder':
         _cmd_timer = _PhaseTimer(f"github-folder {args.repo}:{args.path or '/'}", recursive=args.recursive)
         with _cmd_timer:
+            # Route bare save-path-dir under .scout-it/
+            sp_dir = args.save_path_dir
+            if sp_dir is not None:
+                sp_path = Path(sp_dir)
+                if not sp_path.is_absolute() and sp_path.parent == Path("."):
+                    sp_dir = str(Path(output_mod.DEFAULT_OUTPUT_DIR) / sp_path)
             result = gh.github_folder(
                 args.repo, path=args.path, ref=args.ref, recursive=args.recursive,
                 include_content=args.include_content, max_files=args.max_files,
-                max_chars=args.max_chars, max_size=args.max_size, save_path_dir=args.save_path_dir,
+                max_chars=args.max_chars, max_size=args.max_size, save_path_dir=sp_dir,
             )
         out_path = Path(args.out)
         _write_output(out_path, result)
@@ -2200,8 +2220,8 @@ def main():
             print(f"❌ Error: {result['error_message']}\n")
         else:
             _cmd_timer.done(entries=result['entry_count'], files_fetched=result.get('files_fetched', 0) if args.include_content else 'n/a')
-            if args.save_path_dir and "files_saved_to_disk" in result:
-                print(f"   💾 {result['files_saved_to_disk']} files written to: {Path(args.save_path_dir).resolve()}")
+            if sp_dir and "files_saved_to_disk" in result:
+                print(f"   💾 {result['files_saved_to_disk']} files written to: {Path(sp_dir).resolve()}")
                 if result.get("save_errors"):
                     print(f"   ⚠️  {len(result['save_errors'])} files failed to save (see 'save_errors' in output)")
             print(f"   📂 Results saved to: {out_path.resolve()}\n")

@@ -178,9 +178,15 @@ def resolve_output_path(out_arg: str, markdown_flag: bool, default_stub: str) ->
 
     if markdown_flag:
         final_path = Path(DEFAULT_OUTPUT_DIR) / f"{default_stub}.md" if is_default_path else out_path.with_suffix(".md")
+        # Bare .md filename with no directory component lands under .scout-it/ too
+        if not final_path.is_absolute() and final_path.parent == Path("."):
+            final_path = Path(DEFAULT_OUTPUT_DIR) / final_path.name
         return {"path": final_path, "format": "markdown"}
 
     if ext == ".md":
+        # Bare .md filename with no directory component lands under .scout-it/
+        if not out_path.is_absolute() and out_path.parent == Path("."):
+            out_path = Path(DEFAULT_OUTPUT_DIR) / out_path.name
         return {"path": out_path, "format": "markdown"}
 
     # Bare filename with no directory component still lands under .scout-it/

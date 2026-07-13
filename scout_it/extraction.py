@@ -1376,7 +1376,7 @@ class ImageSearchEngine:
         
         return self.results
     
-    def download_images(self, output_dir: str = "downloaded_images", max_downloads: int = 10, max_retries: int = 3, max_workers: int = 5):
+    def download_images(self, output_dir: str = ".scout-it/downloaded_images", max_downloads: int = 10, max_retries: int = 3, max_workers: int = 5):
         """Download images to local directory with retries and parallel workers."""
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True)
