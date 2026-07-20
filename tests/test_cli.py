@@ -369,7 +369,7 @@ class TestSizeParsingUtility:
     
     def test_parse_size_string_bytes(self):
         """Test parsing size in bytes"""
-        from scout_it.cli import _parse_size_string
+        from scout_it.output import parse_size_string as _parse_size_string
         
         assert _parse_size_string("1024b") == 1024
         assert _parse_size_string("100B") == 100
@@ -377,7 +377,7 @@ class TestSizeParsingUtility:
     
     def test_parse_size_string_kilobytes(self):
         """Test parsing size in kilobytes"""
-        from scout_it.cli import _parse_size_string
+        from scout_it.output import parse_size_string as _parse_size_string
         
         assert _parse_size_string("1kb") == 1024
         assert _parse_size_string("100kb") == 102400
@@ -386,7 +386,7 @@ class TestSizeParsingUtility:
     
     def test_parse_size_string_megabytes(self):
         """Test parsing size in megabytes"""
-        from scout_it.cli import _parse_size_string
+        from scout_it.output import parse_size_string as _parse_size_string
         
         assert _parse_size_string("1mb") == 1024 ** 2
         assert _parse_size_string("5mb") == 5 * (1024 ** 2)
@@ -395,7 +395,7 @@ class TestSizeParsingUtility:
     
     def test_parse_size_string_gigabytes(self):
         """Test parsing size in gigabytes"""
-        from scout_it.cli import _parse_size_string
+        from scout_it.output import parse_size_string as _parse_size_string
         
         assert _parse_size_string("1gb") == 1024 ** 3
         assert _parse_size_string("2gb") == 2 * (1024 ** 3)
@@ -403,7 +403,7 @@ class TestSizeParsingUtility:
     
     def test_parse_size_string_invalid(self):
         """Test parsing invalid size strings"""
-        from scout_it.cli import _parse_size_string
+        from scout_it.output import parse_size_string as _parse_size_string
         
         assert _parse_size_string(None) is None
         assert _parse_size_string("") is None

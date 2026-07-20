@@ -463,7 +463,7 @@ def _enhance_video_descriptions(results: List[Dict[str, Any]], max_workers: int 
         return r
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        pool.map(_fetch_one, results)
+        list(pool.map(_fetch_one, results))
     return results
 
 
@@ -859,9 +859,6 @@ def video_extract(
     }
 
 
-# ---------------------------------------------------------------------------
-
-
 def _extract_html_title(html_text: str) -> str:
     """Extract page title from HTML text."""
     if not html_text:
@@ -871,38 +868,6 @@ def _extract_html_title(html_text: str) -> str:
         return ""
     title = re.sub(r"<[^>]+>", " ", match.group(1))
     return unescape(re.sub(r"\s+", " ", title)).strip()
-
-
-def _parse_size_string(size_str: Optional[str]) -> Optional[int]:
-    """Parse size string like '100kb', '1mb' to bytes. Returns None if invalid."""
-    if not size_str:
-        return None
-    
-    size_str = size_str.strip().lower()
-    
-    # Mapping of units to bytes
-    units = {
-        'b': 1,
-        'kb': 1024,
-        'mb': 1024 ** 2,
-        'gb': 1024 ** 3,
-    }
-    
-    # Try to parse the string
-    match = re.match(r'^([0-9.]+)\s*([a-z]+)$', size_str)
-    if not match:
-        return None
-    
-    try:
-        value = float(match.group(1))
-        unit = match.group(2)
-        
-        if unit not in units:
-            return None
-        
-        return int(value * units[unit])
-    except (ValueError, TypeError):
-        return None
 
 
 def _check_max_size_warning(max_size: Optional[str], main_content: Any) -> Optional[str]:
@@ -997,7 +962,7 @@ def fetch_url(
         fetch_tier = outcome["tier"]
 
         # Truncate HTML response if max_size is specified
-        max_size_bytes = _parse_size_string(max_size)
+        max_size_bytes = output_mod.parse_size_string(max_size)
         if max_size_bytes:
             encoded = response_text.encode('utf-8', errors='ignore')
             if len(encoded) > max_size_bytes:

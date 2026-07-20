@@ -314,25 +314,3 @@ def render_markdown(data: Any, title: str) -> str:
     body = _render_value(data, None, level=2)
     return f"# {title}\n\n{body}\n"
 
-
-# ---------------------------------------------------------------------------
-# Unified entry point used by every CLI dispatch block
-# ---------------------------------------------------------------------------
-
-def finalize_and_write(args: Any, data: Any, default_stub: str, title: str) -> Optional[str]:
-    """Resolve --out/--markdown, write the file, and return an error message
-    (or None on success). On success, ``args._resolved_out_path`` is set so
-    callers can print where the file went."""
-    resolved = resolve_output_path(args.out, getattr(args, "markdown", False), default_stub)
-    if "error" in resolved:
-        return resolved["error"]
-
-    out_path: Path = resolved["path"]
-    if resolved["format"] == "markdown":
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(render_markdown(data, title), encoding="utf-8")
-    else:
-        write_json_output(out_path, data)
-
-    args._resolved_out_path = out_path
-    return None

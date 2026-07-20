@@ -1128,12 +1128,14 @@ class EnterpriseSearchEngine:
             'results': [asdict(r) for r in self.results]
         }
         
-        json_path = Path(f"enterprise_search_{timestamp}.json")
+        out_dir = Path(".scout-it")
+        out_dir.mkdir(exist_ok=True)
+        json_path = out_dir / f"enterprise_search_{timestamp}.json"
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(master_data, f, indent=2)
-        
+
         # High-quality content directory
-        content_dir = Path(f"high_quality_content_{timestamp}")
+        content_dir = out_dir / f"high_quality_content_{timestamp}"
         content_dir.mkdir(exist_ok=True)
         
         high_quality_count = 0

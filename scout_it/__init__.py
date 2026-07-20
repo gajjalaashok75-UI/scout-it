@@ -1,7 +1,7 @@
 """
 scout-it: Enterprise-grade DuckDuckGo search toolkit with content extraction, cleaning, and structured JSON output.
 
-Version: 1.0.0
+Version: 1.5.0
 Author: Ashok-gakr
 License: MIT
 

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔧 Fixed — dead code cleanup and deduplication
+
+- **Removed duplicate `_parse_size_string`** from `cli.py` — the identical function already existed in `output.py` as `parse_size_string()`. Updated `cli.py` and test imports to use the shared version.
+- **Removed orphaned `finalize_and_write`** from `output.py` — was designed as a unified output entry point but never called anywhere. All dispatch blocks use `_write_output()` directly.
+- **Fixed unconsumed `pool.map()`** in `_enhance_video_descriptions` — wrapped with `list()` to force eager evaluation and surface worker exceptions.
+- **Routed `export_enterprise()` output** to `.scout-it/` directory instead of CWD, matching the project-wide convention.
+- **Fixed version docstring** in `__init__.py` — `1.0.0` → `1.5.0`.
+
 ### 📝 README — complete rewrite for v1.5.0 accuracy
 
 - Full rewrite of root README.md (was outdated with old defaults, flag names, output paths, and missing features).
