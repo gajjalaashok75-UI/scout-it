@@ -34,7 +34,6 @@ import json
 import logging
 import random
 import re
-import threading
 import time
 import xml.etree.ElementTree as ET
 from html import unescape
@@ -48,6 +47,7 @@ from urllib3.util.retry import Retry
 from . import header_profiles as _hp
 from . import proxy_pool as _pp
 from . import response_cache as _rc
+from ._utils import SimpleRateLimiter, prune_empty, build_retry_session
 
 logger = logging.getLogger(__name__)
 
@@ -72,28 +72,6 @@ PUBLISHER_CLEANUP_PATTERNS: Dict[str, List[str]] = {
 __all__ = ["google_news_search", "Deduplicator"]
 
 
-# ── Rate limiter ────────────────────────────────────────────────────────────
-
-
-class _SimpleRateLimiter:
-    """Thread-safe rate limiter — ported from references/ patterns."""
-
-    def __init__(self, rate_per_sec: float = RATE_PER_SEC):
-        self.min_interval = 1.0 / rate_per_sec if rate_per_sec > 0 else 0.0
-        self._lock = threading.Lock()
-        self._last = 0.0
-
-    def wait(self):
-        if self.min_interval <= 0:
-            return
-        with self._lock:
-            now = time.monotonic()
-            delta = now - self._last
-            if delta < self.min_interval:
-                time.sleep(self.min_interval - delta)
-            self._last = time.monotonic()
-
-
 # ── HTTP client ─────────────────────────────────────────────────────────────
 
 
@@ -101,24 +79,8 @@ class _NewsHttpClient:
     """Reusable HTTP client with Retry adapter + rate limiting."""
 
     def __init__(self):
-        self.rate_limiter = _SimpleRateLimiter(RATE_PER_SEC)
-        self.session = self._build_session()
-
-    def _build_session(self) -> requests.Session:
-        s = requests.Session()
-        retry = Retry(
-            total=MAX_RETRIES,
-            connect=MAX_RETRIES,
-            read=MAX_RETRIES,
-            backoff_factor=1.0,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["GET"],
-            respect_retry_after_header=True,
-        )
-        adapter = HTTPAdapter(max_retries=retry, pool_connections=20, pool_maxsize=20)
-        s.mount("http://", adapter)
-        s.mount("https://", adapter)
-        return s
+        self.rate_limiter = SimpleRateLimiter(RATE_PER_SEC)
+        self.session = build_retry_session(retries=MAX_RETRIES)
 
     def request_text(self, url: str, timeout: int = TIMEOUT) -> Optional[str]:
         """Make a rate-limited, retried request for raw text (RSS XML)."""
@@ -270,19 +232,6 @@ def _parse_rss_date(date_str: str) -> str:
     except Exception:
         return date_str
 
-
-def _prune_empty(obj: Any) -> Any:
-    """Recursively remove None / empty-string / empty-collection values.
-
-    Ported from ``FeedParser.prune_empty`` in the reference.
-    """
-    if isinstance(obj, dict):
-        cleaned = {k: _prune_empty(v) for k, v in obj.items()}
-        return {k: v for k, v in cleaned.items() if v not in (None, "", [], {}, ())}
-    if isinstance(obj, list):
-        cleaned = [_prune_empty(v) for v in obj]
-        return [v for v in cleaned if v not in (None, "", [], {}, ())]
-    return obj
 
 
 # ── Title cleaning ──────────────────────────────────────────────────────────
@@ -477,7 +426,7 @@ def _parse_rss_items(
         if image_url:
             result["image_url"] = image_url
 
-        items.append(_prune_empty(result))
+        items.append(prune_empty(result))
 
     return items
 

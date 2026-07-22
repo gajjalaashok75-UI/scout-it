@@ -66,6 +66,7 @@ from .config import (
 from .output import render_markdown, resolve_output_path, write_json_output
 from .wikimedia_source import SITE_MAP, wikimedia_search, WikimediaExtractor
 from .google_news_source import google_news_search, Deduplicator, build_google_news_url
+from .toi_rss_source import fetch_toi_news, LOCATION_FEEDS
 
 __version__ = "1.5.0"
 __author__ = "Ashok-gakr"
@@ -115,6 +116,8 @@ __all__ = [
     "resolve_output_path",
     "write_json_output",
     "google_news_search",
+    "fetch_toi_news",
+    "LOCATION_FEEDS",
     "wikimedia_search",
     "WikimediaExtractor",
     "SITE_MAP",

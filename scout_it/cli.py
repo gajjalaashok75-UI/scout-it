@@ -369,6 +369,9 @@ def news_search(
     max_fetch_retries: int = 3,
     enable_js_fallback: bool = True,
     source: Optional[str] = None,
+    locations: Optional[List[str]] = None,
+    max_chars: Optional[int] = None,
+    max_size: Optional[str] = None,
 ):
     """DuckDuckGo news search with full content extraction and cleaning.
 
@@ -435,6 +438,28 @@ def news_search(
     if not raw_results:
         return [], {'search_engine': search_stats, 'cleaner': {'total_input': 0, 'successful': 0, 'failed': 0, 'processed': 0}}
 
+    # ── Phase 1b: Fetch ToI RSS feeds for requested locations ──────
+    if locations:
+        from .toi_rss_source import fetch_toi_news
+
+        toi_results = fetch_toi_news(locations, max_per_location=max_results)
+        seen_urls = {r.get("url", "") for r in raw_results}
+        for r in toi_results:
+            url = r.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                raw_results.append({
+                    "title": r.get("title", ""),
+                    "url": url,
+                    "href": url,
+                    "body": r.get("body", ""),
+                    "source": r.get("source", "toi-rss"),
+                })
+        if toi_results:
+            search_stats["toi_locations"] = locations
+            search_stats["count"] = len(raw_results)
+            search_stats["total"] = len(raw_results)
+
     # Phase 2: Fetch and extract full article content in parallel, using the
     # requests -> Playwright -> basic-fallback resilient fetch chain.
     enriched_results = _extract_news_content(
@@ -447,12 +472,244 @@ def news_search(
     # Phase 3: Clean and structure via process_results
     structured_results, cleaner_stats = process_results(enriched_results)
 
+    # Phase 4: Apply max_chars / max_size truncation on each result
+    if max_chars is not None and max_chars > 0:
+        for r in structured_results:
+            content = r.get("cleaned_content", "") or r.get("main_content", "")
+            if isinstance(content, list):
+                content = " ".join(content)
+            if len(content) > max_chars:
+                truncated = content[:max_chars]
+                r["cleaned_content"] = truncated
+                r["main_content"] = truncated
+
+    if max_size is not None:
+        from .output import parse_size_string as _parse_size
+        size_bytes = _parse_size(max_size)
+        if size_bytes:
+            for key in ("raw_html", "html"):
+                val = r.get(key)
+                if isinstance(val, str) and len(val.encode("utf-8")) > size_bytes:
+                    r[key] = val[:size_bytes]
+
     # Combine stats
     combined_stats = {
         'search_engine': search_stats,
         'cleaner': cleaner_stats,
     }
     return structured_results, combined_stats
+
+
+def _wiki_do_bundle(
+    ex: Any, query: str, clean_text: bool,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Bundle mode: search all 12 Wikimedia projects for a topic."""
+    from urllib.parse import quote
+    from .wikimedia_source import SITE_MAP, SITE_HOME, clean_noise_text
+
+    rr = ex.bundle_topic(query)
+    if not rr.ok:
+        return [], {"errors": [rr.error or "bundle failed"]}
+
+    bundle_data = rr.data.get("data", rr.data)
+    raw_results: List[Dict[str, Any]] = []
+    for proj_key in SITE_MAP:
+        proj_results = bundle_data.get(f"{proj_key}_search", [])
+        if not proj_results:
+            continue
+        base_url = SITE_HOME.get(proj_key, "")
+        items = proj_results if isinstance(proj_results, list) else [proj_results]
+        for item in items:
+            title = item.get("title") if isinstance(item, dict) else ""
+            if not title:
+                continue
+            snippet = item.get("snippet") or item.get("extract") or ""
+            raw_results.append({
+                "title": title,
+                "href": f"{base_url}wiki/{quote(title.replace(' ', '_'))}",
+                "body": clean_noise_text(snippet) if clean_text else snippet,
+                "source": f"wikimedia:{proj_key}",
+                "pageid": item.get("pageid") if isinstance(item, dict) else None,
+            })
+    if clean_text:
+        for r in raw_results:
+            r["body"] = clean_noise_text(r["body"])
+    return raw_results, {"bundle": True, "total_results": len(raw_results)}
+
+
+def _wiki_do_summary(
+    ex: Any, query: str, language: str, clean_text: bool,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Summary mode: fetch REST API summary for a page."""
+    from urllib.parse import quote
+    from .wikimedia_source import clean_noise_text
+
+    rr = ex.wikipedia_summary(query)
+    if not rr.ok or not rr.data:
+        return [], {"errors": [rr.error or "summary fetch failed"]}
+
+    d = rr.data
+    result = {
+        "title": d.get("title", query),
+        "href": f"https://{language}.wikipedia.org/wiki/{quote(query.replace(' ', '_'))}",
+        "body": clean_noise_text(d.get("extract", "")) if clean_text else d.get("extract", ""),
+        "source": "wikimedia:wikipedia",
+        "description": d.get("description"),
+        "thumbnail": d.get("thumbnail"),
+    }
+    return [result], {"mode": "summary"}
+
+
+def _wiki_do_extract(
+    ex: Any, project: str, query: str, clean_text: bool,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Extract mode: fetch full-page Action API extract."""
+    from urllib.parse import quote
+    from .wikimedia_source import SITE_HOME, clean_noise_text
+
+    rr = ex.action_query_extract(project, query)
+    if not rr.ok or not rr.data:
+        return [], {"errors": [rr.error or "extract fetch failed"]}
+
+    d = rr.data
+    base_url = SITE_HOME.get(project, "https://en.wikipedia.org/")
+    result = {
+        "title": d.get("title", query),
+        "href": d.get("fullurl") or f"{base_url}wiki/{quote(query.replace(' ', '_'))}",
+        "body": clean_noise_text(d.get("extract", "")) if clean_text else d.get("extract", ""),
+        "source": f"wikimedia:{project}",
+        "pageid": d.get("pageid"),
+        "links": d.get("links"),
+        "categories": d.get("categories"),
+    }
+    return [result], {"mode": "extract"}
+
+
+def _wiki_do_sections(
+    ex: Any, project: str, query: str, clean_text: bool,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Sections mode: export section-by-section text."""
+    from urllib.parse import quote
+    from .wikimedia_source import SITE_HOME, clean_noise_text
+
+    rr = ex.export_sections(project, query)
+    if not rr.ok or not rr.data:
+        return [], {"errors": [rr.error or "sections fetch failed"]}
+
+    raw_results = []
+    for sec in rr.data:
+        raw_results.append({
+            "section_index": sec.get("section_index"),
+            "section_title": sec.get("section_title"),
+            "title": sec.get("title", query),
+            "href": f"{SITE_HOME.get(project, '')}wiki/{quote(query.replace(' ', '_'))}#{quote(sec.get('section_anchor', ''))}",
+            "body": clean_noise_text(sec.get("text", "")) if clean_text else sec.get("text", ""),
+            "source": f"wikimedia:{project}:sections",
+        })
+    return raw_results, {"mode": "sections"}
+
+
+def _wiki_do_crawl(
+    ex: Any, project: str, query: str,
+    max_results: int, crawl_depth: int, clean_text: bool,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Crawl mode: recursive spider from search seed."""
+    from urllib.parse import quote
+    from .wikimedia_source import SITE_HOME, clean_noise_text
+
+    rr = ex.spider_from_search(
+        project, query,
+        seed_limit=max_results,
+        depth=crawl_depth,
+        per_page_links=15,
+        max_pages=max_results * 5,
+    )
+    if not rr.ok:
+        return [], {"errors": [rr.error or "crawl failed"]}
+
+    raw_results = []
+    base_url = SITE_HOME.get(project, "https://en.wikipedia.org/")
+    for item in rr.data.get("results", []):
+        title = item.get("title", "")
+        raw_results.append({
+            "title": title,
+            "href": item.get("fullurl") or f"{base_url}wiki/{quote(title.replace(' ', '_'))}",
+            "body": clean_noise_text(item.get("extract", "")) if clean_text else item.get("extract", ""),
+            "source": f"wikimedia:{project}:crawl",
+            "pageid": item.get("pageid"),
+        })
+    return raw_results, {"mode": "crawl", "crawl_edges": len(rr.data.get("edges", [])), "visited_count": rr.data.get("visited_count", 0)}
+
+
+def _wiki_do_search(
+    ex: Any, project: str, query: str, max_results: int, clean_text: bool,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Default mode: search pages via Action API."""
+    from urllib.parse import quote
+    from .wikimedia_source import SITE_HOME, clean_noise_text
+
+    rr = ex.search_pages(project, query, limit=max_results)
+    if not rr.ok or not rr.data:
+        return [], {"errors": [rr.error or "search failed"]}
+
+    base_url = SITE_HOME.get(project, "https://en.wikipedia.org/")
+    raw_results = []
+    for item in rr.data:
+        title = item.get("title", "")
+        snippet = item.get("snippet", "")
+        raw_results.append({
+            "title": title,
+            "href": f"{base_url}wiki/{quote(title.replace(' ', '_'))}",
+            "body": clean_noise_text(snippet) if clean_text else snippet,
+            "source": f"wikimedia:{project}",
+            "pageid": item.get("pageid"),
+        })
+    if clean_text:
+        for r in raw_results:
+            r["body"] = clean_noise_text(r["body"])
+    return raw_results, {"mode": "search"}
+
+
+def _wiki_enrich_results(
+    raw_results: List[Dict[str, Any]],
+    timeout: int, workers: int, clean_text: bool, max_results: int,
+) -> Dict[str, Any]:
+    """Parallel page content extraction via fetch_resilient (same pipeline as fetch-url)."""
+    if not raw_results:
+        return {}
+    from concurrent.futures import ThreadPoolExecutor
+    from .wikimedia_source import clean_noise_text
+
+    _wiki_engine = ExtractionEngine()
+
+    def _fetch(item: dict) -> None:
+        url = item.get("href", "")
+        if not url:
+            item["extraction_status"] = "failed"
+            item["main_content"] = item.get("body", "")
+            return
+        try:
+            outcome = fetch_resilient(url, session=_wiki_engine.session, timeout=timeout, max_retries=1)
+            if outcome["status"] != "success":
+                item["extraction_status"] = "failed"
+                item["main_content"] = item.get("body", "")
+                return
+            content, method, confidence = _wiki_engine.extract_content(url, outcome["html"])
+            if clean_text:
+                content = clean_noise_text(content)
+            item["main_content"] = content
+            item["extraction_method"] = f"{method} ({outcome.get('tier', '?')})"
+            item["confidence_score"] = confidence
+            item["extraction_status"] = "success" if content.strip() else "failed"
+        except Exception:
+            item["extraction_status"] = "failed"
+            item["main_content"] = item.get("body", "")
+
+    with ThreadPoolExecutor(max_workers=min(workers, max_results or 1)) as executor:
+        list(executor.map(_fetch, raw_results))
+
+    successes = sum(1 for r in raw_results if r.get("extraction_status") == "success")
+    return {"extraction": {"total": len(raw_results), "successful": successes, "failed": len(raw_results) - successes}}
 
 
 def wikipedia_search(
@@ -494,15 +751,12 @@ def wikipedia_search(
     Returns:
         (results_list, stats_dict) — same pattern as web_search / news_search.
     """
-    from .wikimedia_source import SITE_MAP, SITE_HOME, WikimediaExtractor, clean_noise_text, normalize_text, RequestResult
-    from urllib.parse import quote
+    from .wikimedia_source import WikimediaExtractor
 
     ex = WikimediaExtractor(language=language, timeout=timeout, max_workers=workers)
     stats: Dict[str, Any] = {"source": f"wikimedia:{project}", "project": project, "language": language}
-    raw_results: List[Dict[str, Any]] = []
-    errors: List[str] = []
 
-    # ── robots.txt check ──────────────────────────────────────────────
+    # robots.txt check
     if robots:
         rr = ex.check_robots(project)
         if rr.ok:
@@ -510,184 +764,33 @@ def wikipedia_search(
         else:
             stats["robots_error"] = rr.error
 
-    # ── Bundle mode (searches ALL 12 projects) ────────────────────────
+    # Dispatch to mode handler
     if bundle:
-        rr = ex.bundle_topic(query)
-        if rr.ok:
-            bundle_data = rr.data.get("data", rr.data)
-            for proj_key in SITE_MAP:
-                proj_results = bundle_data.get(f"{proj_key}_search", [])
-                if proj_results:
-                    base_url = SITE_HOME.get(proj_key, "")
-                    for item in (proj_results if isinstance(proj_results, list) else [proj_results]):
-                        title = item.get("title") if isinstance(item, dict) else ""
-                        snippet = item.get("snippet") or item.get("extract") or ""
-                        if title:
-                            url_safe = quote(title.replace(" ", "_"))
-                            raw_results.append({
-                                "title": title,
-                                "href": f"{base_url}wiki/{url_safe}",
-                                "body": clean_noise_text(snippet) if clean_text else snippet,
-                                "source": f"wikimedia:{proj_key}",
-                                "pageid": item.get("pageid") if isinstance(item, dict) else None,
-                            })
+        results, mode_stats = _wiki_do_bundle(ex, query, clean_text)
+        stats.update(mode_stats)
+        return results, stats
 
-            stats["bundle"] = True
-            stats["total_results"] = len(raw_results)
-            # Clean if requested
-            if clean_text:
-                for r in raw_results:
-                    r["body"] = clean_noise_text(r["body"])
-            return raw_results, stats
-
-    # ── Summary mode (REST API) ────────────────────────────────────────
     if summary:
-        rr = ex.wikipedia_summary(query)
-        if rr.ok and rr.data:
-            d = rr.data
-            raw_results.append({
-                "title": d.get("title", query),
-                "href": f"https://{language}.wikipedia.org/wiki/{quote(query.replace(' ', '_'))}",
-                "body": clean_noise_text(d.get("extract", "")) if clean_text else d.get("extract", ""),
-                "source": "wikimedia:wikipedia",
-                "description": d.get("description"),
-                "thumbnail": d.get("thumbnail"),
-            })
-        else:
-            errors.append(rr.error or "summary fetch failed")
-        return raw_results, {**stats, "mode": "summary", "errors": errors or None}
-
-    # ── Extract mode (Action API) ─────────────────────────────────────
-    if extract:
-        rr = ex.action_query_extract(project, query)
-        if rr.ok and rr.data:
-            d = rr.data
-            base_url = SITE_HOME.get(project, "https://en.wikipedia.org/")
-            raw_results.append({
-                "title": d.get("title", query),
-                "href": d.get("fullurl") or f"{base_url}wiki/{quote(query.replace(' ', '_'))}",
-                "body": clean_noise_text(d.get("extract", "")) if clean_text else d.get("extract", ""),
-                "source": f"wikimedia:{project}",
-                "pageid": d.get("pageid"),
-                "links": d.get("links"),
-                "categories": d.get("categories"),
-            })
-        else:
-            errors.append(rr.error or "extract fetch failed")
-        return raw_results, {**stats, "mode": "extract", "errors": errors or None}
-
-    # ── Sections mode ─────────────────────────────────────────────────
-    if sections:
-        rr = ex.export_sections(project, query)
-        if rr.ok and rr.data:
-            for sec in rr.data:
-                raw_results.append({
-                    "section_index": sec.get("section_index"),
-                    "section_title": sec.get("section_title"),
-                    "title": sec.get("title", query),
-                    "href": f"{SITE_HOME.get(project, '')}wiki/{quote(query.replace(' ', '_'))}#{quote(sec.get('section_anchor', ''))}",
-                    "body": clean_noise_text(sec.get("text", "")) if clean_text else sec.get("text", ""),
-                    "source": f"wikimedia:{project}:sections",
-                })
-        else:
-            errors.append(rr.error or "sections fetch failed")
-        return raw_results, {**stats, "mode": "sections", "errors": errors or None}
-
-    # ── Crawl mode ────────────────────────────────────────────────────
-    if crawl:
-        rr = ex.spider_from_search(
-            project, query,
-            seed_limit=max_results,
-            depth=crawl_depth,
-            per_page_links=15,
-            max_pages=max_results * 5,
-        )
-        if rr.ok:
-            for item in rr.data.get("results", []):
-                title = item.get("title", "")
-                base_url = SITE_HOME.get(project, "https://en.wikipedia.org/")
-                raw_results.append({
-                    "title": title,
-                    "href": item.get("fullurl") or f"{base_url}wiki/{quote(title.replace(' ', '_'))}",
-                    "body": clean_noise_text(item.get("extract", "")) if clean_text else item.get("extract", ""),
-                    "source": f"wikimedia:{project}:crawl",
-                    "pageid": item.get("pageid"),
-                })
-            stats["crawl_edges"] = len(rr.data.get("edges", []))
-            stats["visited_count"] = rr.data.get("visited_count", 0)
-        else:
-            errors.append(rr.error or "crawl failed")
-        return raw_results, {**stats, "mode": "crawl", "errors": errors or None}
-
-    # ── Default: search pages ─────────────────────────────────────────
-    rr = ex.search_pages(project, query, limit=max_results)
-    if rr.ok and rr.data:
-        base_url = SITE_HOME.get(project, "https://en.wikipedia.org/")
-        for item in rr.data:
-            title = item.get("title", "")
-            snippet = item.get("snippet", "")
-            raw_results.append({
-                "title": title,
-                "href": f"{base_url}wiki/{quote(title.replace(' ', '_'))}",
-                "body": clean_noise_text(snippet) if clean_text else snippet,
-                "source": f"wikimedia:{project}",
-                "pageid": item.get("pageid"),
-            })
+        results, mode_stats = _wiki_do_summary(ex, query, language, clean_text)
+    elif extract:
+        results, mode_stats = _wiki_do_extract(ex, project, query, clean_text)
+    elif sections:
+        results, mode_stats = _wiki_do_sections(ex, project, query, clean_text)
+    elif crawl:
+        results, mode_stats = _wiki_do_crawl(ex, project, query, max_results, crawl_depth, clean_text)
     else:
-        errors.append(rr.error or "search failed")
+        results, mode_stats = _wiki_do_search(ex, project, query, max_results, clean_text)
 
-    # Clean if requested
-    if clean_text:
-        for r in raw_results:
-            r["body"] = clean_noise_text(r["body"])
+    errors = mode_stats.get("errors", [])
+    stats.update(mode_stats)
+    stats["results_count"] = len(results)
 
-    # ── Parallel page content extraction via fetch_resilient ─────────
-    # Fetch full Wikipedia page HTML and extract content via readability
-    # (same pipeline as fetch-url), NOT the truncated Action API extract.
-    if raw_results:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+    # Parallel content enrichment for search results
+    enrich_stats = _wiki_enrich_results(results, timeout, workers, clean_text, max_results)
+    if enrich_stats:
+        stats.update(enrich_stats)
 
-        _wiki_engine = ExtractionEngine()
-
-        def _fetch_wiki_page(item: dict) -> None:
-            url = item.get("href", "")
-            if not url:
-                item["extraction_status"] = "failed"
-                item["main_content"] = item.get("body", "")
-                return
-            try:
-                outcome = fetch_resilient(
-                    url, session=_wiki_engine.session,
-                    timeout=timeout, max_retries=1,
-                )
-                if outcome["status"] != "success":
-                    item["extraction_status"] = "failed"
-                    item["main_content"] = item.get("body", "")
-                    return
-                content, method, confidence = _wiki_engine.extract_content(
-                    url, outcome["html"]
-                )
-                if clean_text:
-                    content = clean_noise_text(content)
-                item["main_content"] = content
-                item["extraction_method"] = f"{method} ({outcome.get('tier', '?')})"
-                item["confidence_score"] = confidence
-                item["extraction_status"] = "success" if content.strip() else "failed"
-            except Exception:
-                item["extraction_status"] = "failed"
-                item["main_content"] = item.get("body", "")
-
-        with ThreadPoolExecutor(max_workers=min(workers, max_results or 1)) as executor:
-            list(executor.map(_fetch_wiki_page, raw_results))
-
-        successes = sum(1 for r in raw_results if r.get("extraction_status") == "success")
-        stats["extraction"] = {
-            "total": len(raw_results),
-            "successful": successes,
-            "failed": len(raw_results) - successes,
-        }
-
-    return raw_results, {**stats, "mode": "search", "results_count": len(raw_results), "errors": errors or None}
+    return results, {**stats, "errors": errors or None}
 
 
 def video_search(
@@ -1539,6 +1642,17 @@ def main():
     news_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier (requests, then Playwright) when fetching each article page')
     news_parser.add_argument('--no-js-fallback', dest='enable_js_fallback', action='store_false', help='Disable automatic Playwright fallback when an article fetch fails or looks blocked')
     news_parser.set_defaults(enable_js_fallback=True)
+    news_parser.add_argument('--location', nargs='+', default=None,
+                             help='Location(s) for localized news from Times of India RSS feeds. '
+                                  'Pattern: country or country-city. Examples: india, world, US, '
+                                  'UK, europe, china, pakistan, india-delhi, india-bangalore, '
+                                  'india-hyderabad. Multiple locations can be given, e.g. '
+                                  '--location india US india-delhi')
+    news_parser.add_argument('--max-chars', type=int, default=None,
+                             help='Maximum characters to keep in extracted article content')
+    news_parser.add_argument('--max-size', type=str, default=None,
+                             help='Maximum response size per article (e.g. 5mb). '
+                                  'Truncates the raw HTML before extraction.')
 
     # Video search subcommand
     video_parser = subparsers.add_parser(
@@ -2041,6 +2155,14 @@ def main():
     # News search
     elif args.command == 'news-search':
         print(f"\n📰 Starting news search: '{args.query}'\n")
+
+        # --max-chars and --max-size are mutually exclusive
+        if args.max_chars is not None and args.max_size is not None:
+            print("[red]Error: Cannot use both --max-chars and --max-size together. Use only ONE parameter:[/red]")
+            print("   • --max-chars 10000 (to limit extracted content by character count)")
+            print("   • --max-size 5mb (to limit response size by file size)")
+            sys.exit(1)
+
         news_results, stats = news_search(
             args.query,
             max_results=args.max,
@@ -2054,6 +2176,9 @@ def main():
             max_fetch_retries=args.max_fetch_retries,
             enable_js_fallback=args.enable_js_fallback,
             source=args.sources,
+            locations=args.location,
+            max_chars=args.max_chars,
+            max_size=args.max_size,
         )
 
         output = {

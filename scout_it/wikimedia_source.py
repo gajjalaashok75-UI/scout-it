@@ -38,7 +38,6 @@ import json
 import logging
 import random
 import re
-import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -49,12 +48,11 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import quote, urljoin
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 from . import header_profiles as _hp
 from . import proxy_pool as _pp
 from . import response_cache as _rc
+from ._utils import SimpleRateLimiter, prune_empty, build_retry_session
 
 logger = logging.getLogger(__name__)
 
@@ -133,28 +131,6 @@ class RequestResult:
     from_cache: bool = False
 
 
-# ──────────────────────── RATE LIMITER ────────────────────────
-
-
-class SimpleRateLimiter:
-    """Thread-safe rate limiter."""
-
-    def __init__(self, rate_per_sec: float = RATE_PER_SEC):
-        self.min_interval = 1.0 / rate_per_sec if rate_per_sec > 0 else 0.0
-        self._lock = threading.Lock()
-        self._last = 0.0
-
-    def wait(self):
-        if self.min_interval <= 0:
-            return
-        with self._lock:
-            now = time.monotonic()
-            delta = now - self._last
-            if delta < self.min_interval:
-                time.sleep(self.min_interval - delta)
-            self._last = time.monotonic()
-
-
 # ──────────────────────── TEXT CLEANING ────────────────────────
 
 
@@ -178,17 +154,6 @@ def strip_html(html: str) -> str:
     text = re.sub(r"<table.*?</table>", " ", text, flags=re.S | re.I)
     text = re.sub(r"<sup.*?</sup>", " ", text, flags=re.S | re.I)
     return normalize_text(re.sub(r"<[^>]+>", " ", text))
-
-
-def prune_empty(obj: Any) -> Any:
-    """Recursively remove None/empty values from dicts/lists."""
-    if isinstance(obj, dict):
-        cleaned = {k: prune_empty(v) for k, v in obj.items()}
-        return {k: v for k, v in cleaned.items() if v not in (None, "", [], {}, ())}
-    if isinstance(obj, list):
-        cleaned = [prune_empty(v) for v in obj]
-        return [v for v in cleaned if v not in (None, "", [], {}, ())]
-    return obj
 
 
 def dedupe_lines(text: str) -> str:
@@ -248,20 +213,7 @@ class WikimediaExtractor:
     # ── Session & HTTP ──────────────────────────────────────────────
 
     def _build_session(self) -> requests.Session:
-        s = requests.Session()
-        retry = Retry(
-            total=self.retries,
-            connect=self.retries,
-            read=self.retries,
-            backoff_factor=1.0,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["GET"],
-            respect_retry_after_header=True,
-        )
-        adapter = HTTPAdapter(max_retries=retry, pool_connections=20, pool_maxsize=20)
-        s.mount("http://", adapter)
-        s.mount("https://", adapter)
-        return s
+        return build_retry_session(retries=self.retries)
 
     def wikipedia_rest_base(self) -> str:
         """REST API base URL for Wikipedia."""
@@ -380,21 +332,6 @@ class WikimediaExtractor:
 
     # ── Cleaning utilities ──────────────────────────────────────────
 
-    def normalize_text(self, text: str) -> str:
-        return normalize_text(text)
-
-    def strip_html(self, html: str) -> str:
-        return strip_html(html)
-
-    def prune_empty(self, obj: Any) -> Any:
-        return prune_empty(obj)
-
-    def dedupe_lines(self, text: str) -> str:
-        return dedupe_lines(text)
-
-    def clean_noise_text(self, text: str) -> str:
-        return clean_noise_text(text)
-
     def flatten_for_table(self, obj: Dict, prefix: str = "") -> Dict:
         """Flatten a nested dict into dot-separated keys for CSV export."""
         out: Dict = {}
@@ -403,7 +340,7 @@ class WikimediaExtractor:
             if isinstance(v, dict):
                 out.update(self.flatten_for_table(v, key))
             elif isinstance(v, list):
-                out[key] = "; ".join(self.normalize_text(str(x)) for x in v[:50])
+                out[key] = "; ".join(normalize_text(str(x)) for x in v[:50])
             else:
                 out[key] = v
         return out
@@ -414,9 +351,9 @@ class WikimediaExtractor:
         if isinstance(rec, dict):
             for key in ("extract", "text", "snippet", "description"):
                 if key in rec and isinstance(rec[key], str):
-                    rec[f"{key}_clean"] = self.clean_noise_text(rec[key])
+                    rec[f"{key}_clean"] = clean_noise_text(rec[key])
             rec["ai_ready"] = True
-        return self.prune_empty(rec)
+        return prune_empty(rec)
 
     def dedupe_records(self, rows: List[Dict]) -> List[Dict]:
         """Deduplicate records by title+id+url+extract hash."""
@@ -442,11 +379,11 @@ class WikimediaExtractor:
 
     def clean_summary_result(self, data: Dict) -> Dict:
         """Clean and structure a Wikipedia page summary response."""
-        return self.prune_empty({
+        return prune_empty({
             "source_project": "wikipedia",
             "title": data.get("title"),
-            "description": self.normalize_text(data.get("description", "")),
-            "extract": self.clean_noise_text(data.get("extract", "")),
+            "description": normalize_text(data.get("description", "")),
+            "extract": clean_noise_text(data.get("extract", "")),
             "lang": data.get("lang"),
             "dir": data.get("dir"),
             "type": data.get("type"),
@@ -492,13 +429,13 @@ class WikimediaExtractor:
             if t and t not in seen_cat:
                 seen_cat.add(t)
                 categories.append(t)
-        return self.prune_empty({
+        return prune_empty({
             "source_project": project,
             "requested_title": title,
             "title": page.get("title", title),
             "pageid": page.get("pageid"),
             "fullurl": page.get("fullurl"),
-            "extract": self.clean_noise_text(
+            "extract": clean_noise_text(
                 page.get("extract", "") if isinstance(page.get("extract", ""), str) else ""
             ),
             "links": links,
@@ -546,12 +483,12 @@ class WikimediaExtractor:
             title = p.get("title")
             if title and title not in seen:
                 seen.add(title)
-                out.append(self.prune_empty({
+                out.append(prune_empty({
                     "source_project": project,
                     "title": title,
                     "pageid": p.get("pageid"),
                     "fullurl": p.get("fullurl"),
-                    "extract": self.clean_noise_text(p.get("extract", "")),
+                    "extract": clean_noise_text(p.get("extract", "")),
                 }))
         r.data = out
         return r
@@ -577,13 +514,13 @@ class WikimediaExtractor:
             title = item.get("title")
             if title and title not in seen:
                 seen.add(title)
-                out.append(self.prune_empty({
+                out.append(prune_empty({
                     "source_project": project,
                     "title": title,
                     "pageid": item.get("pageid"),
                     "size": item.get("size"),
                     "timestamp": item.get("timestamp"),
-                    "snippet": self.strip_html(item.get("snippet", "")),
+                    "snippet": strip_html(item.get("snippet", "")),
                 }))
         r.data = out
         return r
@@ -617,11 +554,11 @@ class WikimediaExtractor:
                 title = item.get("title")
                 if title and title not in seen:
                     seen.add(title)
-                    collected.append(self.prune_empty({
+                    collected.append(prune_empty({
                         "source_project": project,
                         "title": title,
                         "pageid": item.get("pageid"),
-                        "snippet": self.strip_html(item.get("snippet", "")),
+                        "snippet": strip_html(item.get("snippet", "")),
                     }))
                     if len(collected) >= limit:
                         break
@@ -652,7 +589,7 @@ class WikimediaExtractor:
         sections: List[Dict] = []
         seen: Set[str] = set()
         for s in parse.get("sections", []):
-            line = self.normalize_text(s.get("line", ""))
+            line = normalize_text(s.get("line", ""))
             if line and line not in seen:
                 seen.add(line)
                 sections.append({
@@ -661,10 +598,10 @@ class WikimediaExtractor:
                     "anchor": s.get("anchor"),
                     "number": s.get("number"),
                 })
-        r.data = self.prune_empty({
+        r.data = prune_empty({
             "source_project": project,
             "title": parse.get("displaytitle") or title,
-            "text": self.strip_html(html),
+            "text": strip_html(html),
             "sections": sections,
             "wikitext": parse.get("wikitext", {}).get("*", ""),
         })
@@ -695,9 +632,9 @@ class WikimediaExtractor:
             if not r.ok:
                 continue
             html = r.data.get("parse", {}).get("text", {}).get("*", "")
-            cleaned = self.clean_noise_text(self.strip_html(html))
+            cleaned = clean_noise_text(strip_html(html))
             if cleaned:
-                out.append(self.prune_empty({
+                out.append(prune_empty({
                     "source_project": project,
                     "title": title,
                     "section_index": idx,
@@ -732,11 +669,11 @@ class WikimediaExtractor:
             qid = item.get("id")
             if qid and qid not in seen:
                 seen.add(qid)
-                out.append(self.prune_empty({
+                out.append(prune_empty({
                     "source_project": "wikidata",
                     "id": qid,
                     "label": item.get("label"),
-                    "description": self.normalize_text(item.get("description", "")),
+                    "description": normalize_text(item.get("description", "")),
                     "match": item.get("match", {}),
                     "url": item.get("concepturi"),
                 }))
@@ -756,7 +693,7 @@ class WikimediaExtractor:
         if not r.ok:
             return r
         e = r.data.get("entities", {}).get(entity_id, {})
-        r.data = self.prune_empty({
+        r.data = prune_empty({
             "source_project": "wikidata",
             "id": entity_id,
             "label": e.get("labels", {}).get(self.language, {}).get("value"),
@@ -775,7 +712,7 @@ class WikimediaExtractor:
             endpoint="wikifunctions_fetch",
         )
         if r.ok:
-            r.data = self.prune_empty({
+            r.data = prune_empty({
                 "source_project": "wikifunctions", "zid": zid, "data": r.data,
             })
         return r
@@ -967,7 +904,7 @@ class WikimediaExtractor:
         """Run a broad multi-project topic bundle."""
         return RequestResult(
             ok=True, endpoint="topic_bundle",
-            data=self.prune_empty({
+            data=prune_empty({
                 "topic": topic,
                 "wikipedia_summary": self.wikipedia_summary(topic).data,
                 "wikipedia_extract": self.action_query_extract("wikipedia", topic).data,
