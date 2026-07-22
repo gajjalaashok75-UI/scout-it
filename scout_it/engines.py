@@ -249,12 +249,46 @@ class SerpApiEngine(SearchEngineBase):
         )
 
 
+class WikimediaEngine(SearchEngineBase):
+    """Wikimedia / Wikipedia search — zero-config, no API key needed.
+
+    Tier 0 because the MediaWiki Action API is open and free (rate limits apply
+    but no auth required).  Used as a fallback source for ``web-search`` / ``multi-search``
+    or directly via ``--sources wikimedia``.
+    """
+
+    name = "wikimedia"
+    tier = 0
+
+    def is_configured(self) -> bool:
+        return True
+
+    def search(self, query: str, max_results: int = 10, **kwargs) -> List[Dict[str, Any]]:
+        from .wikimedia_source import wikimedia_search
+
+        project = kwargs.get('project', 'wikipedia')
+        results = wikimedia_search(query, max_results=max_results, project=project)
+        out = []
+        for r in results:
+            out.append({
+                'title': r.get('title', ''),
+                'url': r.get('href', '') or r.get('url', ''),
+                'snippet': r.get('body', ''),
+                'source': f"wikimedia:{project}",
+            })
+        return out
+
+    def setup_hint(self) -> str:
+        return "No setup needed — Wikimedia API is open and free."
+
+
 ENGINE_REGISTRY: Dict[str, type] = {
     'duckduckgo': DuckDuckGoEngine,
     'brave': BraveSearchEngine,
     'bing': BingSearchEngine,
     'google': GoogleCSEEngine,
     'serpapi': SerpApiEngine,
+    'wikimedia': WikimediaEngine,
 }
 
 

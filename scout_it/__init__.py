@@ -64,6 +64,8 @@ from .config import (
     run_config_wizard,
 )
 from .output import render_markdown, resolve_output_path, write_json_output
+from .wikimedia_source import SITE_MAP, wikimedia_search, WikimediaExtractor
+from .google_news_source import google_news_search, Deduplicator, build_google_news_url
 
 __version__ = "1.5.0"
 __author__ = "Ashok-gakr"
@@ -112,4 +114,8 @@ __all__ = [
     "render_markdown",
     "resolve_output_path",
     "write_json_output",
+    "google_news_search",
+    "wikimedia_search",
+    "WikimediaExtractor",
+    "SITE_MAP",
 ]

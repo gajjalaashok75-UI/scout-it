@@ -825,9 +825,10 @@ class EnterpriseSearchEngine:
         enable_js_fallback: bool = True, enable_alternate_source: bool = False,
         enable_dns_fallback: bool = True, enable_tls_impersonate: bool = False,
         enable_persistent_profile: bool = False, browser_profile_name: str = 'default',
-        enable_bandit: bool = False,
+        enable_bandit: bool = False, source: Optional[str] = None,
     ):
         self.max_workers = min(max_workers, 12)  # CPU-aware
+        self.source = source  # Optional source override ('wikimedia' or None)
         self.timeout = timeout
         self.max_fetch_retries = max(1, int(max_fetch_retries))
         self.enable_js_fallback = enable_js_fallback
@@ -964,16 +965,63 @@ class EnterpriseSearchEngine:
         return self.results
     
     def _phase_search(self, query: str, max_results: int, search_options: Optional[Dict[str, Any]] = None):
-        """Advanced search phase"""
-        self.console.print(Panel(f"[bold cyan]🔍 ENTERPRISE SEARCH PHASE[/bold cyan]\n[italic cyan]{query}[/italic cyan]", 
-                               padding=(1, 2)))
-        
-        with Progress(console=self.console) as progress:
-            search_task = progress.add_task("Searching DuckDuckGo...", total=1)
+        """Advanced search phase with optional source override + fallback.
 
-            raw_results, ddgs_stats = _ddgs_list_search('text', query, max_results, options=search_options, timeout=self.timeout)
-            if ddgs_stats.get('error'):
-                self.console.print(f"[red]DDGS error:[/red] {ddgs_stats['error']}")
+        When ``self.source`` is set (e.g. ``'wikimedia'``), that source is
+        tried first and then DDGS acts as fallback on zero results.  When
+        ``self.source`` is ``None`` (default), DDGS is primary and the
+        alternate source acts as fallback on zero results.
+        """
+        from .wikimedia_source import wikimedia_search
+
+        source = self.source  # None = default, 'wikimedia' = override
+
+        self.console.print(Panel(f"[bold cyan]🔍 ENTERPRISE SEARCH PHASE[/bold cyan]\n[italic cyan]{query}[/italic cyan]",
+                               padding=(1, 2)))
+
+        with Progress(console=self.console) as progress:
+            raw_results: List[Dict[str, Any]] = []
+
+            # ── Determine primary and fallback ──────────────────────
+            use_wikimedia_first = source == 'wikimedia'
+            primary_source_label = "Wikimedia" if use_wikimedia_first else "DuckDuckGo"
+            fallback_source_label = "DuckDuckGo" if use_wikimedia_first else "Wikimedia"
+
+            # ── Primary search ──────────────────────────────────────
+            search_task = progress.add_task(f"Searching {primary_source_label}...", total=1)
+
+            if use_wikimedia_first:
+                wm = wikimedia_search(query, max_results=max_results)
+                for r in wm:
+                    raw_results.append({
+                        'title': r.get('title', ''),
+                        'href': r.get('href', ''),
+                        'body': r.get('body', ''),
+                        'source': r.get('source', 'wikimedia'),
+                    })
+                if not raw_results:
+                    self.console.print(f"[yellow]{primary_source_label} returned 0 results, "
+                                       f"falling back to {fallback_source_label}[/yellow]")
+                    raw_results, ddgs_stats = _ddgs_list_search(
+                        'text', query, max_results, options=search_options, timeout=self.timeout)
+                    if ddgs_stats.get('error'):
+                        self.console.print(f"[red]DDGS error:[/red] {ddgs_stats['error']}")
+            else:
+                raw_results, ddgs_stats = _ddgs_list_search(
+                    'text', query, max_results, options=search_options, timeout=self.timeout)
+                if ddgs_stats.get('error'):
+                    self.console.print(f"[red]DDGS error:[/red] {ddgs_stats['error']}")
+                if not raw_results:
+                    self.console.print(f"[yellow]{primary_source_label} returned 0 results, "
+                                       f"falling back to {fallback_source_label}[/yellow]")
+                    wm = wikimedia_search(query, max_results=max_results)
+                    for r in wm:
+                        raw_results.append({
+                            'title': r.get('title', ''),
+                            'href': r.get('href', ''),
+                            'body': r.get('body', ''),
+                            'source': r.get('source', 'wikimedia'),
+                        })
 
             for i, result in enumerate(raw_results, 1):
                 self.results.append(EnterpriseResult(
@@ -982,7 +1030,7 @@ class EnterpriseSearchEngine:
                     url=result.get('href', ''),
                     snippet=result.get('body', '')[:400]
                 ))
-            
+
             progress.advance(search_task)
     
     def _phase_content_extraction(self):

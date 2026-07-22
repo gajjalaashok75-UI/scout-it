@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚀 Added — new search sources: Wikimedia + Google News, with full content extraction
+
+- **`wikipedia-search` command**: new dedicated CLI command (`scout-it wikipedia-search --query "..." -m 5`) that searches Wikipedia via the MediaWiki Action API and extracts full article content through the `fetch_resilient` + `ExtractionEngine` pipeline (readability), matching `fetch-url` content quality.
+- **`google_news_source.py`**: new module with locale-aware URL builder, rich RSS parsing (publisher, description_link, guid, rank, image_url), publisher-aware title cleanup, and `Deduplicator` class for content/item deduplication.
+- **`--sources google-news`** for `news-search`: Google News RSS-based search integrated into the existing news-search pipeline, with parallel content extraction.
+- **`--sources wikimedia`** for `web-search`: Wikimedia project search (Wikipedia, Wiktionary, etc.) via `SITE_MAP`.
+
+### 🔧 Fixed — Google News `/articles/` URL extraction via Playwright JS rendering
+
+- Google News `/articles/` format URLs serve a client-rendered SPA (Closure Library) — article content is loaded via JS API calls, invisible to `requests`. **Fix**: detect `/articles/` on `news.google.com` in `_extract_one()` and pass `force_js=True` to `fetch_resilient`, which skips Tier 1 (requests) and goes directly to Tier 2 (Playwright headless Chromium), executing the JS to render the article content. Results: ~15KB / 2200+ words extracted content vs. 2 words ("Google News") before.
+- `_clean_google_news_url()` now accepts optional `description_link` for resolving `/articles/` URLs when the RSS `<description>` `<a href>` points to a direct article URL.
+
 ### 🔧 Fixed — dead code cleanup and deduplication
 
 - **Removed duplicate `_parse_size_string`** from `cli.py` — the identical function already existed in `output.py` as `parse_size_string()`. Updated `cli.py` and test imports to use the shared version.

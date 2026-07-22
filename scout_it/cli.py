@@ -33,6 +33,9 @@ from urllib.parse import urlparse
 
 import requests
 
+# Local imports
+from .wikimedia_source import SITE_MAP
+
 try:
     from .cleaner import process_results
     from .extraction import (
@@ -129,6 +132,7 @@ COMMAND_OUTPUT_STUBS: Dict[str, str] = {
     'video-extract': 'video_extract_results',
     'multi-search': 'multi_search_results',
     'github-repo': 'github_repo_results',
+    'wikipedia-search': 'wikipedia_search_results',
     'github-commits': 'github_commits_results',
     'github-commit': 'github_commit_results',
     'github-pr': 'github_pr_results',
@@ -165,6 +169,7 @@ def web_search(
     enable_persistent_profile: bool = False,
     browser_profile_name: str = 'default',
     enable_bandit: bool = False,
+    source: Optional[str] = None,
 ):
     """
     Execute web search pipeline: search → extract → clean → filter.
@@ -195,6 +200,7 @@ def web_search(
         enable_persistent_profile=enable_persistent_profile,
         browser_profile_name=browser_profile_name,
         enable_bandit=enable_bandit,
+        source=source,
     )
     search_options = _compact_options({
         'region': region,
@@ -234,6 +240,7 @@ def multi_search(
     max_fetch_retries: int = 3,
     enable_js_fallback: bool = True,
     dedupe: bool = True,
+    sources: Optional[List[str]] = None,
     **engine_kwargs,
 ):
     """Query multiple search engines in parallel, merge/dedupe the results,
@@ -244,8 +251,16 @@ def multi_search(
     out of the box; Brave/Bing/Google/SerpAPI each need an API key set as an
     environment variable). Unconfigured engines are skipped, not errored —
     check the returned ``stats['discovery']['skipped']`` list to see why.
+
+    When ``sources`` includes ``'wikimedia'``, the Wikimedia engine is
+    added to the engine list (zero-config, no API key needed).
     """
     engines = engines or ['duckduckgo']
+    if sources:
+        for s in sources:
+            if s == 'wikimedia':
+                if 'wikimedia' not in engines:
+                    engines.append('wikimedia')
 
     discovery = search_engines.multi_engine_search(
         query, engines=engines, max_results=max_results, max_workers=min(workers, 5), **engine_kwargs
@@ -353,28 +368,69 @@ def news_search(
     workers: int = 5,
     max_fetch_retries: int = 3,
     enable_js_fallback: bool = True,
+    source: Optional[str] = None,
 ):
     """DuckDuckGo news search with full content extraction and cleaning.
+
+    When ``source`` is ``'google-news'``, Google News RSS is tried first and
+    DuckDuckGo acts as fallback on zero results.  When ``source`` is ``None``
+    (default), DuckDuckGo is primary and Google News is the fallback.
 
     Returns structured results matching the web-search output format:
     each result goes through ``ExtractionEngine`` → ``process_results()``
     to produce cleaned content with quality signals and readability metrics.
     """
-    # Phase 1: Get raw DDGS news results (retried on zero results, relaxing
-    # filters on each subsequent attempt).
-    raw_results, search_stats = _ddgs_list_search_with_retry(
-        'news',
-        query=query,
-        max_results=max_results,
-        options={
-            'region': region,
-            'safesearch': safesearch,
-            'timelimit': timelimit,
-        },
-        retry_on_zero_success=retry_on_zero_success,
-        max_zero_success_retries=retry_attempts,
-        retry_backoff_seconds=retry_backoff,
-    )
+    from .google_news_source import google_news_search
+
+    raw_results: List[Dict[str, Any]] = []
+    search_stats: Dict[str, Any] = {}
+
+    use_gn_first = source == 'google-news'
+
+    # ── Primary search ──────────────────────────────────────────────
+    if use_gn_first:
+        gn = google_news_search(query, max_results=max_results)
+        for r in gn:
+            item_url = r.get('url', '') or r.get('href', '')
+            raw_results.append({
+                'title': r.get('title', ''),
+                'url': item_url,
+                'href': item_url,
+                'body': r.get('body', ''),
+                'source': r.get('source', 'google-news'),
+            })
+        search_stats = {'source': 'google-news', 'count': len(raw_results), 'total': len(raw_results)}
+        if not raw_results:
+            print(f"[yellow]Google News returned 0 results, falling back to DuckDuckGo News[/yellow]")
+            raw_results, search_stats = _ddgs_list_search_with_retry(
+                'news', query=query, max_results=max_results,
+                options={'region': region, 'safesearch': safesearch, 'timelimit': timelimit},
+                retry_on_zero_success=retry_on_zero_success,
+                max_zero_success_retries=retry_attempts,
+                retry_backoff_seconds=retry_backoff,
+            )
+    else:
+        raw_results, search_stats = _ddgs_list_search_with_retry(
+            'news', query=query, max_results=max_results,
+            options={'region': region, 'safesearch': safesearch, 'timelimit': timelimit},
+            retry_on_zero_success=retry_on_zero_success,
+            max_zero_success_retries=retry_attempts,
+            retry_backoff_seconds=retry_backoff,
+        )
+        if not raw_results:
+            print(f"[yellow]DuckDuckGo News returned 0 results, falling back to Google News[/yellow]")
+            gn = google_news_search(query, max_results=max_results)
+            for r in gn:
+                item_url = r.get('url', '') or r.get('href', '')
+                raw_results.append({
+                    'title': r.get('title', ''),
+                    'url': item_url,
+                    'href': item_url,
+                    'body': r.get('body', ''),
+                    'source': r.get('source', 'google-news'),
+                })
+            if raw_results:
+                search_stats = {'source': 'google-news', 'count': len(raw_results), 'total': len(raw_results), 'fallback': True}
 
     if not raw_results:
         return [], {'search_engine': search_stats, 'cleaner': {'total_input': 0, 'successful': 0, 'failed': 0, 'processed': 0}}
@@ -397,6 +453,241 @@ def news_search(
         'cleaner': cleaner_stats,
     }
     return structured_results, combined_stats
+
+
+def wikipedia_search(
+    query: str,
+    max_results: int = 10,
+    project: str = "wikipedia",
+    language: str = "en",
+    timeout: int = 25,
+    workers: int = 5,
+    summary: bool = False,
+    extract: bool = False,
+    sections: bool = False,
+    crawl: bool = False,
+    crawl_depth: int = 2,
+    bundle: bool = False,
+    robots: bool = False,
+    clean_text: bool = True,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Search Wikimedia projects via the MediaWiki Action API.
+
+    This is the backend for the ``wikipedia-search`` CLI command.
+
+    Args:
+        query: Search query or page title
+        max_results: Maximum results (1-50)
+        project: Wikimedia project key (any SITE_MAP key)
+        language: Project language for language-scoped wikis
+        timeout: HTTP timeout
+        workers: Parallel workers
+        summary: Fetch Wikipedia REST summary instead of search
+        extract: Fetch full-page Action API extract
+        sections: Export section-by-section text
+        crawl: Enable recursive crawl
+        crawl_depth: Crawl depth
+        bundle: Run multi-project topic bundle (searches all 12 projects)
+        robots: Check robots.txt
+        clean_text: Apply text cleaning
+
+    Returns:
+        (results_list, stats_dict) — same pattern as web_search / news_search.
+    """
+    from .wikimedia_source import SITE_MAP, SITE_HOME, WikimediaExtractor, clean_noise_text, normalize_text, RequestResult
+    from urllib.parse import quote
+
+    ex = WikimediaExtractor(language=language, timeout=timeout, max_workers=workers)
+    stats: Dict[str, Any] = {"source": f"wikimedia:{project}", "project": project, "language": language}
+    raw_results: List[Dict[str, Any]] = []
+    errors: List[str] = []
+
+    # ── robots.txt check ──────────────────────────────────────────────
+    if robots:
+        rr = ex.check_robots(project)
+        if rr.ok:
+            stats["robots"] = rr.data
+        else:
+            stats["robots_error"] = rr.error
+
+    # ── Bundle mode (searches ALL 12 projects) ────────────────────────
+    if bundle:
+        rr = ex.bundle_topic(query)
+        if rr.ok:
+            bundle_data = rr.data.get("data", rr.data)
+            for proj_key in SITE_MAP:
+                proj_results = bundle_data.get(f"{proj_key}_search", [])
+                if proj_results:
+                    base_url = SITE_HOME.get(proj_key, "")
+                    for item in (proj_results if isinstance(proj_results, list) else [proj_results]):
+                        title = item.get("title") if isinstance(item, dict) else ""
+                        snippet = item.get("snippet") or item.get("extract") or ""
+                        if title:
+                            url_safe = quote(title.replace(" ", "_"))
+                            raw_results.append({
+                                "title": title,
+                                "href": f"{base_url}wiki/{url_safe}",
+                                "body": clean_noise_text(snippet) if clean_text else snippet,
+                                "source": f"wikimedia:{proj_key}",
+                                "pageid": item.get("pageid") if isinstance(item, dict) else None,
+                            })
+
+            stats["bundle"] = True
+            stats["total_results"] = len(raw_results)
+            # Clean if requested
+            if clean_text:
+                for r in raw_results:
+                    r["body"] = clean_noise_text(r["body"])
+            return raw_results, stats
+
+    # ── Summary mode (REST API) ────────────────────────────────────────
+    if summary:
+        rr = ex.wikipedia_summary(query)
+        if rr.ok and rr.data:
+            d = rr.data
+            raw_results.append({
+                "title": d.get("title", query),
+                "href": f"https://{language}.wikipedia.org/wiki/{quote(query.replace(' ', '_'))}",
+                "body": clean_noise_text(d.get("extract", "")) if clean_text else d.get("extract", ""),
+                "source": "wikimedia:wikipedia",
+                "description": d.get("description"),
+                "thumbnail": d.get("thumbnail"),
+            })
+        else:
+            errors.append(rr.error or "summary fetch failed")
+        return raw_results, {**stats, "mode": "summary", "errors": errors or None}
+
+    # ── Extract mode (Action API) ─────────────────────────────────────
+    if extract:
+        rr = ex.action_query_extract(project, query)
+        if rr.ok and rr.data:
+            d = rr.data
+            base_url = SITE_HOME.get(project, "https://en.wikipedia.org/")
+            raw_results.append({
+                "title": d.get("title", query),
+                "href": d.get("fullurl") or f"{base_url}wiki/{quote(query.replace(' ', '_'))}",
+                "body": clean_noise_text(d.get("extract", "")) if clean_text else d.get("extract", ""),
+                "source": f"wikimedia:{project}",
+                "pageid": d.get("pageid"),
+                "links": d.get("links"),
+                "categories": d.get("categories"),
+            })
+        else:
+            errors.append(rr.error or "extract fetch failed")
+        return raw_results, {**stats, "mode": "extract", "errors": errors or None}
+
+    # ── Sections mode ─────────────────────────────────────────────────
+    if sections:
+        rr = ex.export_sections(project, query)
+        if rr.ok and rr.data:
+            for sec in rr.data:
+                raw_results.append({
+                    "section_index": sec.get("section_index"),
+                    "section_title": sec.get("section_title"),
+                    "title": sec.get("title", query),
+                    "href": f"{SITE_HOME.get(project, '')}wiki/{quote(query.replace(' ', '_'))}#{quote(sec.get('section_anchor', ''))}",
+                    "body": clean_noise_text(sec.get("text", "")) if clean_text else sec.get("text", ""),
+                    "source": f"wikimedia:{project}:sections",
+                })
+        else:
+            errors.append(rr.error or "sections fetch failed")
+        return raw_results, {**stats, "mode": "sections", "errors": errors or None}
+
+    # ── Crawl mode ────────────────────────────────────────────────────
+    if crawl:
+        rr = ex.spider_from_search(
+            project, query,
+            seed_limit=max_results,
+            depth=crawl_depth,
+            per_page_links=15,
+            max_pages=max_results * 5,
+        )
+        if rr.ok:
+            for item in rr.data.get("results", []):
+                title = item.get("title", "")
+                base_url = SITE_HOME.get(project, "https://en.wikipedia.org/")
+                raw_results.append({
+                    "title": title,
+                    "href": item.get("fullurl") or f"{base_url}wiki/{quote(title.replace(' ', '_'))}",
+                    "body": clean_noise_text(item.get("extract", "")) if clean_text else item.get("extract", ""),
+                    "source": f"wikimedia:{project}:crawl",
+                    "pageid": item.get("pageid"),
+                })
+            stats["crawl_edges"] = len(rr.data.get("edges", []))
+            stats["visited_count"] = rr.data.get("visited_count", 0)
+        else:
+            errors.append(rr.error or "crawl failed")
+        return raw_results, {**stats, "mode": "crawl", "errors": errors or None}
+
+    # ── Default: search pages ─────────────────────────────────────────
+    rr = ex.search_pages(project, query, limit=max_results)
+    if rr.ok and rr.data:
+        base_url = SITE_HOME.get(project, "https://en.wikipedia.org/")
+        for item in rr.data:
+            title = item.get("title", "")
+            snippet = item.get("snippet", "")
+            raw_results.append({
+                "title": title,
+                "href": f"{base_url}wiki/{quote(title.replace(' ', '_'))}",
+                "body": clean_noise_text(snippet) if clean_text else snippet,
+                "source": f"wikimedia:{project}",
+                "pageid": item.get("pageid"),
+            })
+    else:
+        errors.append(rr.error or "search failed")
+
+    # Clean if requested
+    if clean_text:
+        for r in raw_results:
+            r["body"] = clean_noise_text(r["body"])
+
+    # ── Parallel page content extraction via fetch_resilient ─────────
+    # Fetch full Wikipedia page HTML and extract content via readability
+    # (same pipeline as fetch-url), NOT the truncated Action API extract.
+    if raw_results:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        _wiki_engine = ExtractionEngine()
+
+        def _fetch_wiki_page(item: dict) -> None:
+            url = item.get("href", "")
+            if not url:
+                item["extraction_status"] = "failed"
+                item["main_content"] = item.get("body", "")
+                return
+            try:
+                outcome = fetch_resilient(
+                    url, session=_wiki_engine.session,
+                    timeout=timeout, max_retries=1,
+                )
+                if outcome["status"] != "success":
+                    item["extraction_status"] = "failed"
+                    item["main_content"] = item.get("body", "")
+                    return
+                content, method, confidence = _wiki_engine.extract_content(
+                    url, outcome["html"]
+                )
+                if clean_text:
+                    content = clean_noise_text(content)
+                item["main_content"] = content
+                item["extraction_method"] = f"{method} ({outcome.get('tier', '?')})"
+                item["confidence_score"] = confidence
+                item["extraction_status"] = "success" if content.strip() else "failed"
+            except Exception:
+                item["extraction_status"] = "failed"
+                item["main_content"] = item.get("body", "")
+
+        with ThreadPoolExecutor(max_workers=min(workers, max_results or 1)) as executor:
+            list(executor.map(_fetch_wiki_page, raw_results))
+
+        successes = sum(1 for r in raw_results if r.get("extraction_status") == "success")
+        stats["extraction"] = {
+            "total": len(raw_results),
+            "successful": successes,
+            "failed": len(raw_results) - successes,
+        }
+
+    return raw_results, {**stats, "mode": "search", "results_count": len(raw_results), "errors": errors or None}
 
 
 def video_search(
@@ -495,12 +786,17 @@ def _extract_news_content(
             r["main_content"] = ""
             return r
         try:
+            # Google News /articles/ URLs are JS-rendered SPAs — force
+            # Playwright Tier 2 to execute the JS redirect / render the
+            # article content (requests-only gets the interstitial shell).
+            force_js = "/articles/" in url and "news.google.com" in url
             outcome = fetch_resilient(
                 url,
                 session=shared_engine.session,
                 timeout=15,
                 max_retries=max_fetch_retries,
                 enable_js_fallback=enable_js_fallback,
+                force_js=force_js,
             )
             if outcome["status"] != "success":
                 r["extraction_status"] = "failed"
@@ -508,6 +804,14 @@ def _extract_news_content(
                 r["errors"] = outcome["errors"][-3:]
                 return r
             content, method, confidence = shared_engine.extract_content(url, outcome["html"])
+            # If article extraction yields no real content (e.g. "Google News"
+            # page title from Google News redirect pages), fall back to the
+            # RSS snippet body — that is more useful than a page title.
+            rss_body = r.get("body", "")
+            if len(content.strip()) < 30 and rss_body.strip() and len(rss_body) > len(content.strip()):
+                content = rss_body
+                method = "rss-fallback"
+                confidence = 0.5
             r["main_content"] = content
             r["extraction_method"] = f"{method} ({outcome['tier']})"
             r["confidence_score"] = confidence
@@ -1117,6 +1421,9 @@ def main():
     web_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     web_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
     web_parser.add_argument('--backend', default='auto', choices=['auto', 'html', 'lite'], help='DDGS backend')
+    web_parser.add_argument('--sources', default=None, choices=['wikimedia'],
+                            help='Search source override (default: DuckDuckGo). Use "wikimedia" to search Wikipedia directly. '
+                                 'If the primary source returns zero results, falls back to the other source.')
     web_parser.set_defaults(retry_on_zero=True)
     web_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries when 0 successful extractions')
     web_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts when 0 successful extractions')
@@ -1131,7 +1438,48 @@ def main():
     web_parser.add_argument('--use-bandit', dest='enable_bandit', action='store_true', help="Once a domain has enough recorded history, skip straight to whichever fetch tier has actually worked best for it instead of always starting with plain requests (see 'scout-it stats')")
     web_parser.add_argument('--no-js-fallback', dest='enable_js_fallback', action='store_false', help='Disable automatic Playwright fallback when a page fetch fails or looks blocked')
     web_parser.set_defaults(enable_js_fallback=True)
-    
+
+    # Wikimedia search subcommand
+    wiki_parser = subparsers.add_parser(
+        'wikipedia-search',
+        help='Search any Wikimedia project (Wikipedia, Wikidata, Commons, Wiktionary, etc.)',
+        description='Search Wikimedia projects via the MediaWiki Action API.\n\n'
+                    'Supports all 12 Wikimedia projects: wikipedia, commons, wikivoyage, wiktionary,\n'
+                    'wikibooks, wikidata, wikiversity, wikiquote, mediawiki, wikisource, wikispecies,\n'
+                    'wikifunctions.\n\n'
+                    'Use --project to choose which project (default: wikipedia).\n'
+                    'Use --summary / --extract / --sections / --crawl for different data modes.',
+    )
+    wiki_parser.add_argument('--query', '-q', required=True, help='Search query or page title')
+    wiki_parser.add_argument('--max', '-m', type=int, default=10, help='Max results (1-50)')
+    wiki_parser.add_argument('--project', default='wikipedia', choices=sorted(SITE_MAP.keys()),
+                             help='Wikimedia project to search (default: wikipedia)')
+    wiki_parser.add_argument('--language', '-l', default='en',
+                             help='Project language for language-scoped wikis (default: en)')
+    wiki_parser.add_argument('--timeout', type=int, default=25, help='HTTP timeout in seconds')
+    wiki_parser.add_argument('--workers', '-w', type=int, default=5, help='Parallel workers')
+    wiki_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/wikimedia_results.json)')
+    wiki_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
+    wiki_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+    # Mode options
+    wiki_parser.add_argument('--summary', action='store_true',
+                             help='Fetch a Wikipedia REST summary for the given title')
+    wiki_parser.add_argument('--extract', action='store_true',
+                             help='Fetch cleaned full-page extract via the Action API')
+    wiki_parser.add_argument('--sections', action='store_true',
+                             help='Export section-by-section cleaned text')
+    wiki_parser.add_argument('--crawl', action='store_true',
+                             help='Enable recursive crawl from the search results')
+    wiki_parser.add_argument('--crawl-depth', type=int, default=2,
+                             help='Crawl depth for --crawl mode (default: 2)')
+    wiki_parser.add_argument('--bundle', action='store_true',
+                             help='Run a broad multi-project topic bundle (searches all 12 projects)')
+    wiki_parser.add_argument('--robots', action='store_true',
+                             help='Check robots.txt allowance before searching')
+    wiki_parser.add_argument('--no-clean', action='store_false', dest='clean_text',
+                             help='Disable text cleaning')
+    wiki_parser.set_defaults(clean_text=True)
+
     # Image search subcommand
     img_parser = subparsers.add_parser(
         'image-search',
@@ -1181,6 +1529,9 @@ def main():
     news_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     news_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
     news_parser.add_argument('--workers', type=int, default=5, help='Parallel workers for content extraction')
+    news_parser.add_argument('--sources', default=None, choices=['google-news'],
+                             help='Search source override (default: DuckDuckGo News). Use "google-news" to search Google News RSS directly. '
+                                  'If the primary source returns zero results, falls back to the other source.')
     news_parser.set_defaults(retry_on_zero=True)
     news_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries on zero results')
     news_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts on zero results')
@@ -1285,7 +1636,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     multi_parser.add_argument('--query', '-q', required=True, help='Search query')
-    multi_parser.add_argument('--engines', default='duckduckgo', help='Comma-separated engine names (duckduckgo,brave,bing,google,serpapi)')
+    multi_parser.add_argument('--engines', default='duckduckgo', help='Comma-separated engine names (duckduckgo,brave,bing,google,serpapi,wikimedia)')
+    multi_parser.add_argument('--sources', default=None, choices=['wikimedia'],
+                              help='Include Wikimedia as a search source. Shorthand for --engines wikimedia.')
     multi_parser.add_argument('--max', '-m', type=int, default=10, help='Max merged results')
     multi_parser.add_argument('--workers', '-w', type=int, default=5, help='Parallel content-extraction workers')
     multi_parser.add_argument('--serpapi-engine', default='google', help='Underlying engine for SerpAPI (google/bing/yahoo/baidu/yandex/...)')
@@ -1577,6 +1930,7 @@ def main():
             enable_persistent_profile=args.enable_persistent_profile,
             browser_profile_name=args.browser_profile_name,
             enable_bandit=args.enable_bandit,
+            source=args.sources,
         )
         
         output = {
@@ -1699,6 +2053,7 @@ def main():
             workers=getattr(args, 'workers', 3),
             max_fetch_retries=args.max_fetch_retries,
             enable_js_fallback=args.enable_js_fallback,
+            source=args.sources,
         )
 
         output = {
@@ -1860,6 +2215,73 @@ def main():
         else:
             print(json.dumps(output, indent=2, ensure_ascii=False))
 
+    # Wikimedia search
+    elif args.command == 'wikipedia-search':
+        print(f"\n🌐 Starting Wikipedia search: '{args.query}' [{args.project}]\n")
+
+        results, stats = wikipedia_search(
+            args.query,
+            max_results=args.max,
+            project=args.project,
+            language=args.language,
+            timeout=args.timeout,
+            workers=args.workers,
+            summary=args.summary,
+            extract=args.extract,
+            sections=args.sections,
+            crawl=args.crawl,
+            crawl_depth=args.crawl_depth,
+            bundle=args.bundle,
+            robots=args.robots,
+            clean_text=args.clean_text,
+        )
+
+        output = {
+            'query': args.query,
+            'project': args.project,
+            'stats': stats,
+            'results': results,
+        }
+
+        # Determine output path
+        out_filename = args.out if args.out else f".scout-it/{OUTPUT_MAP.get('wikipedia-search', 'wikipedia_search_results')}.{'md' if args.markdown else 'json'}"
+        out_path = Path(out_filename)
+
+        # Write output
+        if args.markdown:
+            from .output import render_markdown
+            md = render_markdown(output)
+            out_path.write_text(md, encoding='utf-8')
+        else:
+            _write_output(out_path, output)
+
+        # JSON to stdout
+        if getattr(args, 'json', False):
+            print(json.dumps(output, indent=2, ensure_ascii=False))
+
+        print(f'\n✅ WIKIMEDIA SEARCH COMPLETE!')
+        print(f'   🌐 Project: {args.project}')
+        print(f'   📊 Total results: {len(results)}')
+        ext_stats = stats.get("extraction", {})
+        if ext_stats:
+            print(f'   ✅ Successfully extracted: {ext_stats.get("successful", 0)}')
+            print(f'   ❌ Failed (ignored): {ext_stats.get("failed", 0)}')
+        print(f'   📄 Results saved to: {out_path.resolve()}')
+        if args.summary:
+            print(f'   📝 Mode: Summary')
+        elif args.extract:
+            print(f'   📝 Mode: Extract')
+        elif args.sections:
+            print(f'   📝 Mode: Sections')
+        elif args.crawl:
+            print(f'   📝 Mode: Crawl (depth: {args.crawl_depth})')
+        elif args.bundle:
+            print(f'   📝 Mode: Bundle (all 12 projects)')
+        else:
+            print(f'   📝 Mode: Search')
+        if stats.get("errors"):
+            print(f'   ⚠️  Errors: {stats["errors"]}')
+
     # Fetch URL
     elif args.command == 'fetch-url':
         # Validate: Only one of --max-chars or --max-size is allowed
@@ -1919,9 +2341,12 @@ def main():
     # ==========================================================================
     elif args.command == 'multi-search':
         engine_list = [e.strip() for e in args.engines.split(',') if e.strip()]
+        # If --sources is provided, append it to the engine list
+        if args.sources:
+            if args.sources == 'wikimedia' and 'wikimedia' not in engine_list:
+                engine_list.append('wikimedia')
         _cmd_timer = _PhaseTimer(f"multi-search '{args.query}'", engines=engine_list)
         with _cmd_timer:
-            _log_phase(f"multi-search '{args.query}'", "started", phase="discovering across engines")
             structured_results, stats = multi_search(
                 args.query,
                 engines=engine_list,

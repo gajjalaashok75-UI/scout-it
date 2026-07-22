@@ -97,7 +97,7 @@ class TestWebSearch:
                     max_workers=4, max_fetch_retries=3, enable_js_fallback=True,
                     enable_alternate_source=False, enable_dns_fallback=True,
                     enable_tls_impersonate=False, enable_persistent_profile=False,
-                    browser_profile_name='default', enable_bandit=False,
+                    browser_profile_name='default', enable_bandit=False, source=None,
                 )
                 # Verify execute_search was called
                 assert mock_instance.execute_search.called
