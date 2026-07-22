@@ -801,7 +801,7 @@ def _ddgs_list_search_with_retry(
             if retry_backoff_seconds > 0:
                 time.sleep(retry_backoff_seconds * (attempt + 1))
 
-    if not last_results and enable_html_fallback and method_name == 'text':
+    if not last_results and enable_html_fallback and method_name in ('text', 'news'):
         html_results = _ddg_html_lite_fallback_search(query, max_results, timeout=timeout)
         if html_results:
             last_results = html_results

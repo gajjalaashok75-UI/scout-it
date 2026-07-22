@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔧 Fixed — news-search: parallel source streams + Playwright HTML fallback for DDG news
+
+- **news-search now runs sources in parallel via `ThreadPoolExecutor`**: When `--sources` and/or `--location` are specified, independent source streams execute concurrently rather than sequentially:
+  - *No args*: DDGS → Playwright HTML fallback → Google News RSS (sequential fallback chain)
+  - `--sources google-news`: DDGS chain + Google News run in parallel (2 streams)
+  - `--location india US`: DDGS chain + ToI RSS run in parallel (2+ streams)
+  - Both: DDGS chain + Google News + ToI RSS all run in parallel (3 streams)
+- **URL-level deduplication** across all parallel streams prevents duplicate results when multiple sources return the same article.
+- **Extended Playwright HTML fallback to DDG news search**: `_ddg_html_lite_fallback_search()` (scrapes DuckDuckGo's `html.duckduckgo.com/html/` via `fetch_resilient` which includes Playwright headless Chromium) now activates for `'news'` method in addition to the existing `'text'` method — so when the `ddgs` Python package is rate-limited or returns zero results for a news query, it falls back to the independent HTML scrape path before resorting to Google News RSS.
+
 ### 🚀 Added — new search sources: Wikimedia + Google News, with full content extraction
 
 - **`wikipedia-search` command**: new dedicated CLI command (`scout-it wikipedia-search --query "..." -m 5`) that searches Wikipedia via the MediaWiki Action API and extracts full article content through the `fetch_resilient` + `ExtractionEngine` pipeline (readability), matching `fetch-url` content quality.

@@ -44,6 +44,7 @@ try:
         ExtractionEngine,
         ImageSearchEngine,
         _compact_options,
+        _ddg_html_lite_fallback_search,
         _ddgs_list_search,
         _ddgs_list_search_with_retry,
         fetch_resilient,
@@ -375,95 +376,153 @@ def news_search(
 ):
     """DuckDuckGo news search with full content extraction and cleaning.
 
-    When ``source`` is ``'google-news'``, Google News RSS is tried first and
-    DuckDuckGo acts as fallback on zero results.  When ``source`` is ``None``
-    (default), DuckDuckGo is primary and Google News is the fallback.
+    Sources run in parallel when ``source`` and/or ``locations`` are given:
+
+    - No args: DDGS → Playwright HTML → Google News RSS (sequential fallback chain)
+    - ``--sources google-news``: DDGS chain + Google News in parallel
+    - ``--location``: DDGS chain + ToI RSS in parallel
+    - Both: Google News + ToI + DDGS chain all in parallel
 
     Returns structured results matching the web-search output format:
     each result goes through ``ExtractionEngine`` → ``process_results()``
     to produce cleaned content with quality signals and readability metrics.
     """
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     from .google_news_source import google_news_search
 
-    raw_results: List[Dict[str, Any]] = []
+    start_time = time.time()
+    all_raw_results: List[Dict[str, Any]] = []
     search_stats: Dict[str, Any] = {}
+    seen_urls: set = set()
 
-    use_gn_first = source == 'google-news'
+    use_gn_source = source == 'google-news'
 
-    # ── Primary search ──────────────────────────────────────────────
-    if use_gn_first:
-        gn = google_news_search(query, max_results=max_results)
-        for r in gn:
-            item_url = r.get('url', '') or r.get('href', '')
-            raw_results.append({
-                'title': r.get('title', ''),
-                'url': item_url,
-                'href': item_url,
-                'body': r.get('body', ''),
-                'source': r.get('source', 'google-news'),
-            })
-        search_stats = {'source': 'google-news', 'count': len(raw_results), 'total': len(raw_results)}
-        if not raw_results:
-            print(f"[yellow]Google News returned 0 results, falling back to DuckDuckGo News[/yellow]")
-            raw_results, search_stats = _ddgs_list_search_with_retry(
-                'news', query=query, max_results=max_results,
-                options={'region': region, 'safesearch': safesearch, 'timelimit': timelimit},
-                retry_on_zero_success=retry_on_zero_success,
-                max_zero_success_retries=retry_attempts,
-                retry_backoff_seconds=retry_backoff,
-            )
-    else:
-        raw_results, search_stats = _ddgs_list_search_with_retry(
+    def _dedup_append(results: List[Dict[str, Any]]) -> int:
+        """Append results with URL-level dedup. Returns count added."""
+        count = 0
+        for r in results:
+            url = r.get('url', '') or r.get('href', '')
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                all_raw_results.append(r)
+                count += 1
+        return count
+
+    # ── Stream 1: DDGS → Playwright HTML → Google News RSS (always runs) ──
+    def _run_ddgs_chain():
+        """DDGS news search with multi-tier fallback.
+
+        Tier 1: DDGS Python package
+        Tier 2: DDG HTML scrape via fetch_resilient (Playwright-capable)
+        Tier 3: Google News RSS (only when not already a parallel source)
+        """
+        results, stats = _ddgs_list_search_with_retry(
             'news', query=query, max_results=max_results,
             options={'region': region, 'safesearch': safesearch, 'timelimit': timelimit},
             retry_on_zero_success=retry_on_zero_success,
             max_zero_success_retries=retry_attempts,
             retry_backoff_seconds=retry_backoff,
         )
-        if not raw_results:
-            print(f"[yellow]DuckDuckGo News returned 0 results, falling back to Google News[/yellow]")
+        # _ddgs_list_search_with_retry now internally handles Tier 2
+        # (Playwright HTML) for 'news' method
+
+        if not results and not use_gn_source:
+            # Tier 3: Google News RSS (only when not a parallel source)
+            print(f"[yellow]DDGS chain returned 0 results, falling back to Google News RSS[/yellow]")
             gn = google_news_search(query, max_results=max_results)
             for r in gn:
                 item_url = r.get('url', '') or r.get('href', '')
-                raw_results.append({
+                results.append({
                     'title': r.get('title', ''),
                     'url': item_url,
                     'href': item_url,
                     'body': r.get('body', ''),
                     'source': r.get('source', 'google-news'),
                 })
-            if raw_results:
-                search_stats = {'source': 'google-news', 'count': len(raw_results), 'total': len(raw_results), 'fallback': True}
 
-    if not raw_results:
-        return [], {'search_engine': search_stats, 'cleaner': {'total_input': 0, 'successful': 0, 'failed': 0, 'processed': 0}}
+        return results, stats
 
-    # ── Phase 1b: Fetch ToI RSS feeds for requested locations ──────
-    if locations:
+    # ── Stream 2: Google News (parallel, when --sources google-news) ──
+    def _run_google_news():
+        gn = google_news_search(query, max_results=max_results)
+        results = []
+        for r in gn:
+            item_url = r.get('url', '') or r.get('href', '')
+            results.append({
+                'title': r.get('title', ''),
+                'url': item_url,
+                'href': item_url,
+                'body': r.get('body', ''),
+                'source': r.get('source', 'google-news'),
+            })
+        return results
+
+    # ── Stream 3: ToI RSS (parallel, when --location) ──
+    def _run_toi(locs: List[str]):
         from .toi_rss_source import fetch_toi_news
+        return fetch_toi_news(locs, max_per_location=max_results)
 
-        toi_results = fetch_toi_news(locations, max_per_location=max_results)
-        seen_urls = {r.get("url", "") for r in raw_results}
-        for r in toi_results:
-            url = r.get("url", "")
-            if url and url not in seen_urls:
-                seen_urls.add(url)
-                raw_results.append({
-                    "title": r.get("title", ""),
-                    "url": url,
-                    "href": url,
-                    "body": r.get("body", ""),
-                    "source": r.get("source", "toi-rss"),
-                })
-        if toi_results:
-            search_stats["toi_locations"] = locations
-            search_stats["count"] = len(raw_results)
-            search_stats["total"] = len(raw_results)
+    # ── Determine which streams to run ──
+    streams: List[Tuple[str, Any]] = [('ddgs_chain', _run_ddgs_chain)]
+    if use_gn_source:
+        streams.append(('google_news', _run_google_news))
+    if locations:
+        # Capture locations by value for the closure
+        streams.append(('toi_rss', lambda locs=locations: _run_toi(locs)))
+
+    # ── Execute all streams in parallel ──
+    stream_outputs: Dict[str, Any] = {}
+
+    if len(streams) > 1:
+        with ThreadPoolExecutor(max_workers=min(len(streams), 4)) as executor:
+            fut_map = {executor.submit(fn): label for label, fn in streams}
+            for fut in as_completed(fut_map):
+                label = fut_map[fut]
+                try:
+                    stream_outputs[label] = fut.result()
+                except Exception as exc:
+                    print(f"[red]Stream '{label}' failed:[/red] {type(exc).__name__}: {exc}")
+                    stream_outputs[label] = [] if label != 'ddgs_chain' else ([], {})
+    else:
+        # Single stream — no parallelism needed
+        result = streams[0][1]()
+        stream_outputs[streams[0][0]] = result
+
+    # ── Merge results ──
+    if 'ddgs_chain' in stream_outputs:
+        ddgs_results, ddgs_stats = stream_outputs['ddgs_chain']
+        if ddgs_results:
+            _dedup_append(ddgs_results)
+        # Carry DDGS stats fields (total, execution_time, attempts, etc.)
+        search_stats.update(ddgs_stats)
+
+    if 'google_news' in stream_outputs:
+        gn_results = stream_outputs['google_news']
+        gn_added = _dedup_append(gn_results) if gn_results else 0
+        search_stats['google_news_source'] = True
+        search_stats['google_news_count'] = gn_added
+
+    if 'toi_rss' in stream_outputs:
+        toi_results = stream_outputs['toi_rss']
+        toi_added = _dedup_append(toi_results) if toi_results else 0
+        search_stats['toi_locations'] = locations
+        search_stats['toi_count'] = toi_added
+
+    search_stats['total'] = len(all_raw_results)
+    search_stats['count'] = len(all_raw_results)
+    search_stats['execution_time'] = round(time.time() - start_time, 3)
+
+    if not all_raw_results:
+        return [], {
+            'search_engine': search_stats,
+            'cleaner': {'total_input': 0, 'successful': 0, 'failed': 0, 'processed': 0},
+        }
 
     # Phase 2: Fetch and extract full article content in parallel, using the
     # requests -> Playwright -> basic-fallback resilient fetch chain.
     enriched_results = _extract_news_content(
-        raw_results,
+        all_raw_results,
         max_workers=workers,
         max_fetch_retries=max_fetch_retries,
         enable_js_fallback=enable_js_fallback,
