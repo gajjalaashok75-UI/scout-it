@@ -37,7 +37,7 @@ def profile_path(profile_name: str = DEFAULT_PROFILE_NAME) -> Path:
     return PROFILES_DIR / safe_name
 
 
-def launch_persistent(pw: Any, profile_name: str = DEFAULT_PROFILE_NAME, headless: bool = True) -> Any:
+def launch_persistent(pw: Any, profile_name: str = DEFAULT_PROFILE_NAME, headless: bool = True, user_agent: Optional[str] = None) -> Any:
     """Launch a persistent Playwright browser context (returns a
     BrowserContext, not a Browser -- Playwright's persistent-context API
     combines the two). Caller is responsible for closing it
@@ -49,10 +49,10 @@ def launch_persistent(pw: Any, profile_name: str = DEFAULT_PROFILE_NAME, headles
     """
     path = profile_path(profile_name)
     path.mkdir(parents=True, exist_ok=True)
-    return pw.chromium.launch_persistent_context(
-        user_data_dir=str(path),
-        headless=headless,
-    )
+    kwargs: Dict[str, Any] = dict(user_data_dir=str(path), headless=headless)
+    if user_agent:
+        kwargs["user_agent"] = user_agent
+    return pw.chromium.launch_persistent_context(**kwargs)
 
 
 def list_profiles() -> list:

@@ -511,6 +511,14 @@ def fetch_resilient(
         if playwright_available:
             def _playwright_navigate(page, url, timeout, force_js):
                 """Navigate page, wait for content, capture HTML/URL/rendered_text."""
+                # Basic stealth patches — hide headless Chrome signals that
+                # anti-bot systems (DataDome, Cloudflare, etc.) check for.
+                page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                    window.chrome = {runtime: {}};
+                    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                    Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                """)
                 page.goto(url, wait_until="load", timeout=timeout * 1000)
                 if not force_js:
                     page.wait_for_load_state("networkidle", timeout=timeout * 1000)
@@ -528,7 +536,7 @@ def fetch_resilient(
                         pass
                 html = page.content()
                 final_url = page.url
-                rendered_text = page.evaluate("document.body.innerText") if force_js else ""
+                rendered_text = page.evaluate("document.body.innerText") or ""
                 return html, final_url, rendered_text
 
             for attempt in range(max(1, max_retries)):
@@ -537,18 +545,18 @@ def fetch_resilient(
                 try:
                     with sync_playwright() as pw:
                         if enable_persistent_profile:
+                            _ua = random.choice(ExtractionEngine.USER_AGENTS)
                             from . import browser_profile as _bp
-                            context = _bp.launch_persistent(pw, profile_name=browser_profile_name, headless=True)
+                            context = _bp.launch_persistent(pw, profile_name=browser_profile_name, headless=True, user_agent=_ua)
                             try:
-                                _ua = random.choice(ExtractionEngine.USER_AGENTS)
-                                page = context.new_page(user_agent=_ua)
+                                page = context.new_page()
                                 html, final_url, rendered_text = _playwright_navigate(page, url, timeout, force_js)
                             finally:
                                 context.close()
                         else:
+                            _ua = random.choice(ExtractionEngine.USER_AGENTS)
                             browser = pw.chromium.launch(headless=True)
                             try:
-                                _ua = random.choice(ExtractionEngine.USER_AGENTS)
                                 page = browser.new_page(user_agent=_ua)
                                 html, final_url, rendered_text = _playwright_navigate(page, url, timeout, force_js)
                             finally:

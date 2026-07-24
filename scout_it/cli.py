@@ -1411,6 +1411,8 @@ def fetch_url(
     no_js_fallback: bool = False,
     max_retries: int = 3,
     enable_alternate_source: bool = False,
+    enable_persistent_profile: bool = False,
+    browser_profile_name: str = 'default',
 ):
     """
     Fetch a single URL and extract/clean its content.
@@ -1464,6 +1466,8 @@ def fetch_url(
             enable_js_fallback=(not no_js_fallback) or js_render,
             force_js=js_render,
             enable_alternate_source=enable_alternate_source,
+            enable_persistent_profile=enable_persistent_profile,
+            browser_profile_name=browser_profile_name,
         )
 
         if outcome["status"] != "success":
@@ -1498,6 +1502,15 @@ def fetch_url(
             timeout=timeout,
         )
         method = f"{method} ({fetch_tier})"
+
+        # Fallback: when HTML-based extraction yields very little (< 50 words),
+        # use Playwright's document.body.innerText which captures JS-rendered
+        # text that the HTML-based extractors may miss (anti-bot shells, SPAs).
+        if len(main_content.strip().split()) < 50:
+            rendered = outcome.get("rendered_text", "") or ""
+            if len(rendered.strip().split()) > len(main_content.strip().split()):
+                main_content = rendered
+                method = f"rendered-text ({fetch_tier})"
 
         # Apply max_chars constraint if specified
         if max_chars and main_content and len(main_content) > max_chars:
@@ -1814,6 +1827,8 @@ def main():
     url_parser.add_argument('--no-js-fallback', action='store_true', help='Disable automatic Playwright fallback when requests fails or looks blocked')
     url_parser.add_argument('--max-retries', type=int, default=3, help='Retry attempts per fetch tier (requests, then Playwright)')
     url_parser.add_argument('--enable-alternate-source', action='store_true', help='If every fetch tier fails, try AMP/mobile/print URL variants and a Wayback Machine snapshot before giving up (extra requests, opt-in)')
+    url_parser.add_argument('--persistent-profile', dest='enable_persistent_profile', action='store_true', help='Use a persistent Playwright profile (cookies/session survive across runs) instead of a throwaway context for the JS-render tier')
+    url_parser.add_argument('--profile-name', dest='browser_profile_name', default='default', help='Persistent profile name (only with --persistent-profile)')
 
     # ======================================================================
     # video-extract subcommand
@@ -2542,6 +2557,8 @@ def main():
             no_js_fallback=args.no_js_fallback,
             max_retries=args.max_retries,
             enable_alternate_source=args.enable_alternate_source,
+            enable_persistent_profile=args.enable_persistent_profile,
+            browser_profile_name=args.browser_profile_name,
         )
 
         output = {
