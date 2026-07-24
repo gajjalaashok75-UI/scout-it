@@ -163,8 +163,8 @@ def fetch_toi_news(
             if u and u not in seen_urls:
                 seen_urls.add(u)
                 unique.append(item)
-        # Use the last processed items (most recent from RSS order)
-        return unique[-max_per_location:] if len(unique) > max_per_location else unique
+        # Use the first items — RSS feeds are ordered newest-first
+        return unique[:max_per_location] if len(unique) > max_per_location else unique
 
     with ThreadPoolExecutor(max_workers=min(len(feed_tasks), 8)) as pool:
         fut_map = {pool.submit(_fetch, label, url): (label, url)
