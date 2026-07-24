@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔧 Fixed — RSS source improvements: persistent profile, meta description fallback, ToI RSS fixes, publish_date preservation
+
+- **`--persistent-profile` support for `fetch-url`**: New `--persistent-profile` and `--profile-name` flags to use a real browser session (~/.scout-it/browser-profiles/) for sites requiring cookies/session state. Stealth patches (navigator.webdriver, chrome.runtime, plugins, languages) added to Playwright init script.
+- **`rendered_text` fallback in `fetch-url`**: When extraction yields <50 words, falls back to `document.body.innerText` captured from Playwright.
+- **`rendered_text` always captured**: `document.body.innerText` is now captured for every Playwright fetch (not just `force_js`), providing a fallback for any extraction that yields minimal content.
+- **Meta description fallback for news descriptions**: Added `_extract_meta_description()` extracting `<meta name="description">`, `<meta property="og:description">`, and `<meta name="twitter:description">` from page HTML — provides full sentences as fallback before truncated search snippets.
+- **ToI RSS: Strip HTML from descriptions**: ToI `<description>` elements contain raw `<a><img/></a>` markup. Added `re.sub(r'<[^>]+>', ' ', ...)` for clean text.
+- **ToI RSS: Newest-first ordering**: Fixed `[-max_per_location:]` → `[:max_per_location]` — was returning the oldest items from the feed (RSS is newest-first, so the end of the list is oldest).
+- **ToI RSS: Case-insensitive location lookup**: Added `_LOCATION_FEEDS_CI` dict so `--location uk` works correctly (previously failed because `LOCATION_FEEDS` had uppercase `"UK"` but normalization did `.lower()`).
+- **ToI RSS: Empty feed guard**: Prevents `ValueError: max() arg is empty sequence` when all locations are unknown and `feed_tasks` is empty.
+- **`publish_date` preserved through pipeline**: RSS `date` field now mapped to `publish_date` in the output for both Google News RSS and ToI RSS sources, so structured_results include proper dates instead of `None`.
+- **`browser_profile.py`: Persistent context UA support**: `launch_persistent()` accepts `user_agent` parameter and passes it to `launch_persistent_context(user_agent=...)`, fixing `BrowserContext.new_page() got an unexpected keyword argument 'user_agent'` error.
+
 ### 🔧 Fixed — news-search: parallel source streams + Playwright HTML fallback for DDG news
 
 - **news-search now runs sources in parallel via `ThreadPoolExecutor`**: When `--sources` and/or `--location` are specified, independent source streams execute concurrently rather than sequentially:

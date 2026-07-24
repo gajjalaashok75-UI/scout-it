@@ -456,6 +456,7 @@ def news_search(
                     'href': item_url,
                     'body': r.get('body', ''),
                     'source': r.get('source', 'google-news'),
+                    'publish_date': r.get('date', ''),
                 })
 
         return results, stats
@@ -472,13 +473,18 @@ def news_search(
                 'href': item_url,
                 'body': r.get('body', ''),
                 'source': r.get('source', 'google-news'),
+                'publish_date': r.get('date', ''),
             })
         return results
 
     # ── Stream 3: ToI RSS (parallel, when --location) ──
     def _run_toi(locs: List[str]):
         from .toi_rss_source import fetch_toi_news
-        return fetch_toi_news(locs, max_per_location=max_results)
+        results = fetch_toi_news(locs, max_per_location=max_results)
+        for r in results:
+            if 'date' in r and 'publish_date' not in r:
+                r['publish_date'] = r['date']
+        return results
 
     # ── Determine which streams to run ──
     streams: List[Tuple[str, Any]] = [('ddgs_chain', _run_ddgs_chain)]
