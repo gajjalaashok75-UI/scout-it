@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+import re
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List
 from urllib.parse import urlparse
@@ -70,7 +71,10 @@ def _parse_toi_rss(xml_text: str, source_label: str) -> List[Dict[str, Any]]:
 
         title = title_el.text.strip() if title_el is not None and title_el.text else ""
         link = link_el.text.strip() if link_el is not None and link_el.text else ""
-        description = desc_el.text.strip() if desc_el is not None and desc_el.text else ""
+        # Strip HTML tags from RSS description (ToI wraps it in <a><img/>
+        # and may append text). Clean text is more useful in the pipeline.
+        description = re.sub(r'<[^>]+>', ' ', desc_el.text or '').strip()
+        description = re.sub(r'\s+', ' ', description).strip()
         pub_date = date_el.text.strip() if date_el is not None and date_el.text else ""
         author = creator_el.text.strip() if creator_el is not None and creator_el.text else ""
 
