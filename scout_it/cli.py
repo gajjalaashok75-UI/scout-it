@@ -1014,6 +1014,14 @@ def _extract_news_content(
                 content = ""
                 method = "error-page"
                 confidence = 0.0
+            # Before falling back to the (often truncated) search snippet,
+            # extract the full meta description from the page HTML itself.
+            if len(content.strip()) < 30:
+                meta_desc = _extract_meta_description(outcome.get("html", ""))
+                if meta_desc and len(meta_desc) > len(content.strip()):
+                    content = meta_desc
+                    method = "meta-description"
+                    confidence = 0.4
             # If article extraction yields no real content (e.g. "Google News"
             # page title from Google News redirect pages), fall back to the
             # RSS snippet body — that is more useful than a page title.
@@ -1390,6 +1398,24 @@ def _extract_html_title(html_text: str) -> str:
         return ""
     title = re.sub(r"<[^>]+>", " ", match.group(1))
     return unescape(re.sub(r"\s+", " ", title)).strip()
+
+
+def _extract_meta_description(html_text: str) -> str:
+    """Extract meta description / og:description / twitter:description from HTML
+    head. These are always full sentences (never truncated like search snippets).
+    """
+    if not html_text:
+        return ""
+    patterns = [
+        r'<meta\s+name="description"\s+content="([^"]*)"',
+        r'<meta\s+property="og:description"\s+content="([^"]*)"',
+        r'<meta\s+name="twitter:description"\s+content="([^"]*)"',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, html_text, flags=re.IGNORECASE)
+        if match and match.group(1).strip():
+            return unescape(match.group(1).strip())
+    return ""
 
 
 def _check_max_size_warning(max_size: Optional[str], main_content: Any) -> Optional[str]:
