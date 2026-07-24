@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Both: DDGS chain + Google News + ToI RSS all run in parallel (3 streams)
 - **URL-level deduplication** across all parallel streams prevents duplicate results when multiple sources return the same article.
 - **Extended Playwright HTML fallback to DDG news search**: `_ddg_html_lite_fallback_search()` (scrapes DuckDuckGo's `html.duckduckgo.com/html/` via `fetch_resilient` which includes Playwright headless Chromium) now activates for `'news'` method in addition to the existing `'text'` method — so when the `ddgs` Python package is rate-limited or returns zero results for a news query, it falls back to the independent HTML scrape path before resorting to Google News RSS.
-- **Query augmentation via `--location`**: When `--location` is specified, the location name(s) are appended to the DDGS/Playwright/Google News query text so search results are geographically relevant (e.g. `--query "climate" --location india` searches `"climate india"`). ToI RSS is unaffected — it already uses location-specific feeds.
+- **Query augmentation via `--location`**: When `--location` is specified, the location name(s) are appended to the DDGS/Playwright/Google News query text so search results are geographically relevant
+- **Fix Google News `/articles/` URL not resolving**: After Playwright rendering resolves Google News `/articles/` SPAs to real article URLs, `fetch_resilient`'s `final_url` is now propagated back into the result dict — the output JSON now contains the actual article URL instead of the Google News redirect URL. Also passes the resolved URL to content extraction for better extraction quality. (e.g. `--query "climate" --location india` searches `"climate india"`). ToI RSS is unaffected — it already uses location-specific feeds.
 
 ### 🚀 Added — new search sources: Wikimedia + Google News, with full content extraction
 

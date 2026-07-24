@@ -1135,6 +1135,9 @@ def process_record(rec: dict) -> dict:
         'top_keywords': kw,  # ✅ Keywords extracted separately (stopwords removed only here)
         'readability_metrics': readability,
         'quality_signals': quality_signals,  # ✅ Quality metrics without content alteration
+        # Passthrough fields from upstream extraction
+        'source': rec.get('source'),
+        'extraction_method': rec.get('extraction_method'),
     }
     
     # Add content quality score
