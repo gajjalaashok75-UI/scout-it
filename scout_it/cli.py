@@ -62,6 +62,15 @@ except Exception as e:
     raise ImportError("Could not import from scout_it modules: " + str(e))
 
 
+# Error/404 page detection phrases — short content matching any of these
+# indicates a broken or removed page (dead link from search engine).
+_ERROR_PAGE_PHRASES = [
+    "whoops", "page doesn't exist", "can't be found",
+    "page not found", "this page could not be found",
+    "sorry, this page",
+]
+
+
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
@@ -973,7 +982,38 @@ def _extract_news_content(
                 r["main_content"] = ""
                 r["errors"] = outcome["errors"][-3:]
                 return r
+            def _update_url(outcome):
+                nonlocal url
+                fetched_url = outcome.get("final_url", url)
+                if fetched_url != url and fetched_url:
+                    r["url"] = fetched_url
+                    r["href"] = fetched_url
+                    url = fetched_url
+
+            _update_url(outcome)
             content, method, confidence = shared_engine.extract_content(url, outcome["html"])
+            # If extraction yielded no real content and the initial fetch did
+            # NOT use Playwright (e.g. JS-heavy page served as a plain shell),
+            # retry with JS rendering enabled.
+            if len(content.strip()) < 30 and enable_js_fallback and outcome.get("tier") != "playwright":
+                _jr = fetch_resilient(
+                    url,
+                    session=shared_engine.session,
+                    timeout=15,
+                    max_retries=max_fetch_retries,
+                    enable_js_fallback=True,
+                    force_js=True,
+                )
+                if _jr["status"] == "success":
+                    outcome = _jr
+                    content, method, confidence = shared_engine.extract_content(url, outcome["html"])
+                    _update_url(outcome)
+            # Detect error / 404 pages (dead links from search engines).
+            # Short content matching error phrases indicates a broken URL.
+            if content and any(p in content.lower() for p in _ERROR_PAGE_PHRASES) and len(content.strip()) < 500:
+                content = ""
+                method = "error-page"
+                confidence = 0.0
             # If article extraction yields no real content (e.g. "Google News"
             # page title from Google News redirect pages), fall back to the
             # RSS snippet body — that is more useful than a page title.
@@ -982,6 +1022,14 @@ def _extract_news_content(
                 content = rss_body
                 method = "rss-fallback"
                 confidence = 0.5
+            # If still no content and Playwright rendered visible text from a
+            # JS-heavy page (e.g. Google News AMP syndication), use that instead.
+            if len(content.strip()) < 30:
+                rendered_text = outcome.get("rendered_text", "")
+                if rendered_text.strip() and len(rendered_text.strip()) > len(content.strip()):
+                    content = rendered_text
+                    method = "rendered-text"
+                    confidence = 0.6
             r["main_content"] = content
             r["extraction_method"] = f"{method} ({outcome['tier']})"
             r["confidence_score"] = confidence

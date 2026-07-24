@@ -509,6 +509,28 @@ def fetch_resilient(
             errs.append("playwright not installed; skipping JS-render fallback")
 
         if playwright_available:
+            def _playwright_navigate(page, url, timeout, force_js):
+                """Navigate page, wait for content, capture HTML/URL/rendered_text."""
+                page.goto(url, wait_until="load", timeout=timeout * 1000)
+                if not force_js:
+                    page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+                else:
+                    # Google News /articles/ URLs are JS SPAs; wait for the
+                    # JS redirect to settle so we capture the real article.
+                    _orig_url = page.url
+                    try:
+                        page.wait_for_function(f"window.location.href !== '{_orig_url}'", timeout=10000)
+                    except Exception:
+                        pass
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=5000)
+                    except Exception:
+                        pass
+                html = page.content()
+                final_url = page.url
+                rendered_text = page.evaluate("document.body.innerText") if force_js else ""
+                return html, final_url, rendered_text
+
             for attempt in range(max(1, max_retries)):
                 total_attempts += 1
                 attempt_start = time.time()
@@ -518,21 +540,17 @@ def fetch_resilient(
                             from . import browser_profile as _bp
                             context = _bp.launch_persistent(pw, profile_name=browser_profile_name, headless=True)
                             try:
-                                page = context.new_page()
-                                page.goto(url, wait_until="load", timeout=timeout * 1000)
-                                page.wait_for_timeout(1500)
-                                html = page.content()
-                                final_url = page.url
+                                _ua = random.choice(ExtractionEngine.USER_AGENTS)
+                                page = context.new_page(user_agent=_ua)
+                                html, final_url, rendered_text = _playwright_navigate(page, url, timeout, force_js)
                             finally:
                                 context.close()
                         else:
                             browser = pw.chromium.launch(headless=True)
                             try:
-                                page = browser.new_page()
-                                page.goto(url, wait_until="load", timeout=timeout * 1000)
-                                page.wait_for_timeout(1500)
-                                html = page.content()
-                                final_url = page.url
+                                _ua = random.choice(ExtractionEngine.USER_AGENTS)
+                                page = browser.new_page(user_agent=_ua)
+                                html, final_url, rendered_text = _playwright_navigate(page, url, timeout, force_js)
                             finally:
                                 browser.close()
                     if html and len(html.strip()) > 200:
@@ -540,6 +558,7 @@ def fetch_resilient(
                         return {
                             "html": html,
                             "final_url": final_url,
+                            "rendered_text": rendered_text,
                             "status": "success",
                             "tier": "playwright",
                             "attempts": total_attempts,

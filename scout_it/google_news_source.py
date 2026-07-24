@@ -29,6 +29,7 @@ Usage:
     # publisher, description_link, guid, rank
 """
 
+import functools
 import hashlib
 import json
 import logging
@@ -184,6 +185,7 @@ def _clean_google_news_url(raw_url: str, description_link: str = "") -> str:
     return raw_url
 
 
+@functools.lru_cache(maxsize=512)
 def _resolve_google_news_articles_url(url: str, timeout: int = 10) -> str:
     """Resolve a Google News ``/articles/`` URL via HTTP redirect following.
 
@@ -211,13 +213,14 @@ def _resolve_google_news_articles_url(url: str, timeout: int = 10) -> str:
         }
         resp = requests.get(
             url, headers=headers, timeout=timeout,
-            allow_redirects=True, stream=True,
+            allow_redirects=True,
+            stream=True,
         )
         final = str(resp.url)
         if final != url and "news.google.com" not in final:
             return final
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to resolve Google News /articles/ URL %s: %s", url, exc)
     return url
 
 
@@ -394,6 +397,7 @@ def _parse_rss_items(
         raw_url = link_el.text if link_el is not None else ""
         desc_link = desc_parts.get("description_link") or ""
         clean_url = _clean_google_news_url(raw_url, description_link=desc_link)
+        clean_url = _resolve_google_news_articles_url(clean_url)
 
         # ── GUID ─────────────────────────────────────────────────────────
         guid_el = item_elem.find("guid")

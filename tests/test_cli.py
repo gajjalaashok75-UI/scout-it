@@ -515,6 +515,26 @@ class TestContentCleaning:
         cleaned = advanced_clean_text(None)
         assert cleaned == ""
 
+    def test_advanced_clean_text_single_line_advertisement(self):
+        """Test that single-line ad-heavy content is not stripped to empty"""
+        # The old r'advertisement.*' regex ate the entire single-line content.
+        # The fix: removed .* so only the word 'advertisement' is removed.
+        text = ("AdvertisementAdvertisementAdvertisement" * 3
+                + "Protesters gathered in the capital to demand government reforms")
+        cleaned = advanced_clean_text(text)
+        assert cleaned, "ad-heavy single-line content should not be stripped to empty"
+        assert "Protesters" in cleaned or "protesters" in cleaned.lower()
+        assert "reforms" in cleaned.lower()
+
+    def test_advanced_clean_text_mixed_ad_and_content(self):
+        """Test that advertisement keyword does not kill surrounding content"""
+        text = ("Here is some real article content. Advertisement. "
+                "This is the continuation of the article body text.")
+        cleaned = advanced_clean_text(text)
+        assert cleaned
+        assert "real article" in cleaned
+        assert "continuation" in cleaned
+
 
 class TestProcessResults:
     """Test process_results function"""
@@ -1239,6 +1259,187 @@ class TestExtractNewsContent:
         assert out[1]["title"] == "second"
         assert out[2]["title"] == "third"
         assert all(r["extraction_status"] == "success" for r in out)
+
+
+class TestGoogleNewsSource:
+    """Test Google News source functions"""
+
+    def test_resolve_url_no_articles_path(self):
+        """_resolve_google_news_articles_url returns URL unchanged when no /articles/"""
+        from scout_it.google_news_source import _resolve_google_news_articles_url
+        url = "https://example.com/some-other-path"
+        result = _resolve_google_news_articles_url(url)
+        assert result == url
+
+    @mock.patch('scout_it.google_news_source.requests.get')
+    def test_resolve_url_exception_logged(self, mock_get):
+        """_resolve_google_news_articles_url logs warning on exception"""
+        import logging
+        from scout_it.google_news_source import _resolve_google_news_articles_url, logger
+
+        mock_get.side_effect = Exception("Connection failed")
+        url = "https://news.google.com/articles/CBMim"
+
+        with mock.patch.object(logger, 'warning') as mock_warn:
+            result = _resolve_google_news_articles_url(url)
+            assert result == url  # Returns original URL on failure
+            mock_warn.assert_called_once()
+
+    @mock.patch('scout_it.google_news_source.requests.get')
+    def test_resolve_url_http_redirect(self, mock_get):
+        """_resolve_google_news_articles_url follows HTTP redirect"""
+        from scout_it.google_news_source import _resolve_google_news_articles_url
+
+        mock_resp = mock.MagicMock()
+        mock_resp.url = "https://www.npr.org/article"
+        mock_get.return_value = mock_resp
+
+        result = _resolve_google_news_articles_url(
+            "https://news.google.com/articles/CBMim"
+        )
+        assert result == "https://www.npr.org/article"
+
+
+class TestExtractNewsContentExtended:
+    """Extended tests for _extract_news_content — Playwright retry and rendered_text"""
+
+    @mock.patch('scout_it.cli.ExtractionEngine')
+    @mock.patch('scout_it.cli.fetch_resilient')
+    def test_playwright_retry_on_empty_extraction(self, mock_fetch, mock_engine_cls):
+        """When requests-tier extraction yields < 30 chars, retries with force_js=True"""
+        from scout_it.cli import _extract_news_content
+
+        # First call returns requests-tier HTML (no content extracted)
+        # Second call (retry) returns playwright-tier HTML (content found)
+        mock_fetch.side_effect = [
+            {"html": "<html>shell</html>", "final_url": "https://example.com/a",
+             "status": "success", "tier": "requests", "attempts": 1, "errors": [],
+             "rendered_text": ""},
+            {"html": "<html>full article body content</html>",
+             "final_url": "https://example.com/a",
+             "status": "success", "tier": "playwright", "attempts": 2, "errors": [],
+             "rendered_text": "full rendered text here"},
+        ]
+
+        mock_engine = mock.MagicMock()
+        mock_engine.extract_content.side_effect = [
+            ("too short", "fallback", 0.3),              # First: < 30 chars
+            ("full article body with many words here", "readability", 0.9),   # Second: > 30 chars
+        ]
+        mock_engine_cls.return_value = mock_engine
+
+        results = [{"url": "https://example.com/a", "body": ""}]
+        out = _extract_news_content(results)
+        assert out[0]["extraction_status"] == "success"
+        assert out[0]["content_word_count"] >= 5
+        assert "playwright" in out[0]["extraction_method"]
+
+    @mock.patch('scout_it.cli.ExtractionEngine')
+    @mock.patch('scout_it.cli.fetch_resilient')
+    def test_rendered_text_fallback(self, mock_fetch, mock_engine_cls):
+        """When Playwright retry still yields < 30 chars, rendered_text is used"""
+        from scout_it.cli import _extract_news_content
+
+        mock_fetch.side_effect = [
+            {"html": "<html>shell</html>", "final_url": "https://example.com/a",
+             "status": "success", "tier": "requests", "attempts": 1, "errors": [],
+             "rendered_text": ""},
+            {"html": "<html>Google News shell</html>",
+             "final_url": "https://www.npr.org/article",
+             "status": "success", "tier": "playwright", "attempts": 2, "errors": [],
+             "rendered_text": "The article body text rendered by Playwright with substantial content for testing"},
+        ]
+
+        mock_engine = mock.MagicMock()
+        # Both calls produce < 30 chars (extraction fails on JS-heavy page)
+        mock_engine.extract_content.side_effect = [
+            ("short", "fallback", 0.3),
+            ("short", "fallback", 0.3),
+        ]
+        mock_engine_cls.return_value = mock_engine
+
+        results = [{"url": "https://news.google.com/articles/CBMim", "body": ""}]
+        out = _extract_news_content(results)
+        assert out[0]["extraction_status"] == "success"
+        # rendered_text fallback should have kicked in
+        assert out[0]["extraction_method"] == "rendered-text"
+        assert "article body" in out[0]["cleaned_content"]
+
+    @mock.patch('scout_it.cli.ExtractionEngine')
+    @mock.patch('scout_it.cli.fetch_resilient')
+    def test_extract_news_without_sources_playwright_retry(self, mock_fetch, mock_engine_cls):
+        """DDGS result extraction retries with Playwright when < 30 chars (no --sources)"""
+        from scout_it.cli import _extract_news_content
+
+        mock_fetch.side_effect = [
+            {"html": "<html>shell</html>", "final_url": "https://example.com/a",
+             "status": "success", "tier": "requests", "attempts": 1, "errors": [],
+             "rendered_text": ""},
+            {"html": "<html>article body</html>", "final_url": "https://example.com/a",
+             "status": "success", "tier": "playwright", "attempts": 2, "errors": [],
+             "rendered_text": "article rendered text with enough content"},
+        ]
+
+        mock_engine = mock.MagicMock()
+        mock_engine.extract_content.side_effect = [
+            ("too short", "fallback", 0.3),
+            ("article body with real content here", "readability", 0.9),
+        ]
+        mock_engine_cls.return_value = mock_engine
+
+        results = [{"url": "https://example.com/a", "body": ""}]
+        out = _extract_news_content(results)
+        assert out[0]["extraction_status"] == "success"
+        assert out[0]["content_word_count"] >= 5
+
+    @mock.patch('scout_it.cli.ExtractionEngine')
+    @mock.patch('scout_it.cli.fetch_resilient')
+    def test_error_page_detection(self, mock_fetch, mock_engine_cls):
+        """Dead link (MSN 404-style) content is cleared — not passed as real content"""
+        from scout_it.cli import _extract_news_content
+
+        mock_fetch.return_value = {
+            "html": "<html>error</html>", "final_url": "https://msn.com/dead-link",
+            "status": "success", "tier": "playwright", "attempts": 1, "errors": [],
+            "rendered_text": "Whoops! This page doesn't exist or can't be found.",
+        }
+
+        mock_engine = mock.MagicMock()
+        mock_engine.extract_content.return_value = (
+            "Whoops! This page doesn't exist or can't be found.", "fallback", 0.3)
+        mock_engine_cls.return_value = mock_engine
+
+        results = [{"url": "https://msn.com/dead-link", "body": ""}]
+        out = _extract_news_content(results)
+        assert out[0]["extraction_status"] == "failed"
+
+    @mock.patch('scout_it.cli.ExtractionEngine')
+    @mock.patch('scout_it.cli.fetch_resilient')
+    def test_url_propagation_on_playwright_redirect(self, mock_fetch, mock_engine_cls):
+        """URL is updated when Playwright retry resolves through JS redirect"""
+        from scout_it.cli import _extract_news_content
+
+        mock_fetch.side_effect = [
+            {"html": "<html>shell</html>", "final_url": "https://news.google.com/rss/a",
+             "status": "success", "tier": "requests", "attempts": 1, "errors": [],
+             "rendered_text": ""},
+            {"html": "<html>article body</html>",
+             "final_url": "https://www.npr.org/article",
+             "status": "success", "tier": "playwright", "attempts": 2, "errors": [],
+             "rendered_text": "article body text"},
+        ]
+
+        mock_engine = mock.MagicMock()
+        mock_engine.extract_content.side_effect = [
+            ("short", "fallback", 0.3),
+            ("article body text with real content here", "readability", 0.9),
+        ]
+        mock_engine_cls.return_value = mock_engine
+
+        results = [{"url": "https://news.google.com/rss/a", "body": ""}]
+        out = _extract_news_content(results)
+        assert out[0]["url"] == "https://www.npr.org/article"
+        assert "npr.org" in out[0]["href"]
 
 
 if __name__ == '__main__':

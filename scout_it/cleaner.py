@@ -499,7 +499,7 @@ def advanced_clean_text(text: str, url: Optional[str] = None) -> str:
         r'share\s*this\s*page.*',
         r'tweet\s*this.*',
         r'sponsored\s*content.*',
-        r'advertisement.*',
+        r'advertisement',  # no .* — only remove the word itself, not trailing text
         r'promoted\s*by.*',
         r'partner\s*content.*',
     ]
@@ -1125,7 +1125,7 @@ def process_record(rec: dict) -> dict:
         'fetch_time': rec.get('fetch_time'),
         'extraction_status': rec.get('extraction_status'),
         'confidence_score': rec.get('confidence_score'),
-        'content_word_count': rec.get('content_word_count'),
+        'content_word_count': len(cleaned.split()),
         'content_type': content_type,
         'cleaned_content': cleaned,  # ✅ Full natural language preserved
         'first_paragraph': first_para,
