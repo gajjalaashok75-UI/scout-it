@@ -380,7 +380,7 @@ def news_search(
 
     - No args: DDGS → Playwright HTML → Google News RSS (sequential fallback chain)
     - ``--sources google-news``: DDGS chain + Google News in parallel
-    - ``--location``: DDGS chain + ToI RSS in parallel
+    - ``--location``: DDGS chain (query + location names) + ToI RSS in parallel
     - Both: Google News + ToI + DDGS chain all in parallel
 
     Returns structured results matching the web-search output format:
@@ -397,6 +397,14 @@ def news_search(
     seen_urls: set = set()
 
     use_gn_source = source == 'google-news'
+
+    # Augment query with location names so DDGS/Playwright/Google News
+    # results are geographically relevant when --location is used
+    ddgs_query = query
+    if locations:
+        location_str = " ".join(locations)
+        ddgs_query = f"{query} {location_str}"
+        print(f"[blue]Augmenting query with location:[/blue] '{query}' → '{ddgs_query}'")
 
     def _dedup_append(results: List[Dict[str, Any]]) -> int:
         """Append results with URL-level dedup. Returns count added."""
@@ -418,7 +426,7 @@ def news_search(
         Tier 3: Google News RSS (only when not already a parallel source)
         """
         results, stats = _ddgs_list_search_with_retry(
-            'news', query=query, max_results=max_results,
+            'news', query=ddgs_query, max_results=max_results,
             options={'region': region, 'safesearch': safesearch, 'timelimit': timelimit},
             retry_on_zero_success=retry_on_zero_success,
             max_zero_success_retries=retry_attempts,
@@ -430,7 +438,7 @@ def news_search(
         if not results and not use_gn_source:
             # Tier 3: Google News RSS (only when not a parallel source)
             print(f"[yellow]DDGS chain returned 0 results, falling back to Google News RSS[/yellow]")
-            gn = google_news_search(query, max_results=max_results)
+            gn = google_news_search(ddgs_query, max_results=max_results)
             for r in gn:
                 item_url = r.get('url', '') or r.get('href', '')
                 results.append({
@@ -445,7 +453,7 @@ def news_search(
 
     # ── Stream 2: Google News (parallel, when --sources google-news) ──
     def _run_google_news():
-        gn = google_news_search(query, max_results=max_results)
+        gn = google_news_search(ddgs_query, max_results=max_results)
         results = []
         for r in gn:
             item_url = r.get('url', '') or r.get('href', '')
