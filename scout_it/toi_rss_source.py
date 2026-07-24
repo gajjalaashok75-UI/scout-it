@@ -52,6 +52,9 @@ LOCATION_FEEDS: Dict[str, List[str]] = {
 }
 # fmt: on
 
+# Case-insensitive lookup for location keys (users can pass "uk" or "UK" or "Uk")
+_LOCATION_FEEDS_CI = {k.lower(): v for k, v in LOCATION_FEEDS.items()}
+
 
 def _parse_toi_rss(xml_text: str, source_label: str) -> List[Dict[str, Any]]:
     """Parse a ToI RSS XML string into a list of result dicts."""
@@ -142,7 +145,7 @@ def fetch_toi_news(
     feed_labels: List[str] = []
     for loc in locations:
         normalized = loc.strip().lower().replace(" ", "-")
-        feed_urls = LOCATION_FEEDS.get(normalized)
+        feed_urls = _LOCATION_FEEDS_CI.get(normalized)
         if not feed_urls:
             _logger.warning("Unknown location '%s', skipping", loc)
             continue
@@ -165,6 +168,9 @@ def fetch_toi_news(
                 unique.append(item)
         # Use the first items — RSS feeds are ordered newest-first
         return unique[:max_per_location] if len(unique) > max_per_location else unique
+
+    if not feed_tasks:
+        return []
 
     with ThreadPoolExecutor(max_workers=min(len(feed_tasks), 8)) as pool:
         fut_map = {pool.submit(_fetch, label, url): (label, url)
