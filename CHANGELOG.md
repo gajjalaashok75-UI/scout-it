@@ -65,6 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added credentials & configuration section with all env vars and precedence rules.
 - Added programmatic API examples, updated project structure, testing, troubleshooting.
 
+### 📝 Docs — README refresh + GAKRCLI.md replaces AGENTS.md
+
+- **README.md**: Fixed stale references to the removed `ContentCleaner` / `search_and_extract()` (now the current `web_search()` / `fetch_url()` / `multi_engine_search()` API with a Key Functions table), corrected the credential storage path (`~/.scout-it/credentials.json`, not `config.ini`), added the missing `wikipedia-search` CLI section and `--sources` / `--location` flags for web-search / news-search, documented the politeness governor, response cache, and canary probe, and updated the project structure + test counts.
+- **GAKRCLI.md**: New agent-instruction file replacing the deleted AGENTS.md — commands, resilience architecture, source modules, testing conventions, and repository rules for AI coding agents.
+
 ### 🚀 Version bump 1.4.0 → 1.5.0
 
 - Bumped version in `pyproject.toml`, `setup.py`, `scout_it/__init__.py`.

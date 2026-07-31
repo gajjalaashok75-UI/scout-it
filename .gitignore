@@ -7,6 +7,7 @@ __pycache__/
 *.so
 real-tests.md
 # Distribution / packaging
+FEATURE-ENHANCEMENTS.MD
 .Python
 build/
 develop-eggs/

@@ -108,7 +108,7 @@ graph TB
         JSON_OUT["JSON files<br/>.scout-it/*.json"]
         MD_OUT["Markdown files<br/>.scout-it/*.md"]
         STDOUT["stdout<br/>--json flag"]
-        CLEANER["ContentCleaner<br/>confidence scoring"]
+        CLEANER["Cleaner<br/>process_results()"]
     end
 
     CLI_Entry --> Parser
@@ -139,7 +139,7 @@ graph TB
 | 1. **Search** | DuckDuckGo / multi-search API | Query dispatched to selected engine(s); raw results returned |
 | 2. **Fetch** | Resilience chain (5 tiers) | Each URL fetched through tiers until one succeeds; DoH fallback and proxy pool active throughout |
 | 3. **Extract** | 5-strategy extraction pipeline | Page HTML processed by each strategy in priority order; first with sufficient confidence wins |
-| 4. **Clean** | ContentCleaner | Extracted text scored, structured, and formatted; confidence, quality, and sentiment metrics computed |
+| 4. **Clean** | `process_results()` (cleaner.py) | Extracted text scored, structured, and formatted; confidence, quality, and sentiment metrics computed |
 | 5. **Output** | JSON / Markdown writer | Results written to file under `.scout-it/` or to stdout with `--json` |
 
 The entire pipeline supports **parallel extraction** via `ThreadPoolExecutor` (configurable with `--workers`, default 4) and **extraction-only mode** where pre-fetched URLs can be re-extracted without re-fetching.
@@ -148,10 +148,12 @@ The entire pipeline supports **parallel extraction** via `ThreadPoolExecutor` (c
 
 ## Features
 
-- **8 search modes**: web, news, images, videos, YouTube metadata, single URL fetch, multi-engine search, engine listing
+- **Search modes**: web, news, images, videos, YouTube, single-URL fetch, multi-engine search, Wikimedia search, engine listing
 - **12 GitHub extractors**: repos, commits, PRs, issues, discussions, code search, repo search, files, folders
 - **3 social platform extractors**: Telegram channels (public), Discord channels (bot), Reddit search
 - **5-tier content extraction**: Trafilatura → justext → BoilerPy3 → Readability → BeautifulSoup, with confidence scoring
+- **Dedicated news sources**: Google News RSS (`news-search --sources google-news`) and Times of India RSS (`news-search --location <country/city>`), merged additively with DuckDuckGo News
+- **Wikimedia search**: `wikipedia-search` and `--sources wikimedia` query any of the 12 Wikimedia projects via the MediaWiki Action API
 - **5-tier resilience chain**: plain requests → TLS impersonation → Playwright JS render → bandit-strategy cache → alternate source fallback (AMP/mobile/Wayback)
 - **Auto-rotating proxy pool** via `PROXY_LIST` env var
 - **DNS-over-HTTPS fallback** on DNS-looking errors
@@ -257,6 +259,7 @@ scout-it web-search --query "<text>" [options]
 | `--safesearch` `<level>` | Safe search: on, moderate, off |
 | `--timelimit` `<range>` | Time limit: d, w, m, y |
 | `--backend` `<backend>` | DDGS backend: auto, html, lite |
+| `--sources` `<source>` | Search source override: `wikimedia` (falls back to DuckDuckGo on zero results) |
 | `--no-retry-on-zero` | Disable retries on 0 results (retries on by default) |
 | `--retry-attempts` `<n>` | Retry attempts when 0 successful extractions |
 | `--retry-backoff` `<seconds>` | Backoff seconds between retries |
@@ -270,6 +273,32 @@ scout-it web-search --query "<text>" [options]
 | `--use-bandit` | Skip to best-performing tier per domain from history |
 | `--markdown` | Save as Markdown instead of JSON |
 | `--out, -o` `<path>` | Output file (default: `.scout-it/struct_format_results.json`) |
+
+#### `wikipedia-search`
+
+Search any Wikimedia project via the MediaWiki Action API (Wikipedia, Wikidata, Commons, Wiktionary, Wikivoyage, Wikisource, and more).
+
+```bash
+scout-it wikipedia-search --query "<text>" [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--query, -q` `<text>` | Search query or page title (required) |
+| `--max, -m` `<n>` | Max results (1-50) |
+| `--project` `<project>` | Wikimedia project (default: `wikipedia`; any of the 12 entries in `wikimedia_source.SITE_MAP`) |
+| `--language, -l` `<code>` | Project language for language-scoped wikis (default: `en`) |
+| `--timeout` `<seconds>` | HTTP timeout (default: 25) |
+| `--workers, -w` `<n>` | Parallel workers for page fetching |
+| `--summary` | Fetch the Wikipedia REST summary for the title |
+| `--extract` | Fetch the cleaned full-page extract via the Action API |
+| `--sections` | Export section-by-section cleaned text |
+| `--crawl` | Recursive crawl from search results (with `--crawl-depth <n>`, default 2) |
+| `--bundle` | Broad multi-project topic bundle across all 12 projects |
+| `--robots` | Check robots.txt allowance before searching |
+| `--no-clean` | Disable text cleaning |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/wikimedia_results.json`) |
 
 #### `news-search`
 
@@ -287,6 +316,8 @@ scout-it news-search --query "<text>" [options]
 | `--region` `<region>` | DuckDuckGo region |
 | `--safesearch` `<level>` | Safe search: on, moderate, off |
 | `--timelimit` `<range>` | Time limit: d, w, m, y |
+| `--sources` `<source>` | Search source override: `google-news` (Google News RSS; falls back to DuckDuckGo News on zero results) |
+| `--location` `<places...>` | Localized news from Times of India RSS feeds, additive with the other sources — e.g. `india`, `US`, `india-delhi` (case-insensitive, newest-first) |
 | `--no-retry-on-zero` | Disable retries on 0 results |
 | `--retry-attempts` `<n>` | Retry attempts on zero results |
 | `--retry-backoff` `<seconds>` | Backoff seconds between retries |
@@ -520,7 +551,7 @@ scout-it doctor
 
 ## Credentials & Configuration
 
-scout-it reads credentials from environment variables. Use `scout-it config` to set them interactively (stored in `~/.scout-it/config.ini`). Environment variables take precedence.
+scout-it reads credentials from environment variables. Use `scout-it config` to set them interactively (stored in `~/.scout-it/credentials.json`, permissioned 0600 on POSIX; the pre-rename `~/.data-scout/credentials.json` is still read as a fallback). Environment variables take precedence.
 
 | Variable | Purpose |
 |----------|---------|
@@ -537,7 +568,7 @@ scout-it reads credentials from environment variables. Use `scout-it config` to 
 ### Credential Precedence
 
 1. Environment variable (highest)
-2. `~/.scout-it/config.ini` (set via `scout-it config`)
+2. `~/.scout-it/credentials.json` (set via `scout-it config`)
 3. Built-in default (if any)
 
 ---
@@ -559,6 +590,9 @@ Additional protections:
 - **DNS-over-HTTPS fallback**: Automatically retries failed fetches via DoH when the error looks DNS-related (on by default; disable with `--no-dns-fallback`)
 - **Zero-result retry**: When a search returns 0 results, retries with progressively relaxed filters (on by default; disable with `--no-retry-on-zero`)
 - **Proxy pool**: Auto-rotates through proxies from `PROXY_LIST` env var
+- **Politeness governor**: Per-domain concurrency caps + robots.txt checks to avoid tripping rate limits
+- **Response cache**: Disk cache under `.scout-it/cache/` with stale-if-error fallback
+- **Canary probe**: Cheap pre-fetch block-page check before burning full tier attempts
 
 ---
 
@@ -568,50 +602,49 @@ scout-it can be used as a Python library:
 
 ```python
 from scout_it import (
-    EnterpriseSearchEngine,
-    ImageSearchEngine,
-    ExtractionEngine,
-    ContentCleaner,
+    web_search,
+    fetch_url,
+    multi_engine_search,
+    wikimedia_search,
 )
 
-# Search and extract
-engine = EnterpriseSearchEngine()
-results = engine.search_and_extract(
-    query="machine learning transformers",
-    max_results=3,
-)
+# Search with full content extraction -> (results, stats) tuple
+results, stats = web_search("machine learning transformers", max_results=3)
 
-# Each result has: title, url, content, confidence, score, sentiment
+# Each result dict has: title, url, source, publish_date, confidence_score,
+# extraction_method, cleaned_content, first_paragraph, top_keywords, ...
 for r in results:
-    print(f"{r.title} (confidence: {r.confidence:.2f})")
-    print(r.content[:200])
+    print(f"{r['title']} (confidence: {r['confidence_score']:.2f})")
+    print(r["cleaned_content"][:200])
     print("---")
 
-# Image search
-img_engine = ImageSearchEngine()
-images = img_engine.search(
-    query="mountain landscape",
-    max_results=5,
-    min_width=1920,
-    min_height=1080,
-)
+# Multi-engine search (tier-1 engines without API keys are skipped, not errors)
+result = multi_engine_search("rust vs go", engines=["duckduckgo", "brave"])
+for r in result["merged_results"]:
+    print(r["title"])
 
-# Direct URL extraction
-extractor = ExtractionEngine()
-content = extractor.extract_content(
-    url="https://example.com/article",
-    max_fetch_retries=3,
-)
+# Direct URL extraction through the full resilience chain
+fetch_result = fetch_url("https://example.com/article", max_fetch_retries=3)
+
+# Wikimedia search (returns DDGS-compatible result dicts)
+wiki_results, _ = wikimedia_search("machine learning", project="wikipedia")
 ```
 
-### Key Classes
+### Key Functions
 
-| Class | Purpose |
-|-------|---------|
-| `EnterpriseSearchEngine` | Web/news search + parallel content extraction |
-| `ImageSearchEngine` | Image search with dimension/color/license filters |
-| `ExtractionEngine` | Multi-strategy URL content extraction |
-| `ContentCleaner` | Text cleaning, structuring, and confidence scoring |
+| Function | Purpose |
+|----------|---------|
+| `web_search()` | DuckDuckGo web search + parallel content extraction |
+| `news_search()` | DuckDuckGo news search (Google News / ToI via `--sources` / `--location`) |
+| `image_search()` | Image search with dimension/color/license filters |
+| `fetch_url()` | Single-URL fetch through the full resilience chain |
+| `multi_engine_search()` | Parallel Brave/Bing/Google/SerpAPI search with dedupe |
+| `wikimedia_search()` | Search any Wikimedia project via the Action API |
+| `fetch_resilient()` | Low-level tiered fetch (requests → Playwright → bandit → alternate) |
+| `process_results()` | Structure + clean a raw result list into scored records |
+| `advanced_clean_text()` | Noise-only text cleaning that preserves content |
+
+> Note: `ExtractionEngine.extract_content(url, html_content, timeout)` expects the HTML to already be fetched — pass the page HTML you obtained yourself. The end-to-end fetch+extract path is `fetch_url()` / `web_search()`. `ContentCleaner` and `EnterpriseSearchEngine.search_and_extract()` no longer exist.
 
 ---
 
@@ -621,22 +654,39 @@ content = extractor.extract_content(
 scout-it/
 ├── scout_it/                    # Main package
 │   ├── __init__.py              # Public API + exports
-│   ├── cli.py                   # Argeparse CLI (26 subcommands)
-│   ├── extraction.py            # Search engines + extraction
-│   ├── cleaner.py               # Content cleaning
-│   ├── config.py                # Credential management
-│   ├── output.py                # Output path routing + markdown rendering
-│   ├── proxy_pool.py            # Auto-rotating proxy pool
-│   ├── social.py                # Telegram, Discord, Reddit extraction
-│   ├── github_extract.py        # All 12 GitHub extractors
-│   ├── video_utils.py           # YouTube metadata extraction
+│   ├── cli.py                   # Argparse CLI (26 subcommands)
+│   ├── extraction.py            # Search engines, ExtractionEngine, fetch_resilient
+│   ├── cleaner.py               # process_results / advanced_clean_text / scoring
 │   ├── engines.py               # Brave, Bing, Google, SerpAPI engine wrappers
-│   └── domain_stats.py          # Strategy bandit cache persistence
-├── tests/                       # Test suite (151+ tests)
+│   ├── config.py                # Credential management (~/.scout-it/credentials.json)
+│   ├── output.py                # Output path routing + markdown rendering
+│   ├── github_extract.py        # All 12 GitHub extractors
+│   ├── social.py                # Telegram, Discord, Reddit extraction
+│   ├── google_news_source.py    # Google News RSS (news-search --sources google-news)
+│   ├── toi_rss_source.py        # Times of India RSS (news-search --location)
+│   ├── wikimedia_source.py      # Wikimedia search (wikipedia-search / --sources wikimedia)
+│   ├── heuristic_extract.py     # DOM-based heuristic content scoring
+│   ├── selector_cache.py        # Per-domain CSS selector memory
+│   ├── alternate_source.py      # AMP/mobile/print/Wayback variants
+│   ├── browser_profile.py       # Persistent Playwright profile + stealth
+│   ├── tls_fingerprint.py       # curl_cffi TLS/JA3 impersonation
+│   ├── dns_resilience.py        # DNS-over-HTTPS fallback
+│   ├── proxy_pool.py            # Auto-rotating proxy pool
+│   ├── retry_classifier.py      # Transient vs permanent failure classifier
+│   ├── politeness_governor.py   # Per-domain concurrency caps + robots.txt
+│   ├── strategy_cache.py        # Per-domain strategy memory (SQLite)
+│   ├── strategy_bandit.py       # Thompson-sampling tier selection
+│   ├── response_cache.py        # Disk response cache (.scout-it/cache/)
+│   ├── canary_probe.py          # Cheap block-page pre-check
+│   ├── header_profiles.py       # Browser-consistent header bundles
+│   └── _utils.py                # Shared helpers
+├── tests/                       # Test suite (~430 tests, 11 files)
 │   ├── test_cli.py
+│   ├── test_cleaner.py
+│   ├── test_new_sources.py
+│   ├── test_resilience.py
 │   ├── test_output.py
-│   ├── test_social.py
-│   ├── test_github_extract.py
+│   ├── test_strategy.py
 │   ├── test_advanced_evasion.py
 │   └── ...
 ├── docs/                        # Search-specific documentation
@@ -645,7 +695,7 @@ scout-it/
 ├── setup.py
 ├── CHANGELOG.md
 ├── README.md
-├── AGENTS.md
+├── GAKRCLI.md                   # Agent instructions (replaces AGENTS.md)
 └── LICENSE
 ```
 
@@ -654,17 +704,17 @@ scout-it/
 ## Testing
 
 ```bash
-# Run full test suite
-pytest tests/ -v
+# Run test files one at a time (the suite is not designed to run all at once)
+pytest tests/test_resilience.py -v
+
+# Run a single test
+pytest tests/test_output.py::TestChunkText::test_long_text_chunked_under_limit -v
 
 # Run with coverage
-pytest tests/ --cov=scout_it --cov-report=term-missing
-
-# Run specific test file
-pytest tests/test_output.py -v
+pytest tests/test_cleaner.py --cov=scout_it --cov-report=term-missing
 ```
 
-Minimum coverage target: 80%. The test suite includes unit tests, integration tests with mocked APIs, and real tests for live CLI commands.
+Minimum coverage target: 80%. The test suite includes unit tests, integration tests with mocked APIs, and real tests for live CLI commands. For end-to-end behavior verification, exercise the real `scout-it` CLI instead of pytest (see `real-tests.md`).
 
 ---
 
