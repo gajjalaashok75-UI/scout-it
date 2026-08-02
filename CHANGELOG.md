@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧪 Tests — extraction concurrency, integration, quality, complete workflow, news integration
+
+- **`test_extraction_concurrency.py`**: Tests for concurrent extraction with the browser pool and thread safety.
+- **`test_extraction_integration.py`**: End-to-end extraction tests through `fetch_resilient` + `ExtractionEngine` with the new optimization stack.
+- **`test_extraction_quality.py`**: Tests for content quality scoring and automatic Playwright escalation.
+- **`test_complete_workflow.py`**: Full search → fetch → extract → clean → output pipeline tests.
+- **`test_news_integration.py`**: Tests for TechCrunch RSS integration with `news-search` (sources merge, ranking, output).
+
 ### 🧪 Tests — browser pool, domain routing, source resolvers, staged ranking
 
 - **`test_browser_pool.py`**: Unit tests for the thread-local Playwright browser pool (per-thread reuse, cleanup, error handling).
