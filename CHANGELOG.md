@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧪 Tests — optimization stack, performance, production hardening, wrapper resolution
+
+- **`test_optimization_stack.py`**: Tests for the combined optimization stack (routing + quality + ranking working together).
+- **`test_performance_analysis.py`**: Performance analysis of the discovery-first pipeline vs old flow.
+- **`test_performance_summary.py`**: Summary metrics tests for ranking/extraction performance targets.
+- **`test_production_hardening.py`**: Tests for production hardening features (connectivity precheck, retry/backoff, graceful failure).
+- **`test_early_wrapper_resolution.py`**: Tests for resolving wrapper/syndication URLs early in the pipeline.
+
 ### 🧪 Tests — extraction concurrency, integration, quality, complete workflow, news integration
 
 - **`test_extraction_concurrency.py`**: Tests for concurrent extraction with the browser pool and thread safety.
