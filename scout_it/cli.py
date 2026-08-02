@@ -12,6 +12,7 @@ This imports `EnterpriseSearchEngine`, `ImageSearchEngine` from `extraction.py`
 and `process_results` from `cleaner.py`
 """
 import argparse
+import logging
 import sys
 
 # Ensure Unicode output works on Windows terminals
@@ -24,6 +25,7 @@ import importlib.metadata
 import json
 import random
 import re
+import socket
 import time
 from dataclasses import asdict
 from html import unescape
@@ -35,6 +37,122 @@ import requests
 
 # Local imports
 from .wikimedia_source import SITE_MAP
+
+# Initialize logger
+logger = logging.getLogger(__name__)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# LIGHTWEIGHT NETWORK CONNECTIVITY CHECKER (TCP Socket-Based)
+# ══════════════════════════════════════════════════════════════════════════
+
+def check_internet_connection(timeout: int = 2, silent_on_success: bool = True) -> Tuple[bool, Optional[int]]:
+    """Fast internet connectivity check using TCP socket connection.
+    
+    Uses DNS servers (port 53) for lightweight TCP connectivity test:
+    - 1.1.1.1:53  (Cloudflare DNS)
+    - 8.8.8.8:53  (Google DNS)
+    - 9.9.9.9:53  (Quad9 DNS)
+    
+    This is faster than HTTP because it skips:
+    - DNS lookup
+    - TLS handshake
+    - HTTP request/response
+    
+    Typical response time: <50ms
+    
+    Args:
+        timeout: Connection timeout in seconds (default: 2s)
+        silent_on_success: If True, don't print success message (default: True)
+        
+    Returns:
+        Tuple of (is_connected: bool, latency_ms: Optional[int])
+    """
+    test_endpoints = [
+        ("1.1.1.1", 53),  # Cloudflare DNS
+        ("8.8.8.8", 53),  # Google DNS
+        ("9.9.9.9", 53),  # Quad9 DNS
+    ]
+    
+    for host, port in test_endpoints:
+        try:
+            start = time.perf_counter()
+            sock = socket.create_connection((host, port), timeout=timeout)
+            sock.close()
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            
+            if not silent_on_success:
+                print(f"[green]✓ Internet connection active ({latency_ms}ms)[/green]")
+            
+            return True, latency_ms
+        except (socket.timeout, OSError):
+            continue
+    
+    return False, None
+
+
+def ensure_internet_connection(max_retries: int = 5, silent_on_success: bool = True) -> bool:
+    """Ensure internet connection is available, with retry mechanism.
+    
+    Only displays output when connection fails. Silent on success.
+    
+    Retry delays: 3s, 5s, 10s, 15s, 20s (exponential backoff)
+    
+    Args:
+        max_retries: Maximum number of retry attempts (default: 5)
+        silent_on_success: If True, don't print success message (default: True)
+        
+    Returns:
+        True if connection established, False if all retries failed
+    """
+    # First attempt (silent check)
+    is_connected, latency = check_internet_connection(timeout=2, silent_on_success=True)
+    
+    if is_connected:
+        # Connection good - silent success
+        return True
+    
+    # Connection failed - now show output
+    print(f"[red]✗ No internet connection detected[/red]")
+    print(f"[yellow]⏳ Attempting to establish connection...[/yellow]\n")
+    
+    # Retry with exponential backoff
+    delays = [3, 5, 10, 15, 20]
+    
+    for attempt in range(1, max_retries + 1):
+        print(f"[yellow]🔍 Checking internet connection (attempt {attempt}/{max_retries})...[/yellow]")
+        
+        is_connected, latency = check_internet_connection(timeout=2, silent_on_success=True)
+        
+        if is_connected:
+            print(f"[green]✓ Internet connection restored! ({latency}ms)[/green]\n")
+            return True
+        
+        print(f"[red]✗ Still no connection[/red]")
+        
+        if attempt < max_retries:
+            # Get delay for this attempt
+            delay = delays[attempt - 1] if attempt - 1 < len(delays) else delays[-1]
+            print(f"[yellow]⏳ Retrying in {delay} seconds...[/yellow]")
+            
+            # Countdown display
+            for remaining in range(delay, 0, -1):
+                print(f"\r   Next retry in: {remaining}s ", end="", flush=True)
+                time.sleep(1)
+            
+            print()  # New line after countdown
+    
+    # All retries failed
+    print(f"\n[red]❌ FAILED: No internet connection after {max_retries} attempts[/red]")
+    print(f"[yellow]Please check your network connection and try again.[/yellow]")
+    print(f"[dim]Troubleshooting tips:[/dim]")
+    print(f"  • Check if your Wi-Fi/Ethernet is connected")
+    print(f"  • Try opening a website in your browser")
+    print(f"  • Restart your router if needed")
+    print(f"  • Check if a VPN is blocking the connection\n")
+    
+    return False
+
 
 try:
     from .cleaner import process_results
@@ -368,7 +486,7 @@ def image_search(
 
 def news_search(
     query: str,
-    max_results: int = 50,
+    max_results: int = 10,
     retry_on_zero_success: bool = True,
     retry_attempts: int = 2,
     retry_backoff: float = 1.0,
@@ -382,33 +500,69 @@ def news_search(
     locations: Optional[List[str]] = None,
     max_chars: Optional[int] = None,
     max_size: Optional[str] = None,
+    categories: Optional[List[str]] = None,
+    research_mode: bool = False,
+    snippets_only: bool = False,
 ):
-    """DuckDuckGo news search with full content extraction and cleaning.
-
-    Sources run in parallel when ``source`` and/or ``locations`` are given:
-
-    - No args: DDGS → Playwright HTML → Google News RSS (sequential fallback chain)
-    - ``--sources google-news``: DDGS chain + Google News in parallel
-    - ``--location``: DDGS chain (query + location names) + ToI RSS in parallel
-    - Both: Google News + ToI + DDGS chain all in parallel
-
-    Returns structured results matching the web-search output format:
-    each result goes through ``ExtractionEngine`` → ``process_results()``
-    to produce cleaned content with quality signals and readability metrics.
+    """News search with optimized discovery-first pipeline.
+    
+    Correct Pipeline:
+    1. Lightweight Discovery Phase
+       - DDGS: 20 snippets (title, description, url, date)
+       - RSS feeds: ALL entries (no limit)
+       - NO content extraction yet
+    
+    2. Deduplicate & Rank (metadata-only, fast)
+       - Deduplicate by URL
+       - Rank by relevance using titles/descriptions
+       - Select top N where N = max_results (default: 10)
+    
+    3. Content Extraction (only top N)
+       - Extract full page content ONLY for top ranked URLs
+       - Use requests → Playwright fallback
+    
+    4. Clean & Output
+       - Process extracted content
+       - Return final results
+    
+    Providers:
+    - DDGS News (always) → 20 snippets
+    - Google News RSS (if --sources google-news) → ALL entries
+    - ToI RSS (if --location) → ALL entries per location
+    - Category RSS (if --category) → ALL entries from feeds
+    
+    Args:
+        query: Search query
+        max_results: Final number of results to extract and return (default: 10)
+        
+    Returns:
+        Structured results with full extracted content
     """
     import time
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    from urllib.parse import urlparse
+    import logging
     from .google_news_source import google_news_search
+    from .category_providers import fetch_category_news, get_available_categories
+    from .staged_ranker import rank_candidates_initial
 
+    logger = logging.getLogger(__name__)
     start_time = time.time()
+    
+    # Discovery limits
+    DDGS_SNIPPET_LIMIT = 20  # Get top 20 snippets from DDGS (lightweight)
+    RSS_NO_LIMIT = 500       # RSS feeds: get ALL entries (or large limit)
+    
+    # Extraction limit
+    EXTRACTION_COUNT = max_results  # Extract content for this many results after ranking
+    
     all_raw_results: List[Dict[str, Any]] = []
     search_stats: Dict[str, Any] = {}
     seen_urls: set = set()
 
     use_gn_source = source == 'google-news'
 
-    # Augment query with location names so DDGS/Playwright/Google News
-    # results are geographically relevant when --location is used
+    # Augment query with location names for geographic relevance
     ddgs_query = query
     if locations:
         location_str = " ".join(locations)
@@ -428,26 +582,22 @@ def news_search(
 
     # ── Stream 1: DDGS → Playwright HTML → Google News RSS (always runs) ──
     def _run_ddgs_chain():
-        """DDGS news search with multi-tier fallback.
+        """DDGS news search - get 20 snippets only (NO content extraction).
 
-        Tier 1: DDGS Python package
-        Tier 2: DDG HTML scrape via fetch_resilient (Playwright-capable)
-        Tier 3: Google News RSS (only when not already a parallel source)
+        Returns lightweight metadata: title, description, url, date
         """
         results, stats = _ddgs_list_search_with_retry(
-            'news', query=ddgs_query, max_results=max_results,
+            'news', query=ddgs_query, max_results=DDGS_SNIPPET_LIMIT,
             options={'region': region, 'safesearch': safesearch, 'timelimit': timelimit},
             retry_on_zero_success=retry_on_zero_success,
             max_zero_success_retries=retry_attempts,
             retry_backoff_seconds=retry_backoff,
         )
-        # _ddgs_list_search_with_retry now internally handles Tier 2
-        # (Playwright HTML) for 'news' method
 
         if not results and not use_gn_source:
             # Tier 3: Google News RSS (only when not a parallel source)
             print(f"[yellow]DDGS chain returned 0 results, falling back to Google News RSS[/yellow]")
-            gn = google_news_search(ddgs_query, max_results=max_results)
+            gn = google_news_search(ddgs_query, max_results=RSS_NO_LIMIT)
             for r in gn:
                 item_url = r.get('url', '') or r.get('href', '')
                 results.append({
@@ -463,7 +613,8 @@ def news_search(
 
     # ── Stream 2: Google News (parallel, when --sources google-news) ──
     def _run_google_news():
-        gn = google_news_search(ddgs_query, max_results=max_results)
+        """Get ALL Google News RSS entries (NO limit)."""
+        gn = google_news_search(ddgs_query, max_results=RSS_NO_LIMIT)
         results = []
         for r in gn:
             item_url = r.get('url', '') or r.get('href', '')
@@ -479,12 +630,18 @@ def news_search(
 
     # ── Stream 3: ToI RSS (parallel, when --location) ──
     def _run_toi(locs: List[str]):
+        """Get ALL ToI RSS entries for locations (NO limit per location)."""
         from .toi_rss_source import fetch_toi_news
-        results = fetch_toi_news(locs, max_per_location=max_results)
+        results = fetch_toi_news(locs, max_per_location=RSS_NO_LIMIT)
         for r in results:
             if 'date' in r and 'publish_date' not in r:
                 r['publish_date'] = r['date']
         return results
+
+    # ── Stream 4: Category RSS providers (parallel, when --category) ──
+    def _run_category_providers(cats: List[str]):
+        """Get ALL TechCrunch RSS entries for categories (NO limit)."""
+        return fetch_category_news(cats, query, max_results=RSS_NO_LIMIT)
 
     # ── Determine which streams to run ──
     streams: List[Tuple[str, Any]] = [('ddgs_chain', _run_ddgs_chain)]
@@ -493,6 +650,11 @@ def news_search(
     if locations:
         # Capture locations by value for the closure
         streams.append(('toi_rss', lambda locs=locations: _run_toi(locs)))
+    if categories:
+        # Capture categories by value for the closure
+        streams.append(('category_rss', lambda cats=categories: _run_category_providers(cats)))
+        print(f"[blue]Category RSS providers enabled:[/blue] {', '.join(categories)}")
+        print(f"[dim]Available categories: {', '.join(get_available_categories())}[/dim]")
 
     # ── Execute all streams in parallel ──
     stream_outputs: Dict[str, Any] = {}
@@ -532,29 +694,281 @@ def news_search(
         search_stats['toi_locations'] = locations
         search_stats['toi_count'] = toi_added
 
+    if 'category_rss' in stream_outputs:
+        category_results = stream_outputs['category_rss']
+        category_added = _dedup_append(category_results) if category_results else 0
+        search_stats['category_providers'] = categories
+        search_stats['category_rss_count'] = category_added
+        print(f"[green]Category RSS providers returned {category_added} unique results[/green]")
+
     search_stats['total'] = len(all_raw_results)
     search_stats['count'] = len(all_raw_results)
-    search_stats['execution_time'] = round(time.time() - start_time, 3)
+    search_stats['candidates_collected'] = len(all_raw_results)
+    collection_time = round(time.time() - start_time, 3)
+    search_stats['collection_time'] = collection_time
 
     if not all_raw_results:
         return [], {
             'search_engine': search_stats,
             'cleaner': {'total_input': 0, 'successful': 0, 'failed': 0, 'processed': 0},
+            'ranking': {
+                'ranking_time_ms': 0,
+                'extraction_time_ms': 0,
+            }
         }
 
-    # Phase 2: Fetch and extract full article content in parallel, using the
-    # requests -> Playwright -> basic-fallback resilient fetch chain.
+    print(f"\n[cyan]Phase 1: Lightweight Discovery[/cyan]")
+    print(f"  • Total candidates: {len(all_raw_results)}")
+    print(f"  • Collection time: {collection_time:.2f}s")
+    print(f"  • Ready for ranking (NO content extracted yet)")
+    
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 1.5: RESOLVE WRAPPER URLs (MSN, Yahoo, AOL) - URL PARAMETERS ONLY
+    # ══════════════════════════════════════════════════════════════════
+    # Skip wrapper resolution in snippets mode to preserve more results
+    # Wrapper URLs work fine for displaying titles/summaries
+    # Only resolve wrappers when doing full extraction (need original source)
+    
+    if not snippets_only:
+        # Fast resolution: Check URL parameters only (no HTML fetching)
+        # This removes low-value wrappers before ranking
+        # HTML-based resolution happens during extraction if needed
+        from .source_resolvers import is_wrapper_domain, resolve_source_url
+        
+        wrapper_resolution_start = time.perf_counter()
+        resolved_count = 0
+        dropped_count = 0
+        resolved_urls = set()  # Track resolved URLs for deduplication
+        
+        # Track dropped wrappers by domain
+        wrapper_stats = {
+            'msn': 0,
+            'yahoo': 0,
+            'aol': 0,
+            'google_news': 0,
+        }
+        
+        for candidate in all_raw_results[:]:  # Iterate over copy to allow modification
+            url = candidate.get('url') or candidate.get('href', '')
+            if not url:
+                continue
+            
+            # Check if this is a wrapper domain
+            if is_wrapper_domain(url):
+                # Attempt FAST resolution (URL parameters only, no HTML fetching)
+                resolved = resolve_source_url(url, html=None)
+                
+                if resolved and resolved != url:
+                    # Resolution successful - update to original publisher URL
+                    if resolved not in resolved_urls and resolved not in seen_urls:
+                        candidate['original_wrapper_url'] = url
+                        candidate['url'] = resolved
+                        candidate['href'] = resolved
+                        candidate['was_resolved'] = True
+                        resolved_urls.add(resolved)
+                        resolved_count += 1
+                        logger.info(f"Resolved wrapper: {urlparse(url).netloc} → {urlparse(resolved).netloc}")
+                    else:
+                        # Duplicate after resolution - drop it
+                        all_raw_results.remove(candidate)
+                        dropped_count += 1
+                        # Track which wrapper domain
+                        domain = urlparse(url).netloc.lower()
+                        if 'msn.com' in domain:
+                            wrapper_stats['msn'] += 1
+                        elif 'yahoo.com' in domain:
+                            wrapper_stats['yahoo'] += 1
+                        elif 'aol.com' in domain:
+                            wrapper_stats['aol'] += 1
+                        elif 'google.com' in domain:
+                            wrapper_stats['google_news'] += 1
+                else:
+                    # Resolution failed - drop unresolved wrappers
+                    # (HTML-based resolution is too slow for pre-ranking phase)
+                    logger.info(f"Dropping unresolved wrapper: {url[:80]}")
+                    all_raw_results.remove(candidate)
+                    dropped_count += 1
+                    # Track which wrapper domain
+                    domain = urlparse(url).netloc.lower()
+                    if 'msn.com' in domain:
+                        wrapper_stats['msn'] += 1
+                    elif 'yahoo.com' in domain:
+                        wrapper_stats['yahoo'] += 1
+                    elif 'aol.com' in domain:
+                        wrapper_stats['aol'] += 1
+                    elif 'google.com' in domain:
+                        wrapper_stats['google_news'] += 1
+        
+        wrapper_resolution_time_ms = (time.perf_counter() - wrapper_resolution_start) * 1000
+        
+        if resolved_count > 0 or dropped_count > 0:
+            print(f"  • Wrapper resolution: {resolved_count} resolved, {dropped_count} dropped ({wrapper_resolution_time_ms:.0f}ms)")
+            if dropped_count > 0:
+                dropped_details = []
+                if wrapper_stats['msn'] > 0:
+                    dropped_details.append(f"MSN: {wrapper_stats['msn']}")
+                if wrapper_stats['yahoo'] > 0:
+                    dropped_details.append(f"Yahoo: {wrapper_stats['yahoo']}")
+                if wrapper_stats['aol'] > 0:
+                    dropped_details.append(f"AOL: {wrapper_stats['aol']}")
+                if wrapper_stats['google_news'] > 0:
+                    dropped_details.append(f"Google News: {wrapper_stats['google_news']}")
+                if dropped_details:
+                    print(f"    [dim]└─ {', '.join(dropped_details)}[/dim]")
+    else:
+        # Snippets mode: keep all wrapper URLs (they have valid titles/summaries)
+        print(f"  • Wrapper resolution: skipped (snippets mode keeps all sources)")
+    
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 2: RANK CANDIDATES (Metadata-Only, Fast)
+    # ══════════════════════════════════════════════════════════════════
+    
+    print(f"\n[cyan]Phase 2: Ranking Candidates[/cyan]")
+    print(f"  • Ranking {len(all_raw_results)} candidates by relevance")
+    print(f"  • Using: title, summary, source quality, recency")
+    
+    if snippets_only:
+        print(f"  • Selecting top {EXTRACTION_COUNT} snippets (--snippets mode)")
+    else:
+        print(f"  • Selecting top {EXTRACTION_COUNT} for content extraction")
+    
+    ranking_start = time.perf_counter()
+    ranked_candidates = rank_candidates_initial(
+        all_raw_results, 
+        query, 
+        top_k=EXTRACTION_COUNT
+    )
+    ranking_time_ms = (time.perf_counter() - ranking_start) * 1000
+    
+    print(f"  ✓ Ranked in {ranking_time_ms:.0f}ms")
+    
+    if snippets_only:
+        print(f"  ✓ Selected top {len(ranked_candidates)} snippets")
+    else:
+        print(f"  ✓ Selected top {len(ranked_candidates)} for extraction")
+    
+    # ══════════════════════════════════════════════════════════════════
+    # SNIPPETS MODE: Skip extraction and return ranked snippets
+    # ══════════════════════════════════════════════════════════════════
+    
+    if snippets_only:
+        total_execution_time = round(time.time() - start_time, 3)
+        
+        print(f"\n[green]✓ Snippet search complete![/green]")
+        print(f"  • Total execution time: {total_execution_time:.2f}s")
+        print(f"  • Discovery: {collection_time:.2f}s")
+        print(f"  • Ranking: {ranking_time_ms/1000:.2f}s")
+        print(f"  • Mode: snippets (extraction skipped)")
+        print(f"  • Results: {len(ranked_candidates)}")
+        
+        # Format snippets output (discovery metadata only)
+        snippets_output = []
+        for idx, candidate in enumerate(ranked_candidates, start=1):
+            snippet = {
+                'rank': idx,  # Assign sequential rank (1, 2, 3, ...)
+                'title': candidate.get('title', ''),
+                'summary': candidate.get('body', '') or candidate.get('description', ''),
+                'url': candidate.get('url', '') or candidate.get('href', ''),
+                'source': candidate.get('source', ''),
+                'publish_date': candidate.get('publish_date', '') or candidate.get('date', ''),
+                'score': candidate.get('initial_rank_score', 0.0),  # Use the ranking score
+            }
+            snippets_output.append(snippet)
+        
+        combined_stats = {
+            'search_engine': {
+                **search_stats,
+                'execution_time': total_execution_time,
+            },
+            'ranking': {
+                'ranking_time_ms': round(ranking_time_ms, 2),
+                'candidates_total': len(all_raw_results),
+                'candidates_selected': len(ranked_candidates),
+            },
+            'cleaner': {
+                'total_input': 0,
+                'successful': 0,
+                'failed': 0,
+                'processed': 0,
+            }
+        }
+        
+        return snippets_output, combined_stats
+    
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 3: CONTENT EXTRACTION (Only Top Ranked)
+    # ══════════════════════════════════════════════════════════════════
+    
+    print(f"\n[cyan]Phase 3: Content Extraction[/cyan]")
+    print(f"  • Extracting full page content for {len(ranked_candidates)} URLs")
+    print(f"  • Using: requests → Playwright fallback")
+    
+    extraction_start = time.perf_counter()
     enriched_results = _extract_news_content(
-        all_raw_results,
+        ranked_candidates,
         max_workers=workers,
         max_fetch_retries=max_fetch_retries,
         enable_js_fallback=enable_js_fallback,
     )
-
-    # Phase 3: Clean and structure via process_results
+    extraction_time_ms = (time.perf_counter() - extraction_start) * 1000
+    
+    # ══════════════════════════════════════════════════════════════════
+    # EXTRACTION STATISTICS
+    # ══════════════════════════════════════════════════════════════════
+    requests_count = 0
+    playwright_count = 0
+    requests_times = []
+    playwright_times = []
+    failed_count = 0
+    
+    print(f"\n[cyan]Extraction Breakdown:[/cyan]")
+    for idx, result in enumerate(enriched_results, 1):
+        url = result.get('url', '')
+        domain = urlparse(url).netloc if url else 'unknown'
+        method = result.get('extraction_method', 'unknown')
+        word_count = result.get('content_word_count', 0)
+        status = result.get('extraction_status', 'unknown')
+        
+        # Extract tier from method
+        tier = 'unknown'
+        extraction_time = 0
+        if 'requests' in method.lower() or 'basic-fallback' in method.lower() or 'tls-impersonate' in method.lower():
+            tier = 'requests'
+            requests_count += 1
+        elif 'playwright' in method.lower():
+            tier = 'playwright'
+            playwright_count += 1
+        
+        # Format output
+        tier_display = f"[green]{tier:10s}[/green]" if tier == 'requests' else f"[yellow]{tier:10s}[/yellow]"
+        status_icon = "✓" if status == 'success' and word_count >= 200 else "✗"
+        
+        print(f"  {status_icon} URL {idx:2d} ({domain[:25]:25s}) {tier_display} {word_count:4d} words")
+        
+        if status != 'success' or word_count < 100:
+            failed_count += 1
+    
+    # Summary statistics
+    print(f"\n[cyan]Extraction Stats:[/cyan]")
+    print(f"  • Requests tier: {requests_count}/{len(enriched_results)}")
+    print(f"  • Playwright tier: {playwright_count}/{len(enriched_results)}")
+    print(f"  • Failed/Low quality: {failed_count}/{len(enriched_results)}")
+    print(f"  • Total time: {extraction_time_ms/1000:.2f}s")
+    print(f"  • Average per URL: {extraction_time_ms/len(enriched_results)/1000:.2f}s")
+    
+    if playwright_count > 0:
+        print(f"  [yellow]⚠️  {playwright_count} URLs used Playwright (3-8s browser launch overhead each)[/yellow]")
+    
+    print(f"  ✓ Extracted in {extraction_time_ms/1000:.2f}s")
+    
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 4: CLEAN & STRUCTURE
+    # ══════════════════════════════════════════════════════════════════
+    
+    print(f"\n[cyan]Phase 4: Cleaning & Structuring[/cyan]")
     structured_results, cleaner_stats = process_results(enriched_results)
 
-    # Phase 4: Apply max_chars / max_size truncation on each result
+    # Phase 5: Apply max_chars / max_size truncation on each result
     if max_chars is not None and max_chars > 0:
         for r in structured_results:
             content = r.get("cleaned_content", "") or r.get("main_content", "")
@@ -569,12 +983,36 @@ def news_search(
         from .output import parse_size_string as _parse_size
         size_bytes = _parse_size(max_size)
         if size_bytes:
-            for key in ("raw_html", "html"):
-                val = r.get(key)
-                if isinstance(val, str) and len(val.encode("utf-8")) > size_bytes:
-                    r[key] = val[:size_bytes]
+            for r in structured_results:
+                for key in ("raw_html", "html"):
+                    val = r.get(key)
+                    if isinstance(val, str) and len(val.encode("utf-8")) > size_bytes:
+                        r[key] = val[:size_bytes]
 
     # Combine stats
+    total_execution_time = round(time.time() - start_time, 3)
+    search_stats['execution_time'] = total_execution_time
+    
+    combined_stats = {
+        'search_engine': search_stats,
+        'ranking': {
+            'ranking_time_ms': round(ranking_time_ms, 2),
+            'extraction_time_ms': round(extraction_time_ms, 2),
+            'candidates_total': len(all_raw_results),
+            'candidates_selected': len(ranked_candidates),
+            'results_extracted': len(enriched_results),
+        },
+        'cleaner': cleaner_stats,
+    }
+    
+    print(f"\n[green]✓ News search complete![/green]")
+    print(f"  • Total execution time: {total_execution_time:.2f}s")
+    print(f"  • Discovery: {collection_time:.2f}s")
+    print(f"  • Ranking: {ranking_time_ms/1000:.2f}s")
+    print(f"  • Extraction: {extraction_time_ms/1000:.2f}s")
+    print(f"  • Final results: {len(structured_results)}")
+    
+    return structured_results, combined_stats
     combined_stats = {
         'search_engine': search_stats,
         'cleaner': cleaner_stats,
@@ -957,12 +1395,29 @@ def _extract_news_content(
     ``ExtractionEngine``, and returns enriched dicts compatible with
     ``process_results()`` (i.e. containing ``main_content``,
     ``extraction_status``, ``confidence_score``, etc.).
+    
+    Uses browser pool to reuse Playwright browser across all URLs,
+    reducing browser launch overhead from 3-8s per URL to ~0.5s per page.
     """
     if not results:
         return results
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     shared_engine = ExtractionEngine()
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # BROWSER POOL: Launch browser ONCE for all URLs
+    # ═══════════════════════════════════════════════════════════════════
+    browser_pool = None
+    if enable_js_fallback:
+        try:
+            from .browser_pool import PlaywrightBrowserPool
+            browser_pool = PlaywrightBrowserPool.get_instance()
+            browser_pool.start()
+            logger.info("Browser pool started - will reuse browser for all URLs")
+        except Exception as e:
+            logger.warning(f"Failed to start browser pool: {e}")
+            browser_pool = None
 
     def _extract_one(r):
         url = r.get("url", "")
@@ -975,18 +1430,56 @@ def _extract_news_content(
             # Playwright Tier 2 to execute the JS redirect / render the
             # article content (requests-only gets the interstitial shell).
             force_js = "/articles/" in url and "news.google.com" in url
+            
+            # ═══════════════════════════════════════════════════════════
+            # DOMAIN LEARNING: Check learned strategy
+            # ═══════════════════════════════════════════════════════════
+            if not force_js and enable_js_fallback:
+                from .domain_routing import get_domain_learning
+                learning = get_domain_learning()
+                strategy, confidence = learning.get_strategy(url)
+                
+                if strategy == "banned":
+                    r["extraction_status"] = "failed"
+                    r["main_content"] = ""
+                    r["errors"] = ["Domain is banned (never returns valid content)"]
+                    logger.info(f"Domain learning: Skipping banned domain - {url[:80]}")
+                    return r
+                elif strategy == "playwright" and confidence >= 0.80:
+                    force_js = True
+                    logger.info(f"Domain learning: Using Playwright (strategy={strategy}, conf={confidence:.0%}) - {url[:80]}")
+            
+            # ═══════════════════════════════════════════════════════════
+            # SOURCE RESOLUTION: Check if this is a wrapper site (MSN, Yahoo, etc.)
+            # ═══════════════════════════════════════════════════════════
+            original_url = url
+            from .source_resolvers import is_wrapper_domain, resolve_source_url
+            
+            if is_wrapper_domain(url):
+                logger.info(f"Wrapper domain detected: {url[:80]}")
+                # First attempt: Try to resolve from URL alone
+                resolved = resolve_source_url(url, html=None)
+                if resolved:
+                    url = resolved
+                    r["url"] = resolved
+                    r["href"] = resolved
+                    r["original_wrapper_url"] = original_url
+                    logger.info(f"Resolved to publisher: {url[:80]}")
+            
             outcome = fetch_resilient(
                 url,
                 session=shared_engine.session,
-                timeout=15,
+                timeout=25,  # Increased from 15s for problematic sites
                 max_retries=max_fetch_retries,
                 enable_js_fallback=enable_js_fallback,
                 force_js=force_js,
+                browser_pool=browser_pool,  # Pass browser pool
             )
             if outcome["status"] != "success":
                 r["extraction_status"] = "failed"
                 r["main_content"] = ""
                 r["errors"] = outcome["errors"][-3:]
+                logger.warning(f"Failed to fetch {url[:80]}: {outcome['errors'][-1] if outcome['errors'] else 'unknown error'}")
                 return r
             def _update_url(outcome):
                 nonlocal url
@@ -998,22 +1491,76 @@ def _extract_news_content(
 
             _update_url(outcome)
             content, method, confidence = shared_engine.extract_content(url, outcome["html"])
-            # If extraction yielded no real content and the initial fetch did
-            # NOT use Playwright (e.g. JS-heavy page served as a plain shell),
-            # retry with JS rendering enabled.
-            if len(content.strip()) < 30 and enable_js_fallback and outcome.get("tier") != "playwright":
+            
+            # ═══════════════════════════════════════════════════════════
+            # WRAPPER RE-RESOLUTION: If this is still a wrapper and we have HTML,
+            # try to resolve again with the HTML content
+            # ═══════════════════════════════════════════════════════════
+            if is_wrapper_domain(url) and not r.get("original_wrapper_url"):
+                resolved_from_html = resolve_source_url(url, html=outcome.get("html", ""))
+                if resolved_from_html and resolved_from_html != url:
+                    logger.info(f"Re-resolved wrapper from HTML: {resolved_from_html[:80]}")
+                    r["original_wrapper_url"] = url
+                    url = resolved_from_html
+                    r["url"] = resolved_from_html
+                    r["href"] = resolved_from_html
+                    # Re-fetch the resolved URL
+                    outcome = fetch_resilient(
+                        url,
+                        session=shared_engine.session,
+                        timeout=15,
+                        max_retries=max_fetch_retries,
+                        enable_js_fallback=enable_js_fallback,
+                        force_js=force_js,
+                        browser_pool=browser_pool,  # Pass browser pool
+                    )
+                    if outcome["status"] == "success":
+                        content, method, confidence = shared_engine.extract_content(url, outcome["html"])
+                        _update_url(outcome)
+            
+            # ═══════════════════════════════════════════════════════════
+            # QUALITY VALIDATION & AUTOMATIC PLAYWRIGHT ESCALATION
+            # ═══════════════════════════════════════════════════════════
+            # Check if extraction quality is sufficient
+            from .extraction_quality import should_escalate_to_playwright, record_domain_extraction
+            
+            should_escalate, escalation_reason = should_escalate_to_playwright(
+                content=content,
+                expected_title=r.get("title", ""),
+                html=outcome.get("html", ""),
+                extraction_tier=outcome.get("tier", "requests"),
+            )
+            
+            # Automatic escalation to Playwright if quality is poor
+            if should_escalate and enable_js_fallback and outcome.get("tier") != "playwright":
+                logger.info(f"Escalating to Playwright: {escalation_reason} - {url[:80]}")
                 _jr = fetch_resilient(
                     url,
                     session=shared_engine.session,
-                    timeout=15,
+                    timeout=25,  # Increased from 15s
                     max_retries=max_fetch_retries,
                     enable_js_fallback=True,
                     force_js=True,
+                    browser_pool=browser_pool,  # Pass browser pool
                 )
                 if _jr["status"] == "success":
                     outcome = _jr
                     content, method, confidence = shared_engine.extract_content(url, outcome["html"])
                     _update_url(outcome)
+            
+            # ═══════════════════════════════════════════════════════════
+            # DOMAIN LEARNING: Record extraction outcome
+            # ═══════════════════════════════════════════════════════════
+            word_count = len(content.split())
+            from .domain_routing import get_domain_learning
+            learning = get_domain_learning()
+            learning.record_extraction(
+                url=url,
+                tier=outcome.get("tier", "unknown"),
+                success=(word_count >= 200),
+                word_count=word_count,
+            )
+            
             # Detect error / 404 pages (dead links from search engines).
             # Short content matching error phrases indicates a broken URL.
             if content and any(p in content.lower() for p in _ERROR_PAGE_PHRASES) and len(content.strip()) < 500:
@@ -1061,6 +1608,27 @@ def _extract_news_content(
         for future in as_completed(futures):
             idx = futures[future]
             enriched[idx] = future.result()
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # BROWSER POOL CLEANUP: Close browser after all URLs are processed
+    # ═══════════════════════════════════════════════════════════════════
+    if browser_pool:
+        try:
+            browser_pool.stop()
+            logger.info("Browser pool stopped")
+        except Exception as e:
+            logger.warning(f"Error stopping browser pool: {e}")
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # DOMAIN LEARNING: Save learned strategies to disk
+    # ═══════════════════════════════════════════════════════════════════
+    try:
+        from .domain_routing import get_domain_learning
+        learning = get_domain_learning()
+        learning.force_save()
+    except Exception as e:
+        logger.warning(f"Error saving domain learning data: {e}")
+    
     return enriched
 
 
@@ -1785,7 +2353,14 @@ def main():
                     '(3) Changing --region, or (4) Waiting and retrying.'
     )
     news_parser.add_argument('--query', '-q', required=True, help='Search query')
-    news_parser.add_argument('--max', '-m', type=int, default=5, help='Max news items (1-50)')
+    news_parser.add_argument('--max', '-m', type=int, default=None, 
+                             help='Number of results to return. Default: 10 (full extraction), 30 (--snippets mode). '
+                                  'Pipeline: Collect snippets from all sources → Rank by relevance → '
+                                  'Extract full content for top N (or return snippets only with --snippets). '
+                                  'Example: -m 20 will rank all candidates and extract top 20.')
+    news_parser.add_argument('--snippets', action='store_true',
+                             help='Return ranked news snippets only. Skips article extraction for ~10x faster results (~2-4s vs 20-70s). '
+                                  'Perfect for quickly browsing large numbers of candidates. Default limit: 30 snippets.')
     news_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/news_search_results.json)')
     news_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     news_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
@@ -1795,6 +2370,10 @@ def main():
     news_parser.add_argument('--sources', default=None, choices=['google-news'],
                              help='Search source override (default: DuckDuckGo News). Use "google-news" to search Google News RSS directly. '
                                   'If the primary source returns zero results, falls back to the other source.')
+    news_parser.add_argument('--category', nargs='+', default=None,
+                             help='Category-specific RSS feeds to include (ai, startups, security, cloud). '
+                                  'Multiple categories can be specified, e.g. --category ai startups. '
+                                  'Results from category feeds are merged with DuckDuckGo News.')
     news_parser.set_defaults(retry_on_zero=True)
     news_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries on zero results')
     news_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts on zero results')
@@ -2318,16 +2897,25 @@ def main():
     elif args.command == 'news-search':
         print(f"\n📰 Starting news search: '{args.query}'\n")
 
+        # Ensure internet connection (silent on success, only shows if problem)
+        if not ensure_internet_connection(max_retries=5, silent_on_success=True):
+            sys.exit(1)
+
         # --max-chars and --max-size are mutually exclusive
         if args.max_chars is not None and args.max_size is not None:
             print("[red]Error: Cannot use both --max-chars and --max-size together. Use only ONE parameter:[/red]")
             print("   • --max-chars 10000 (to limit extracted content by character count)")
             print("   • --max-size 5mb (to limit response size by file size)")
             sys.exit(1)
+        
+        # Set default for --max based on mode
+        max_results = args.max
+        if max_results is None:
+            max_results = 30 if args.snippets else 10
 
         news_results, stats = news_search(
             args.query,
-            max_results=args.max,
+            max_results=max_results,
             retry_on_zero_success=args.retry_on_zero,
             retry_attempts=args.retry_attempts,
             retry_backoff=args.retry_backoff,
@@ -2341,13 +2929,17 @@ def main():
             locations=args.location,
             max_chars=args.max_chars,
             max_size=args.max_size,
+            categories=args.category,
+            snippets_only=args.snippets,
         )
 
         output = {
             'query': args.query,
             'search_type': 'news',
+            'mode': 'snippets' if args.snippets else 'full_extraction',
             'parameters': {
-                'max_results': args.max,
+                'max_results': max_results,
+                'snippets_only': args.snippets,
                 'workers': args.workers if hasattr(args, 'workers') else 3,
                 'region': args.region,
                 'safesearch': args.safesearch,
@@ -2367,9 +2959,22 @@ def main():
 
         print(f'\n✅ NEWS SEARCH COMPLETE!')
         print(f'   📰 Query: {args.query}')
-        print(f'   📊 Total results from search: {stats["search_engine"].get("total", 0)}')
-        print(f'   ✅ Successfully extracted: {stats.get("cleaner", {}).get("successful", 0)}')
-        print(f'   ❌ Failed (ignored): {stats.get("cleaner", {}).get("failed", 0)}')
+        print(f'   📊 Total candidates discovered: {stats["search_engine"].get("total", 0)}')
+        
+        # Different output for snippets vs full extraction mode
+        if args.snippets:
+            # Snippets mode: show snippet count
+            snippets_returned = len(news_results)
+            snippets_requested = max_results
+            print(f'   ✅ Snippets returned: {snippets_returned}')
+            print(f'   🎯 Snippets requested: {snippets_requested}')
+            print(f'   📋 Mode: snippets (no extraction)')
+        else:
+            # Full extraction mode: show extraction stats
+            print(f'   ✅ Successfully extracted: {stats.get("cleaner", {}).get("successful", 0)}')
+            print(f'   ❌ Failed (ignored): {stats.get("cleaner", {}).get("failed", 0)}')
+            print(f'   📋 Mode: full extraction')
+        
         print(f'   📄 Structured JSON: {out_path}')
         print(f'   📂 Results saved to: {out_path.resolve()}')
         print(f'   ⏱️  Execution time: {stats["search_engine"].get("execution_time", 0.0):.1f}s\n')

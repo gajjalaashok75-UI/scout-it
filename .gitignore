@@ -10,6 +10,7 @@ real-tests.md
 FEATURE-ENHANCEMENTS.MD
 .Python
 build/
+visualizations/
 develop-eggs/
 dist/
 downloads/

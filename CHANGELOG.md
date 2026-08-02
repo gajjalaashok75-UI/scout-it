@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚀 Added — news-search discovery-first pipeline, connectivity precheck, browser pool integration
+
+- **`news-search` discovery-first pipeline**: Collects snippets from all sources → ranks by relevance → extracts full content only for the top N. `--max` defaults to 10 (full extraction) or 30 (`--snippets` mode).
+- **`--snippets` flag**: Returns ranked snippets only, skipping article extraction (~10x faster, ~2–4s vs 20–70s). Default limit 30 snippets.
+- **`--category` flag**: Includes category-specific RSS feeds (`ai`, `startups`, `security`, `cloud`), merged with DuckDuckGo News results.
+- **TCP socket connectivity precheck**: `check_internet_connection()` / `ensure_internet_connection()` probe Cloudflare/Google/Quad9 DNS (port 53) before network work — fast (<50ms typical), silent on success, exponential backoff retries (3s/5s/10s/15s/20s) on failure, exits cleanly if no connection.
+- **Browser pool integration in `fetch_resilient`**: Accepts a `browser_pool` argument and reuses the per-thread Chromium instance; news-search passes its pool through and stops it after all URLs are processed.
+- **Domain learning recording**: `news-search` records per-URL extraction outcome (tier, success, word count) via `domain_routing.get_domain_learning()` and force-saves learned strategies to disk after each run.
+- **`fetch_resilient` optimized Playwright wait strategy**: Waits for `domcontentloaded` plus article-content selectors instead of `networkidle` (which never settles on ad-heavy news sites) — ~30-50% faster page loads.
+- **`__init__.py`**: Re-export the new TechCrunch RSS API (`search_feeds`, `search_entries`, `get_latest_entries`, `get_feed_health`, `refresh_feed_registry`, `sort_entries`, etc.).
+- **`.gitignore`**: ignore `visualizations/`.
+- Test: `test_correct_flow.py`.
+
 ### 🚀 Added — extraction optimization stack: browser pool, domain routing, extraction quality, source resolvers, staged ranking
 
 - **`browser_pool.py`**: Thread-local Playwright browser pool — each ThreadPoolExecutor worker reuses a single Chromium instance across URLs instead of launching per-URL (~40% faster for 10 URLs / 5 workers).

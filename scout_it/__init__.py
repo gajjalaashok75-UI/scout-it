@@ -66,6 +66,16 @@ from .config import (
 from .output import render_markdown, resolve_output_path, write_json_output
 from .wikimedia_source import SITE_MAP, wikimedia_search, WikimediaExtractor
 from .google_news_source import google_news_search, Deduplicator, build_google_news_url
+from .tech_crunch_rss import (
+    get_available_domains,
+    get_feed_health,
+    get_feed_metadata,
+    get_latest_entries,
+    refresh_feed_registry,
+    search_entries,
+    search_feeds,
+    sort_entries,
+)
 from .toi_rss_source import fetch_toi_news, LOCATION_FEEDS
 
 __version__ = "1.5.0"
@@ -116,6 +126,14 @@ __all__ = [
     "resolve_output_path",
     "write_json_output",
     "google_news_search",
+    "get_available_domains",
+    "get_feed_health",
+    "get_feed_metadata",
+    "get_latest_entries",
+    "refresh_feed_registry",
+    "search_entries",
+    "search_feeds",
+    "sort_entries",
     "fetch_toi_news",
     "LOCATION_FEEDS",
     "wikimedia_search",
