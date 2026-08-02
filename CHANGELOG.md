@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚀 Added — TechCrunch RSS provider + category-aware provider registry
+
+- **`tech_crunch_rss.py`**: New reusable TechCrunch RSS aggregation and search module — centralized feed registry, resilient fetching, consistent entry normalization, relevance ranking, deduplication, export helpers, runtime validation, caching, and article-content enrichment.
+- **`category_providers.py`**: New category-aware RSS provider registry for `news-search`. Providers are organized by news category (e.g. `techcrunch_ai_provider`) and can be added without modifying the pipeline; results merge with existing sources (DuckDuckGo, Google News, ToI).
+- Tests: `test_tech_crunch_rss.py`, `test_enhanced_rss.py`, `test_provider_updates.py`.
+
 ### 🔧 Fixed — RSS source improvements: persistent profile, meta description fallback, ToI RSS fixes, publish_date preservation
 
 - **`--persistent-profile` support for `fetch-url`**: New `--persistent-profile` and `--profile-name` flags to use a real browser session (~/.scout-it/browser-profiles/) for sites requiring cookies/session state. Stealth patches (navigator.webdriver, chrome.runtime, plugins, languages) added to Playwright init script.
