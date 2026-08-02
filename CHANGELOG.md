@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧪 Tests — browser pool, domain routing, source resolvers, staged ranking
+
+- **`test_browser_pool.py`**: Unit tests for the thread-local Playwright browser pool (per-thread reuse, cleanup, error handling).
+- **`test_browser_pool_integration.py`**: Integration tests verifying the browser pool is created, passed through `fetch_resilient`, and stopped after processing.
+- **`test_domain_routing.py`**: Tests for per-domain strategy learning, persistence, and banned-domain skipping.
+- **`test_source_resolvers.py`**: Tests for resolving MSN/Yahoo/AOL wrapper URLs to original publisher URLs.
+- **`test_staged_ranking.py`**: Tests for two-stage ranking (metadata pre-rank + full-content re-rank) and source quality scores.
+
 ### 🚀 Added — news-search discovery-first pipeline, connectivity precheck, browser pool integration
 
 - **`news-search` discovery-first pipeline**: Collects snippets from all sources → ranks by relevance → extracts full content only for the top N. `--max` defaults to 10 (full extraction) or 30 (`--snippets` mode).
