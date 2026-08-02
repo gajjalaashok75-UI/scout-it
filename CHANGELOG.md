@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚀 Added — extraction optimization stack: browser pool, domain routing, extraction quality, source resolvers, staged ranking
+
+- **`browser_pool.py`**: Thread-local Playwright browser pool — each ThreadPoolExecutor worker reuses a single Chromium instance across URLs instead of launching per-URL (~40% faster for 10 URLs / 5 workers).
+- **`domain_routing.py`**: Per-domain strategy learning — tracks requests vs Playwright success per domain, persists learned routes, and skips permanently-failing domains (e.g. `msn.com`).
+- **`extraction_quality.py`**: Content quality scoring (word/paragraph counts, structure), automatic Playwright escalation for low-quality extractions, domain-level learning, and paywall/block detection.
+- **`source_resolvers.py`**: Resolves syndication/wrapper URLs (MSN, Yahoo News, AOL) to the original publisher URL before extraction.
+- **`staged_ranker.py`**: Two-stage news ranking — fast metadata-based initial ranking (<1s) before content extraction, then re-ranking with full content; per-source quality scores (techcrunch=1.0, etc.).
+
 ### 🚀 Added — TechCrunch RSS provider + category-aware provider registry
 
 - **`tech_crunch_rss.py`**: New reusable TechCrunch RSS aggregation and search module — centralized feed registry, resilient fetching, consistent entry normalization, relevance ranking, deduplication, export helpers, runtime validation, caching, and article-content enrichment.
