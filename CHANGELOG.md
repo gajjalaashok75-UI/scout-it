@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 📚 Docs — durable feature guides added to docs/
+
+- **`NETWORK_RESILIENCE_FEATURE.md`**: TCP socket connectivity precheck, retry/backoff, and graceful failure behavior.
+- **`PRODUCTION_HARDENING_GUIDE.md`**: Production-readiness features for the TechCrunch RSS module (config system, exception hierarchy, observability, metrics, data quality).
+- **`RSS_INTEGRATION_GUIDE.md`**: How TechCrunch RSS is integrated into `news-search` as a category-aware provider (architecture, user experience, CLI usage).
+- **`STAGED_RANKING_IMPLEMENTATION.md`**: Two-stage ranking pipeline design and performance targets (62% less extraction, <10s).
+- **`QUICK_REFERENCE_CORRECTED_FLOW.md`**: Discovery-first flow cheat sheet (Discover → Rank → Extract).
+- **`QUICK_REFERENCE_ENHANCEMENTS.md`**: Browser pool, Playwright navigation, domain learning, discovery-first summary.
+- **`QUICK_START_STAGED_RANKING.md`**: Fast-start guide for staged-ranking news search.
+- Removed 12 transient session status reports (e.g. `IMPLEMENTATION_COMPLETE.md`, `READY_FOR_TESTING.md`) that duplicated the CHANGELOG and guides.
+
 ### 🧪 Tests — TechCrunch RSS integration verification script
 
 - **`verify_integration.py`**: Standalone script verifying TechCrunch RSS → category providers → `news-search` integration: module structure, `--category` CLI flag, `categories` parameter on `news_search()`, and end-to-end flow.
