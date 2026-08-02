@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧪 Tests — TechCrunch RSS integration verification script
+
+- **`verify_integration.py`**: Standalone script verifying TechCrunch RSS → category providers → `news-search` integration: module structure, `--category` CLI flag, `categories` parameter on `news_search()`, and end-to-end flow.
+
 ### 🧪 Tests — optimization stack, performance, production hardening, wrapper resolution
 
 - **`test_optimization_stack.py`**: Tests for the combined optimization stack (routing + quality + ranking working together).
