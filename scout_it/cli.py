@@ -280,7 +280,7 @@ COMMAND_OUTPUT_STUBS: Dict[str, str] = {
 
 def web_search(
     query: str,
-    max_results: int = 100,
+    max_results: int = 10,  # Changed from 100 to 10 to match news_search
     workers: int = 5,
     retry_on_zero_success: bool = True,
     retry_attempts: int = 2,
@@ -298,26 +298,190 @@ def web_search(
     browser_profile_name: str = 'default',
     enable_bandit: bool = False,
     source: Optional[str] = None,
+    categories: Optional[List[str]] = None,
 ):
-    """
-    Execute web search pipeline: search → extract → clean → filter.
+    """Web search with optimized discovery-first pipeline (matches news-search).
+    
+    Correct Pipeline:
+    1. Lightweight Discovery Phase
+       - DDGS: 20 snippets (title, description, url, date)
+       - RSS feeds: ALL entries (no limit)
+       - NO content extraction yet
+    
+    2. Deduplicate & Rank (metadata-only, fast)
+       - Deduplicate by URL
+       - Rank by relevance using titles/descriptions
+       - Select top N where N = max_results (default: 10)
+    
+    3. Content Extraction (only top N)
+       - Extract full page content ONLY for top ranked URLs
+       - Use requests → Playwright fallback
+    
+    4. Clean & Output
+       - Process extracted content
+       - Return final results
+    
+    Providers:
+    - DDGS Text Search (always) → 20 snippets
+    - Category RSS (if --category) → ALL entries from feeds
     
     Args:
-        query: Search query string
-        max_results: Max results to fetch
-        workers: Parallel workers
-        max_fetch_retries: Retry attempts per fetch tier (requests, then
-            Playwright) when fetching each result page.
-        enable_js_fallback: Whether to automatically fall back to Playwright
-            when a plain requests fetch fails or looks blocked.
-        enable_alternate_source: When every direct-URL fetch tier fails, try
-            AMP/mobile/print URL variants and a Wayback Machine snapshot
-            before giving up (extra requests/latency, so opt-in).
-    
+        query: Search query
+        max_results: Final number of results to extract and return (default: 10)
+        categories: RSS feed categories (e.g., ['ai', 'cloud', 'engineering'])
+        
     Returns:
-        (structured_results, stats) tuple with cleaned and structured content
+        Structured results with full extracted content
     """
-    # Phase 1: Search and extract
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from urllib.parse import urlparse
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    start_time = time.time()
+    
+    # Discovery limits - MATCH NEWS_SEARCH EXACTLY
+    DDGS_SNIPPET_LIMIT = 20      # Get top 20 snippets from DDGS (lightweight)
+    RSS_NO_LIMIT = 500           # RSS feeds: get ALL entries (or large limit)
+    
+    # Extraction limit
+    EXTRACTION_COUNT = max_results  # Extract content for this many results after ranking
+    
+    all_candidates: List[Dict[str, Any]] = []
+    search_stats: Dict[str, Any] = {}
+    seen_urls: set = set()
+    
+    def _dedup_append(results: List[Dict[str, Any]]) -> int:
+        """Append results with URL-level dedup. Returns count added."""
+        count = 0
+        for r in results:
+            url = r.get('url', '') or r.get('href', '')
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                all_candidates.append(r)
+                count += 1
+        return count
+    
+    # ══════════════════════════════════════════════════════════════
+    # Phase 1: Lightweight Discovery (Snippets Only, NO Extraction)
+    # ══════════════════════════════════════════════════════════════
+    
+    print(f"\n[cyan]Phase 1: Lightweight Discovery[/cyan]")
+    discovery_start = time.time()
+    
+    # Stream 1: DDGS Search (20 snippets only - MATCH NEWS_SEARCH)
+    def _run_ddgs_discovery():
+        """Get DDGS snippets (NO content extraction)."""
+        results, stats = _ddgs_list_search_with_retry(
+            'text',
+            query=query,
+            max_results=DDGS_SNIPPET_LIMIT,  # Only 20 snippets like news_search
+            options={'region': region, 'safesearch': safesearch, 'timelimit': timelimit, 'backend': backend},
+            retry_on_zero_success=retry_on_zero_success,
+            max_zero_success_retries=retry_attempts,
+            retry_backoff_seconds=retry_backoff,
+        )
+        return results, stats
+    
+    # Stream 2: Category RSS Feeds (ALL entries - MATCH NEWS_SEARCH)
+    def _run_category_rss(cats: List[str]):
+        """Get ALL RSS entries from web categories (NO extraction)."""
+        from .web_category_providers import fetch_web_category_feeds, get_available_web_categories
+        print(f"[blue]Web category RSS providers enabled:[/blue] {', '.join(cats)}")
+        print(f"[dim]Available categories: {', '.join(get_available_web_categories())}[/dim]")
+        return fetch_web_category_feeds(cats, query, max_results=RSS_NO_LIMIT)
+    
+    # Execute discovery streams in parallel
+    streams: List[Tuple[str, Any]] = [('ddgs', _run_ddgs_discovery)]
+    if categories:
+        streams.append(('category_rss', lambda cats=categories: _run_category_rss(cats)))
+    
+    stream_outputs: Dict[str, Any] = {}
+    
+    if len(streams) > 1:
+        with ThreadPoolExecutor(max_workers=min(len(streams), 2)) as executor:
+            fut_map = {executor.submit(fn): label for label, fn in streams}
+            for fut in as_completed(fut_map):
+                label = fut_map[fut]
+                try:
+                    stream_outputs[label] = fut.result()
+                except Exception as exc:
+                    print(f"[red]Stream '{label}' failed:[/red] {exc}")
+                    stream_outputs[label] = [] if label != 'ddgs' else ([], {})
+    else:
+        result = streams[0][1]()
+        stream_outputs[streams[0][0]] = result
+    
+    # Merge results
+    if 'ddgs' in stream_outputs:
+        ddgs_results, ddgs_stats = stream_outputs['ddgs']
+        if ddgs_results:
+            _dedup_append(ddgs_results)
+        search_stats.update(ddgs_stats)
+    
+    if 'category_rss' in stream_outputs:
+        rss_results = stream_outputs['category_rss']
+        rss_added = _dedup_append(rss_results) if rss_results else 0
+        search_stats['category_rss_providers'] = categories
+        search_stats['category_rss_count'] = rss_added
+        print(f"[green]Category RSS providers returned {rss_added} unique results[/green]")
+    
+    discovery_time = time.time() - discovery_start
+    candidate_count = len(all_candidates)
+    
+    print(f"  • Total candidates: {candidate_count}")
+    print(f"  • Collection time: {discovery_time:.2f}s")
+    print(f"  • Ready for ranking (NO content extracted yet)")
+    
+    if candidate_count == 0:
+        print(f"[red]✗ No candidates discovered[/red]")
+        return [], {
+            'search_engine': {**search_stats, 'total': 0, 'success': 0},
+            'cleaner': {'total_input': 0, 'successful': 0, 'failed': 0, 'processed': 0}
+        }
+    
+    # ══════════════════════════════════════════════════════════════
+    # Phase 2: Ranking Candidates (Metadata Only)
+    # ══════════════════════════════════════════════════════════════
+    
+    print(f"\n[cyan]Phase 2: Ranking Candidates[/cyan]")
+    ranking_start = time.time()
+    
+    print(f"  • Ranking {len(all_candidates)} candidates by relevance")
+    print(f"  • Using: title, snippet, domain quality, authority")
+    print(f"  • Selecting top {EXTRACTION_COUNT} for content extraction")
+    
+    # Use staged_ranker if available, otherwise simple ranking
+    try:
+        from .staged_ranker import rank_candidates_initial
+        ranked = rank_candidates_initial(all_candidates, query)
+    except Exception as e:
+        logger.warning(f"staged_ranker not available, using simple ranking: {e}")
+        # Fallback: simple ranking by position
+        ranked = sorted(all_candidates, key=lambda x: x.get('position', 999))
+    
+    ranking_time = (time.time() - ranking_start) * 1000
+    
+    print(f"  ✓ Ranked in {ranking_time:.0f}ms")
+    print(f"  ✓ Selected top {EXTRACTION_COUNT} for extraction")
+    
+    # ══════════════════════════════════════════════════════════════
+    # Phase 3: Select Top N
+    # ══════════════════════════════════════════════════════════════
+    
+    top_n = ranked[:EXTRACTION_COUNT]
+    
+    # ══════════════════════════════════════════════════════════════
+    # Phase 4: Content Extraction (Only Top N)
+    # ══════════════════════════════════════════════════════════════
+    
+    print(f"\n[cyan]Phase 3: Content Extraction[/cyan]")
+    print(f"  • Extracting full page content for {len(top_n)} URLs")
+    print(f"  • Using: requests → Playwright fallback")
+    extraction_start = time.time()
+    
+    # Use existing EnterpriseSearchEngine for extraction
     engine = EnterpriseSearchEngine(
         max_workers=workers,
         max_fetch_retries=max_fetch_retries,
@@ -330,33 +494,45 @@ def web_search(
         enable_bandit=enable_bandit,
         source=source,
     )
-    search_options = _compact_options({
-        'region': region,
-        'safesearch': safesearch,
-        'timelimit': timelimit,
-        'backend': backend,
-    })
-
-    raw_results = engine.execute_search(
-        query,
-        max_results,
-        search_options=search_options,
-        retry_on_zero_success=retry_on_zero_success,
-        max_zero_success_retries=retry_attempts,
-        retry_backoff_seconds=retry_backoff,
-    )
     
-    # Convert dataclass results to plain dicts
+    # Extract content from top N URLs
+    raw_results = engine.execute_search_from_urls(top_n)
     results_dicts = [asdict(r) for r in raw_results]
     
-    # Phase 2: Clean and filter by extraction_status == "success"
+    extraction_time = time.time() - extraction_start
+    
+    print(f"  ✓ Extracted in {extraction_time:.2f}s")
+    
+    # ══════════════════════════════════════════════════════════════
+    # Phase 5: Cleaning & Structuring
+    # ══════════════════════════════════════════════════════════════
+    
+    print(f"\n[cyan]Phase 4: Cleaning & Structuring[/cyan]")
     structured_results, cleaner_stats = process_results(results_dicts)
+    
+    total_time = time.time() - start_time
+    
+    print(f"\n[green]✓ Web search complete![/green]")
+    print(f"  • Total execution time: {total_time:.2f}s")
+    print(f"  • Discovery: {discovery_time:.2f}s")
+    print(f"  • Ranking: {ranking_time/1000:.2f}s")
+    print(f"  • Extraction: {extraction_time:.2f}s")
+    print(f"  • Final results: {len(structured_results)}")
     
     # Combine stats
     combined_stats = {
-        'search_engine': engine.stats,
+        'search_engine': {
+            **search_stats,
+            **engine.stats,
+            'candidates_collected': candidate_count,
+            'collection_time': discovery_time,
+            'ranking_time_ms': ranking_time,
+            'extraction_time': extraction_time,
+            'total_time': total_time,
+        },
         'cleaner': cleaner_stats
     }
+    
     return structured_results, combined_stats
 
 
@@ -2255,6 +2431,10 @@ def main():
     web_parser.add_argument('--sources', default=None, choices=['wikimedia'],
                             help='Search source override (default: DuckDuckGo). Use "wikimedia" to search Wikipedia directly. '
                                  'If the primary source returns zero results, falls back to the other source.')
+    web_parser.add_argument('--category', nargs='+', default=None,
+                            help='Category-specific RSS feeds to include (ai, engineering, cloud, devops, research, etc.). '
+                                 'Multiple categories can be specified, e.g. --category ai cloud devops. '
+                                 'Results from category feeds are merged with DuckDuckGo search.')
     web_parser.set_defaults(retry_on_zero=True)
     web_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries when 0 successful extractions')
     web_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts when 0 successful extractions')
@@ -2786,6 +2966,7 @@ def main():
             browser_profile_name=args.browser_profile_name,
             enable_bandit=args.enable_bandit,
             source=args.sources,
+            categories=args.category,
         )
         
         output = {
