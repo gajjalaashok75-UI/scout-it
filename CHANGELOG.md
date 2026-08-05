@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚀 Expanded RSS Feeds — August 5, 2026
+
+- **Expanded RSS feed sources from 1-2 to 50+ across all news categories**
+  - **cloud** category: 1 → 6 feeds (AWS Blog, Google Cloud, Azure, Red Hat + more)
+  - **ai** category: 2 → 8 feeds (MIT Tech Review, TLDR AI, Import AI, Simon Willison + more)
+  - **startups** category: 1 → 6 feeds (VentureBeat, Product Hunt, a16z, Y Combinator + more)
+  - **security** category: 1 → 6 feeds (BleepingComputer, Krebs on Security, Bruce Schneier + more)
+  - **all** category: 1 → 9 feeds (The Verge, Ars Technica, WIRED, MIT Tech Review + more)
+  
+- **Real-world verification results:**
+  - `scout-it news-search -q "cloud updates" --category cloud` → **148 unique results** (vs ~20 before)
+  - `scout-it news-search -q "AI updates" --category ai` → **130 unique results** (vs ~40 before)
+  
+- **Zero breaking changes** - fully backward compatible, no code changes to providers or CLI
+- **Files modified:** `scout_it/tech_crunch_rss.py` (updated `TECHCRUNCH_FEEDS` dictionary)
+- **Files added:** 
+  - `tests/test_expanded_rss_feeds.py` - Comprehensive test suite (5/5 tests passing)
+  - `docs/RSS_FEEDS_EXPANSION.md` - Complete documentation of expansion
+- **Files removed:** `scout_it/news-rss-feeds.py` (content integrated into tech_crunch_rss.py)
+
 ### 📚 Docs — durable feature guides added to docs/
 
 - **`NETWORK_RESILIENCE_FEATURE.md`**: TCP socket connectivity precheck, retry/backoff, and graceful failure behavior.
