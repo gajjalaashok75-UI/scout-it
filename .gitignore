@@ -9,6 +9,7 @@ real-tests.md
 # Distribution / packaging
 FEATURE-ENHANCEMENTS.MD
 .Python
+implement-summary/
 build/
 visualizations/
 develop-eggs/

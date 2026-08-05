@@ -275,29 +275,29 @@ RECENCY_DECAY_RATE: float = DEFAULT_CONFIG.ranking_weights.recency_decay_rate
 
 TECHCRUNCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
     "all": [
-        {"url": "https://techcrunch.com/feed/", "verified": True, "notes": "TechCrunch main feed."},
-        {"url": "https://www.theverge.com/rss/index.xml", "verified": True, "notes": "The Verge main tech/news feed."},
-        {"url": "https://feeds.arstechnica.com/arstechnica/index", "verified": True, "notes": "Ars Technica main feed."},
-        {"url": "https://www.wired.com/feed/rss", "verified": True, "notes": "WIRED main RSS feed."},
-        {"url": "https://www.zdnet.com/news/rss.xml", "verified": True, "notes": "ZDNET news feed."},
-        {"url": "https://www.technologyreview.com/feed/", "verified": True, "notes": "MIT Technology Review main feed."},
-        {"url": "https://venturebeat.com/feed/", "verified": True, "notes": "VentureBeat main feed."},
-        {"url": "https://news.ycombinator.com/rss", "verified": True, "notes": "Hacker News frontpage RSS."},
-        {"url": "https://www.reuters.com/technology/", "verified": False, "notes": "Reuters technology section; RSS availability may vary by page/feed."},
-    ],
+    {"url": "https://techcrunch.com/feed/", "verified": False, "notes": "TechCrunch main technology news feed."},
+    {"url": "https://www.theverge.com/rss/index.xml", "verified": False, "notes": "The Verge technology and innovation news."},
+    {"url": "https://feeds.arstechnica.com/arstechnica/index", "verified": False, "notes": "Ars Technica technology journalism."},
+    {"url": "https://www.wired.com/feed/rss", "verified": False, "notes": "WIRED technology and science news."},
+    {"url": "https://www.zdnet.com/news/rss.xml", "verified": False, "notes": "ZDNet enterprise and technology news."},
+    {"url": "https://venturebeat.com/feed/", "verified": False, "notes": "Technology and startup news."},
+    {"url": "https://www.technologyreview.com/feed/", "verified": False, "notes": "MIT Technology Review news."},
+    {"url": "https://www.engadget.com/rss.xml", "verified": False, "notes": "Consumer technology and gadget news."},
+    {"url": "https://www.cnet.com/rss/news/", "verified": False, "notes": "Technology news and reviews."},
+    {"url": "https://www.techmeme.com/feed.xml", "verified": False, "notes": "Aggregated top technology stories."},
+    {"url": "https://thenextweb.com/feed/", "verified": False, "notes": "Technology and startup news."},
+],
     "startups": [
-        {"url": "https://techcrunch.com/category/startups/feed/", "verified": True, "notes": "TechCrunch startups category feed."},
-        {"url": "https://venturebeat.com/feed/", "verified": True, "notes": "VentureBeat covers startups and venture."},
-        {"url": "https://www.producthunt.com/feed", "verified": True, "notes": "Product Hunt feed for launches/startups."},
-        {"url": "https://a16z.com/feed/", "verified": True, "notes": "Andreessen Horowitz blog feed."},
-        {"url": "https://www.ycombinator.com/blog/rss.xml", "verified": False, "notes": "Y Combinator blog feed pattern; verify in your environment."},
-        {"url": "https://www.geekwire.com/feed/", "verified": False, "notes": "GeekWire feed; startup and tech coverage."},
+        {"url": "https://techcrunch.com/category/startups/feed/", "verified": False, "notes": "Startup ecosystem news."},
+        {"url": "https://venturebeat.com/feed/", "verified": False, "notes": "Startup and venture news."},
+        {"url": "https://www.geekwire.com/feed/", "verified": False, "notes": "Startup and innovation reporting."},
+        {"url": "https://thenextweb.com/feed/", "verified": False, "notes": "Startup industry coverage."},
+        {"url": "https://news.crunchbase.com/feed/", "verified": False, "notes": "Funding and startup news."},
     ],
     "venture": [
         {"url": "https://techcrunch.com/category/venture/feed/", "verified": True, "notes": "TechCrunch venture category feed."},
         {"url": "https://techcrunch.com/tag/venture/feed/", "verified": True, "notes": "TechCrunch venture tag feed."},
         {"url": "https://venturebeat.com/feed/", "verified": True, "notes": "VentureBeat covers startups and venture."},
-        {"url": "https://a16z.com/feed/", "verified": True, "notes": "Andreessen Horowitz blog feed."},
     ],
     "ai": [
         {"url": "https://techcrunch.com/category/artificial-intelligence/feed/", "verified": True, "notes": "TechCrunch AI category feed."},
@@ -309,6 +309,11 @@ TECHCRUNCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
         {"url": "https://marktechpost.com/feed/", "verified": False, "notes": "MarkTechPost feed; verify in your environment."},
         {"url": "https://www.artificialintelligence-news.com/feed/", "verified": False, "notes": "AI news feed pattern; verify in your environment."},
     ],
+    "space": [
+    {"url": "https://techcrunch.com/category/space/feed/", "verified": False, "notes": "Space technology news."},
+    {"url": "https://spacenews.com/feed/", "verified": False, "notes": "Space industry reporting."},
+    {"url": "https://www.space.com/feeds/all", "verified": False, "notes": "Space exploration news."},
+],
     "apps": [
         {"url": "https://techcrunch.com/category/apps/feed/", "verified": True, "notes": "TechCrunch apps category feed."},
         {"url": "https://www.androidauthority.com/feed/", "verified": True, "notes": "Android Authority main feed."},
@@ -345,9 +350,10 @@ TECHCRUNCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
     "space": [
         {"url": "https://techcrunch.com/category/space/feed/", "verified": True, "notes": "TechCrunch space category feed."},
     ],
-    "robotics": [
-        {"url": "https://techcrunch.com/category/robotics/feed/", "verified": True, "notes": "TechCrunch robotics category feed."},
-    ],
+"robotics": [
+    {"url": "https://techcrunch.com/category/robotics/feed/", "verified": False, "notes": "Robotics industry news."},
+    {"url": "https://www.roboticsbusinessreview.com/feed/", "verified": False, "notes": "Robotics business coverage."},
+],
     "hardware": [
         {"url": "https://techcrunch.com/category/hardware/feed/", "verified": True, "notes": "TechCrunch hardware category feed."},
         {"url": "https://www.tomshardware.com/feeds.xml", "verified": False, "notes": "Tom's Hardware feed pattern; verify in your environment."},
@@ -368,10 +374,6 @@ TECHCRUNCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
     ],
     "cloud": [
         {"url": "https://techcrunch.com/category/cloud/feed/", "verified": True, "notes": "TechCrunch cloud category feed."},
-        {"url": "https://aws.amazon.com/blogs/aws/feed/", "verified": True, "notes": "AWS official blog feed."},
-        {"url": "https://cloud.google.com/blog/rss/", "verified": True, "notes": "Google Cloud blog RSS."},
-        {"url": "https://azure.microsoft.com/en-us/blog/feed/", "verified": True, "notes": "Microsoft Azure blog feed."},
-        {"url": "https://www.redhat.com/en/blog/rss.xml", "verified": False, "notes": "Red Hat blog feed pattern; verify in your environment."},
         {"url": "https://www.cshub.com/rss/categories/cloud", "verified": False, "notes": "Cloud security feed; useful for cloud/security overlap."},
     ],
     "cryptocurrency": [
@@ -391,6 +393,11 @@ TECHCRUNCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
     "commerce": [
         {"url": "https://techcrunch.com/category/commerce/feed/", "verified": True, "notes": "TechCrunch commerce category feed."},
     ],
+    "open_source": [
+    {"url": "https://opensource.com/feed", "verified": False, "notes": "Open source industry news."},
+    {"url": "https://www.linux.com/feed/", "verified": False, "notes": "Linux and open-source news."},
+    {"url": "https://lwn.net/headlines/rss", "verified": False, "notes": "Linux and kernel news."},
+],
     "media": [
         {"url": "https://techcrunch.com/category/media/feed/", "verified": True, "notes": "TechCrunch media category feed."},
         {"url": "https://techcrunch.com/category/media-entertainment/feed/", "verified": True, "notes": "TechCrunch media-entertainment category feed."},
@@ -405,18 +412,23 @@ TECHCRUNCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
     "google": [
         {"url": "https://techcrunch.com/tag/google/feed/", "verified": True, "notes": "TechCrunch Google tag feed."},
         {"url": "https://9to5google.com/feed/", "verified": True, "notes": "9to5Google main feed."},
-        {"url": "https://cloud.google.com/blog/rss/", "verified": True, "notes": "Google Cloud blog RSS."},
     ],
     "microsoft": [
         {"url": "https://techcrunch.com/tag/microsoft/feed/", "verified": True, "notes": "TechCrunch Microsoft tag feed."},
-        {"url": "https://azure.microsoft.com/en-us/blog/feed/", "verified": True, "notes": "Microsoft Azure blog feed."},
-        {"url": "https://devblogs.microsoft.com/feed/", "verified": True, "notes": "Microsoft DevBlogs feed."},
     ],
     "amazon": [
         {"url": "https://techcrunch.com/tag/amazon/feed/", "verified": True, "notes": "TechCrunch Amazon tag feed."},
-        {"url": "https://aws.amazon.com/blogs/aws/feed/", "verified": True, "notes": "AWS official blog feed."},
         {"url": "https://www.aboutamazon.com/news/rss", "verified": False, "notes": "About Amazon news RSS pattern; verify in your environment."},
     ],
+    "devops": [
+    {"url": "https://www.devops.com/feed/", "verified": False, "notes": "DevOps industry news."},
+    {"url": "https://containerjournal.com/feed/", "verified": False, "notes": "Containers and Kubernetes news."},
+    {"url": "https://www.infoq.com/feed/", "verified": False, "notes": "Software engineering news."},
+],
+    "databases": [
+    {"url": "https://www.dbta.com/Editorial/News-Flashes/rss.aspx", "verified": False, "notes": "Database trends and news."},
+    {"url": "https://www.datanami.com/feed/", "verified": False, "notes": "Big data and analytics news."},
+],
     "meta": [
         {"url": "https://techcrunch.com/tag/meta/feed/", "verified": True, "notes": "TechCrunch Meta tag feed."},
         {"url": "https://about.fb.com/news/category/facebook/feed/", "verified": False, "notes": "Meta/Facebook newsroom feed pattern; verify in your environment."},
@@ -427,6 +439,11 @@ TECHCRUNCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
     ],
     "tc": [
         {"url": "https://techcrunch.com/tag/tc/feed/", "verified": True, "notes": "TechCrunch tc tag feed."},
+    ],
+    "science": [
+        {"url": "https://www.sciencedaily.com/rss/computers_math.xml", "verified": False, "notes": "Computer science research news."},
+        {"url": "https://www.nature.com/subjects/computer-science.rss", "verified": False, "notes": "Nature computer science news."},
+        {"url": "https://phys.org/rss-feed/technology-news/", "verified": False, "notes": "Technology research news."},
     ],
 }
 
