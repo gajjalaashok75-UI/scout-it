@@ -18,9 +18,6 @@ from ..google_news_source import google_news_search
 from ..category_providers import fetch_category_news, get_available_categories
 from ..staged_ranker import rank_candidates_initial
 
-# Import helpers from same package
-from .helpers import _extract_news_content
-
 # Initialize logger
 logger = logging.getLogger(__name__)
 
@@ -415,12 +412,22 @@ def news_search(
     print(f"  • Using: requests → Playwright fallback")
     
     extraction_start = time.perf_counter()
-    enriched_results = _extract_news_content(
-        ranked_candidates,
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # USE ENTERPRISE SEARCH ENGINE (same as web-search)
+    # ═══════════════════════════════════════════════════════════════════
+    from ..extraction import EnterpriseSearchEngine
+    from dataclasses import asdict
+    
+    engine = EnterpriseSearchEngine(
         max_workers=workers,
         max_fetch_retries=max_fetch_retries,
         enable_js_fallback=enable_js_fallback,
     )
+    
+    raw_results = engine.execute_search_from_urls(ranked_candidates)
+    enriched_results = [asdict(r) for r in raw_results]
+    
     extraction_time_ms = (time.perf_counter() - extraction_start) * 1000
     
     # ══════════════════════════════════════════════════════════════════

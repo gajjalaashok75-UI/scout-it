@@ -1150,10 +1150,20 @@ class EnterpriseSearchEngine:
                 original_url = url
                 
                 # ═══════════════════════════════════════════════════════════
+                # GOOGLE NEWS /articles/ HANDLING: Force Playwright for JS SPAs
+                # ═══════════════════════════════════════════════════════════
+                # Google News /articles/ URLs are JavaScript-rendered SPAs that
+                # require Playwright to execute the JS redirect and render the
+                # actual article content (requests-only gets the interstitial shell)
+                force_js = False
+                if "/articles/" in url and "news.google.com" in url:
+                    force_js = True
+                    logger.info(f"Google News SPA detected, forcing Playwright: {url[:80]}")
+                
+                # ═══════════════════════════════════════════════════════════
                 # DOMAIN LEARNING: Check learned strategy
                 # ═══════════════════════════════════════════════════════════
-                force_js = False
-                if self.enable_js_fallback:
+                if not force_js and self.enable_js_fallback:
                     try:
                         from .domain_routing import get_domain_learning
                         learning = get_domain_learning()
@@ -1307,6 +1317,23 @@ class EnterpriseSearchEngine:
                     )
                 except Exception as e:
                     logger.debug(f"Domain learning record failed: {e}")
+                
+                # ═══════════════════════════════════════════════════════════
+                # ERROR PAGE DETECTION: Detect dead links / 404 pages
+                # ═══════════════════════════════════════════════════════════
+                # Short content matching error phrases indicates a broken URL
+                # (dead link from search engine showing "page not found" page)
+                _ERROR_PAGE_PHRASES = [
+                    "whoops", "page doesn't exist", "can't be found",
+                    "page not found", "this page could not be found",
+                    "sorry, this page",
+                ]
+                
+                if main_content and any(p in main_content.lower() for p in _ERROR_PAGE_PHRASES) and len(main_content.strip()) < 500:
+                    logger.info(f"Error page detected, clearing content: {url[:80]}")
+                    main_content = ""
+                    method = "error-page"
+                    confidence = 0.0
                 
                 # ═══════════════════════════════════════════════════════════
                 # FALLBACK CHAIN: snippet → meta description → rendered text

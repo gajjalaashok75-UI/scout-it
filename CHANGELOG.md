@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔥 Unified Extraction Engine (Code Deduplication) — August 6, 2026
+
+- **Unified web-search and news-search to use identical extraction engine**
+  - Both commands now use `EnterpriseSearchEngine` from `extraction.py`
+  - Eliminated 300 lines of duplicate code from `news-search/helpers.py`
+  - News-search now gains 5 advanced features it didn't have before:
+    - `enable_alternate_source`: AMP/mobile/print URL variants + Wayback Machine fallback
+    - `enable_dns_fallback`: DNS-over-HTTPS retry on DNS errors (enabled by default)
+    - `enable_tls_impersonate`: TLS/JA3 fingerprint impersonation (opt-in)
+    - `enable_persistent_profile`: Persistent browser profile for cookies (opt-in)
+    - `enable_bandit`: Multi-armed bandit algorithm for tier selection (opt-in)
+
+- **Added 2 missing features to EnterpriseSearchEngine:**
+  - **Google News /articles/ handling**: Automatically detects Google News SPA URLs and forces Playwright rendering
+  - **Error page detection**: Detects "page not found" content and clears it (prevents returning 404 page text)
+
+- **Code organization improvements:**
+  - `news-search/helpers.py` marked as deprecated (dead code, scheduled for removal)
+  - `COMPARISON_WEB_VS_NEWS.md` documents complete feature comparison and rationale
+  - Single source of truth for extraction logic (easier to maintain and optimize)
+
+- **Real-world verification:**
+  - `scout-it news-search -q "AI news" -m 2` → 2/2 extracted (1831 + 1714 words) ✅
+  - `scout-it web-search -q "AI news" -m 2` → 2/2 extracted (7965 + 1650 words) ✅
+  - Both use identical extraction pipeline with all advanced features
+
+- **Files modified:**
+  - `scout_it/extraction.py` - Added Google News /articles/ detection + error page detection
+  - `scout_it/news-search/news_search.py` - Now uses EnterpriseSearchEngine instead of _extract_news_content()
+  - `scout_it/news-search/helpers.py` - Marked as deprecated (300 lines of dead code)
+  - `COMPARISON_WEB_VS_NEWS.md` - Complete feature comparison and implementation details
+
 ### ⚡ Web Search Extraction Enhancements — August 6, 2026
 
 - **Enhanced web-search with news-search extraction optimizations for 3-5x faster performance**
