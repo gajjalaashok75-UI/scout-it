@@ -15,7 +15,6 @@ from .tech_crunch_rss import (
     RSSProvider,
     deduplicate_entries,
     sort_entries,
-    _normalize_domains,
     _domain_from_url,
     _feed_name_from_url,
     _enrich_entries,
@@ -28,6 +27,27 @@ __all__ = [
     'get_all_web_feed_entries',
     'get_available_web_categories',
 ]
+
+
+def _normalize_web_domains(domains: Optional[Sequence[str]]) -> List[str]:
+    """Normalize domain names for web search (doesn't validate against TECHCRUNCH_FEEDS)."""
+    if not domains:
+        return []
+    
+    # Simple normalization - just clean and lowercase
+    normalized = []
+    for domain in domains:
+        if domain:
+            clean_domain = str(domain).strip().lower().replace('-', '_')
+            # Check if it exists in WEB_SEARCH_FEEDS
+            if clean_domain in WEB_SEARCH_FEEDS:
+                normalized.append(clean_domain)
+            else:
+                # Try to find close match
+                available = list(WEB_SEARCH_FEEDS.keys())
+                raise ValueError(f"Unknown web search category: '{domain}'. Available categories: {', '.join(available)}")
+    
+    return normalized
 
 
 class WebSearchRSSProvider(RSSProvider):
@@ -73,7 +93,7 @@ class WebSearchRSSProvider(RSSProvider):
         Returns:
             List of ALL RSS entries ready for ranking
         """
-        normalized_domains = _normalize_domains(domains) if domains else None
+        normalized_domains = _normalize_web_domains(domains) if domains else None
         urls: List[str] = []
         
         if normalized_domains:
@@ -139,10 +159,20 @@ class WebSearchRSSProvider(RSSProvider):
         return temp_provider.fetch_multiple_feeds(urls, timeout, max_workers)
     
     def parse_feed(self, feed: Any, domain: str = "all") -> List[Dict[str, Any]]:
-        """Inherit from parent."""
-        from .tech_crunch_rss import TechCrunchRSSProvider as TCProvider
-        temp_provider = TCProvider()
-        return temp_provider.parse_feed(feed, domain)
+        """Inherit from parent - but use UNLIMITED entries for web search."""
+        from .tech_crunch_rss import TechCrunchRSSProvider as TCProvider, DEFAULT_CONFIG
+        
+        # Temporarily increase limit for web search (we want ALL entries)
+        original_limit = DEFAULT_CONFIG.max_entries_per_feed
+        DEFAULT_CONFIG.max_entries_per_feed = 10000  # Set very high limit (was 5000)
+        
+        try:
+            temp_provider = TCProvider()
+            result = temp_provider.parse_feed(feed, domain)
+            return result
+        finally:
+            # Restore original limit
+            DEFAULT_CONFIG.max_entries_per_feed = original_limit
 
 
 # Global provider instance

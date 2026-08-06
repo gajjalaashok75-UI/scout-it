@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🌐 Web Search RSS Integration — August 6, 2026
+
+- **Implemented complete RSS feed infrastructure for web-search with category support**
+  - Added 65 RSS feeds across 13 categories (ai, engineering, cloud, devops, research, etc.)
+  - New modules:
+    - `scout_it/web_search_feed.py` - 65 curated RSS feed URLs for technical content
+    - `scout_it/web_search_rss.py` - RSS provider module (reuses tech_crunch_rss.py core)
+    - `scout_it/web_category_providers.py` - 5 category provider functions (ai, engineering, cloud, devops, research)
+  
+- **Enhanced web-search with parallel stream architecture (matches news-search)**
+  - Stream 1: DDGS text search (20 snippets, always runs)
+  - Stream 2: Category RSS feeds (ALL entries, no limit - if `--category` specified)
+  - Stream 3: Wikimedia (if `--sources wikimedia`)
+  - All streams run in parallel and merge results before ranking
+  
+- **Fixed 3 critical bugs:**
+  1. ✅ `--sources wikimedia` now properly fetches Wikimedia results (was falling back to DDGS)
+  2. ✅ RSS feed limit increased from 1000 to 10000 entries (no artificial caps)
+  3. ✅ "Unknown TechCrunch domain: 'research'" error fixed (now validates against WEB_SEARCH_FEEDS)
+  
+- **Rich output matching news-search style:**
+  - Wrapper resolution phase showing resolved/dropped MSN/Yahoo/AOL redirects
+  - Detailed extraction breakdown showing tier (requests/playwright) and word counts per URL
+  - Extraction stats summary (requests tier, playwright tier, failed/low quality counts)
+  - Enhanced final summary with total candidates discovered
+  
+- **Real-world verification:**
+  - `scout-it web-search -q "transformers" --category ai` → **520 candidates** (20 DDGS + 500 RSS)
+  - `scout-it web-search -q "cloud computing" --category ai cloud devops` → **1100 candidates** (multi-category merge)
+  - `scout-it web-search -q "python" --category engineering --sources wikimedia` → **202 candidates** (all 3 streams)
+  
+- **Files modified:**
+  - `scout_it/cli.py` - Added wikimedia stream, wrapper resolution, rich extraction output to web_search()
+  - `scout_it/web_search_rss.py` - Fixed feed limits (10000), added _normalize_web_domains() validation
+  
+- **Files added:**
+  - `tests/test_web_search_rss_integration.py` - Integration tests (3/3 passing)
+
 ### 🚀 Expanded RSS Feeds — August 5, 2026
 
 - **Expanded RSS feed sources from 1-2 to 50+ across all news categories**

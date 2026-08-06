@@ -392,15 +392,36 @@ def web_search(
         print(f"[dim]Available categories: {', '.join(get_available_web_categories())}[/dim]")
         return fetch_web_category_feeds(cats, query, max_results=RSS_NO_LIMIT)
     
+    # Stream 3: Wikimedia (if --sources wikimedia)
+    def _run_wikimedia_discovery():
+        """Get Wikimedia results (NO extraction)."""
+        from .wikimedia_source import wikimedia_search
+        print(f"[blue]Wikimedia source enabled[/blue]")
+        results = wikimedia_search(query, max_results=RSS_NO_LIMIT)
+        # Normalize to search format
+        normalized = []
+        for r in results:
+            normalized.append({
+                'title': r.get('title', ''),
+                'url': r.get('url', ''),
+                'href': r.get('url', ''),
+                'body': r.get('body', ''),
+                'snippet': r.get('snippet', ''),
+                'source': 'wikimedia',
+            })
+        return normalized
+    
     # Execute discovery streams in parallel
     streams: List[Tuple[str, Any]] = [('ddgs', _run_ddgs_discovery)]
     if categories:
         streams.append(('category_rss', lambda cats=categories: _run_category_rss(cats)))
+    if source == 'wikimedia':
+        streams.append(('wikimedia', _run_wikimedia_discovery))
     
     stream_outputs: Dict[str, Any] = {}
     
     if len(streams) > 1:
-        with ThreadPoolExecutor(max_workers=min(len(streams), 2)) as executor:
+        with ThreadPoolExecutor(max_workers=min(len(streams), 3)) as executor:
             fut_map = {executor.submit(fn): label for label, fn in streams}
             for fut in as_completed(fut_map):
                 label = fut_map[fut]
@@ -427,6 +448,12 @@ def web_search(
         search_stats['category_rss_count'] = rss_added
         print(f"[green]Category RSS providers returned {rss_added} unique results[/green]")
     
+    if 'wikimedia' in stream_outputs:
+        wiki_results = stream_outputs['wikimedia']
+        wiki_added = _dedup_append(wiki_results) if wiki_results else 0
+        search_stats['wikimedia_count'] = wiki_added
+        print(f"[green]Wikimedia returned {wiki_added} unique results[/green]")
+    
     discovery_time = time.time() - discovery_start
     candidate_count = len(all_candidates)
     
@@ -434,12 +461,105 @@ def web_search(
     print(f"  • Collection time: {discovery_time:.2f}s")
     print(f"  • Ready for ranking (NO content extracted yet)")
     
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 1.5: RESOLVE WRAPPER URLs (MSN, Yahoo, AOL) - URL PARAMETERS ONLY
+    # ══════════════════════════════════════════════════════════════════
+    # Fast resolution: Check URL parameters only (no HTML fetching)
+    # This removes low-value wrappers before ranking
+    # HTML-based resolution happens during extraction if needed
+    
+    from .source_resolvers import is_wrapper_domain, resolve_source_url
+    
+    wrapper_resolution_start = time.perf_counter()
+    resolved_count = 0
+    dropped_count = 0
+    resolved_urls = set()  # Track resolved URLs for deduplication
+    
+    # Track dropped wrappers by domain
+    wrapper_stats = {
+        'msn': 0,
+        'yahoo': 0,
+        'aol': 0,
+        'google_news': 0,
+    }
+    
+    for candidate in all_candidates[:]:  # Iterate over copy to allow modification
+        url = candidate.get('url') or candidate.get('href', '')
+        if not url:
+            continue
+        
+        # Check if this is a wrapper domain
+        if is_wrapper_domain(url):
+            # Attempt FAST resolution (URL parameters only, no HTML fetching)
+            resolved = resolve_source_url(url, html=None)
+            
+            if resolved and resolved != url:
+                # Resolution successful - update to original publisher URL
+                if resolved not in resolved_urls and resolved not in seen_urls:
+                    candidate['original_wrapper_url'] = url
+                    candidate['url'] = resolved
+                    candidate['href'] = resolved
+                    candidate['was_resolved'] = True
+                    resolved_urls.add(resolved)
+                    resolved_count += 1
+                    logger.info(f"Resolved wrapper: {urlparse(url).netloc} → {urlparse(resolved).netloc}")
+                else:
+                    # Duplicate after resolution - drop it
+                    all_candidates.remove(candidate)
+                    dropped_count += 1
+                    # Track which wrapper domain
+                    domain = urlparse(url).netloc.lower()
+                    if 'msn.com' in domain:
+                        wrapper_stats['msn'] += 1
+                    elif 'yahoo.com' in domain:
+                        wrapper_stats['yahoo'] += 1
+                    elif 'aol.com' in domain:
+                        wrapper_stats['aol'] += 1
+                    elif 'google.com' in domain:
+                        wrapper_stats['google_news'] += 1
+            else:
+                # Resolution failed - drop unresolved wrappers
+                # (HTML-based resolution is too slow for pre-ranking phase)
+                logger.info(f"Dropping unresolved wrapper: {url[:80]}")
+                all_candidates.remove(candidate)
+                dropped_count += 1
+                # Track which wrapper domain
+                domain = urlparse(url).netloc.lower()
+                if 'msn.com' in domain:
+                    wrapper_stats['msn'] += 1
+                elif 'yahoo.com' in domain:
+                    wrapper_stats['yahoo'] += 1
+                elif 'aol.com' in domain:
+                    wrapper_stats['aol'] += 1
+                elif 'google.com' in domain:
+                    wrapper_stats['google_news'] += 1
+    
+    wrapper_resolution_time_ms = (time.perf_counter() - wrapper_resolution_start) * 1000
+    
+    if resolved_count > 0 or dropped_count > 0:
+        print(f"  • Wrapper resolution: {resolved_count} resolved, {dropped_count} dropped ({wrapper_resolution_time_ms:.0f}ms)")
+        if dropped_count > 0:
+            dropped_details = []
+            if wrapper_stats['msn'] > 0:
+                dropped_details.append(f"MSN: {wrapper_stats['msn']}")
+            if wrapper_stats['yahoo'] > 0:
+                dropped_details.append(f"Yahoo: {wrapper_stats['yahoo']}")
+            if wrapper_stats['aol'] > 0:
+                dropped_details.append(f"AOL: {wrapper_stats['aol']}")
+            if wrapper_stats['google_news'] > 0:
+                dropped_details.append(f"Google News: {wrapper_stats['google_news']}")
+            if dropped_details:
+                print(f"    [dim]└─ {', '.join(dropped_details)}[/dim]")
+    
     if candidate_count == 0:
         print(f"[red]✗ No candidates discovered[/red]")
         return [], {
             'search_engine': {**search_stats, 'total': 0, 'success': 0},
             'cleaner': {'total_input': 0, 'successful': 0, 'failed': 0, 'processed': 0}
         }
+    
+    # Update candidate count after wrapper resolution
+    candidate_count = len(all_candidates)
     
     # ══════════════════════════════════════════════════════════════
     # Phase 2: Ranking Candidates (Metadata Only)
@@ -501,6 +621,50 @@ def web_search(
     
     extraction_time = time.time() - extraction_start
     
+    # ══════════════════════════════════════════════════════════════════
+    # EXTRACTION STATISTICS
+    # ══════════════════════════════════════════════════════════════════
+    requests_count = 0
+    playwright_count = 0
+    failed_count = 0
+    
+    print(f"\n[cyan]Extraction Breakdown:[/cyan]")
+    for idx, result in enumerate(results_dicts, 1):
+        url = result.get('url', '')
+        domain = urlparse(url).netloc if url else 'unknown'
+        method = result.get('extraction_method', 'unknown')
+        word_count = result.get('content_word_count', 0)
+        status = result.get('extraction_status', 'unknown')
+        
+        # Extract tier from method
+        tier = 'unknown'
+        if 'requests' in method.lower() or 'basic-fallback' in method.lower() or 'tls-impersonate' in method.lower():
+            tier = 'requests'
+            requests_count += 1
+        elif 'playwright' in method.lower():
+            tier = 'playwright'
+            playwright_count += 1
+        
+        # Format output
+        tier_display = f"[green]{tier:10s}[/green]" if tier == 'requests' else f"[yellow]{tier:10s}[/yellow]"
+        status_icon = "✓" if status == 'success' and word_count >= 200 else "✗"
+        
+        print(f"  {status_icon} URL {idx:2d} ({domain[:25]:25s}) {tier_display} {word_count:4d} words")
+        
+        if status != 'success' or word_count < 100:
+            failed_count += 1
+    
+    # Summary statistics
+    print(f"\n[cyan]Extraction Stats:[/cyan]")
+    print(f"  • Requests tier: {requests_count}/{len(results_dicts)}")
+    print(f"  • Playwright tier: {playwright_count}/{len(results_dicts)}")
+    print(f"  • Failed/Low quality: {failed_count}/{len(results_dicts)}")
+    print(f"  • Total time: {extraction_time:.2f}s")
+    print(f"  • Average per URL: {extraction_time/len(results_dicts):.2f}s")
+    
+    if playwright_count > 0:
+        print(f"  [yellow]⚠️  {playwright_count} URLs used Playwright (3-8s browser launch overhead each)[/yellow]")
+    
     print(f"  ✓ Extracted in {extraction_time:.2f}s")
     
     # ══════════════════════════════════════════════════════════════
@@ -518,6 +682,13 @@ def web_search(
     print(f"  • Ranking: {ranking_time/1000:.2f}s")
     print(f"  • Extraction: {extraction_time:.2f}s")
     print(f"  • Final results: {len(structured_results)}")
+    
+    # Print final summary in news-search style
+    print(f"\n✅ WEB SEARCH COMPLETE!")
+    print(f"   🔍 Query: {query}")
+    print(f"   📊 Total candidates discovered: {search_stats.get('candidates_collected', candidate_count)}")
+    print(f"   ✅ Successfully extracted: {len(structured_results)}")
+    print(f"   ❌ Failed (ignored): {failed_count}")
     
     # Combine stats
     combined_stats = {
@@ -2992,11 +3163,6 @@ def main():
         out_path = Path(args.out)
         _write_output(out_path, output)
 
-        print(f'\n✅ WEB SEARCH COMPLETE!')
-        print(f'   🔍 Query: {args.query}')
-        print(f'   📊 Total results from search: {stats["search_engine"]["total"]}')
-        print(f'   ✅ Successfully extracted: {stats["cleaner"]["successful"]}')
-        print(f'   ❌ Failed (ignored): {stats["cleaner"]["failed"]}')
         print(f'   📄 Structured JSON: {out_path}')
         print(f'   📂 Results saved to: {out_path.resolve()}')
         print(f'   ⏱️  Execution time: {stats["search_engine"]["execution_time"]:.1f}s\n')
