@@ -299,6 +299,7 @@ def web_search(
     enable_bandit: bool = False,
     source: Optional[str] = None,
     categories: Optional[List[str]] = None,
+    snippets_only: bool = False,
 ):
     """Web search with optimized discovery-first pipeline (matches news-search).
     
@@ -464,47 +465,68 @@ def web_search(
     # ══════════════════════════════════════════════════════════════════
     # PHASE 1.5: RESOLVE WRAPPER URLs (MSN, Yahoo, AOL) - URL PARAMETERS ONLY
     # ══════════════════════════════════════════════════════════════════
-    # Fast resolution: Check URL parameters only (no HTML fetching)
-    # This removes low-value wrappers before ranking
-    # HTML-based resolution happens during extraction if needed
+    # Skip wrapper resolution in snippets mode to preserve more results
+    # Wrapper URLs work fine for displaying titles/summaries
+    # Only resolve wrappers when doing full extraction (need original source)
     
-    from .source_resolvers import is_wrapper_domain, resolve_source_url
-    
-    wrapper_resolution_start = time.perf_counter()
-    resolved_count = 0
-    dropped_count = 0
-    resolved_urls = set()  # Track resolved URLs for deduplication
-    
-    # Track dropped wrappers by domain
-    wrapper_stats = {
-        'msn': 0,
-        'yahoo': 0,
-        'aol': 0,
-        'google_news': 0,
-    }
-    
-    for candidate in all_candidates[:]:  # Iterate over copy to allow modification
-        url = candidate.get('url') or candidate.get('href', '')
-        if not url:
-            continue
+    if not snippets_only:
+        # Fast resolution: Check URL parameters only (no HTML fetching)
+        # This removes low-value wrappers before ranking
+        # HTML-based resolution happens during extraction if needed
         
-        # Check if this is a wrapper domain
-        if is_wrapper_domain(url):
-            # Attempt FAST resolution (URL parameters only, no HTML fetching)
-            resolved = resolve_source_url(url, html=None)
+        from .source_resolvers import is_wrapper_domain, resolve_source_url
+        
+        wrapper_resolution_start = time.perf_counter()
+        resolved_count = 0
+        dropped_count = 0
+        resolved_urls = set()  # Track resolved URLs for deduplication
+        
+        # Track dropped wrappers by domain
+        wrapper_stats = {
+            'msn': 0,
+            'yahoo': 0,
+            'aol': 0,
+            'google_news': 0,
+        }
+        
+        for candidate in all_candidates[:]:  # Iterate over copy to allow modification
+            url = candidate.get('url') or candidate.get('href', '')
+            if not url:
+                continue
             
-            if resolved and resolved != url:
-                # Resolution successful - update to original publisher URL
-                if resolved not in resolved_urls and resolved not in seen_urls:
-                    candidate['original_wrapper_url'] = url
-                    candidate['url'] = resolved
-                    candidate['href'] = resolved
-                    candidate['was_resolved'] = True
-                    resolved_urls.add(resolved)
-                    resolved_count += 1
-                    logger.info(f"Resolved wrapper: {urlparse(url).netloc} → {urlparse(resolved).netloc}")
+            # Check if this is a wrapper domain
+            if is_wrapper_domain(url):
+                # Attempt FAST resolution (URL parameters only, no HTML fetching)
+                resolved = resolve_source_url(url, html=None)
+                
+                if resolved and resolved != url:
+                    # Resolution successful - update to original publisher URL
+                    if resolved not in resolved_urls and resolved not in seen_urls:
+                        candidate['original_wrapper_url'] = url
+                        candidate['url'] = resolved
+                        candidate['href'] = resolved
+                        candidate['was_resolved'] = True
+                        resolved_urls.add(resolved)
+                        resolved_count += 1
+                        logger.info(f"Resolved wrapper: {urlparse(url).netloc} → {urlparse(resolved).netloc}")
+                    else:
+                        # Duplicate after resolution - drop it
+                        all_candidates.remove(candidate)
+                        dropped_count += 1
+                        # Track which wrapper domain
+                        domain = urlparse(url).netloc.lower()
+                        if 'msn.com' in domain:
+                            wrapper_stats['msn'] += 1
+                        elif 'yahoo.com' in domain:
+                            wrapper_stats['yahoo'] += 1
+                        elif 'aol.com' in domain:
+                            wrapper_stats['aol'] += 1
+                        elif 'google.com' in domain:
+                            wrapper_stats['google_news'] += 1
                 else:
-                    # Duplicate after resolution - drop it
+                    # Resolution failed - drop unresolved wrappers
+                    # (HTML-based resolution is too slow for pre-ranking phase)
+                    logger.info(f"Dropping unresolved wrapper: {url[:80]}")
                     all_candidates.remove(candidate)
                     dropped_count += 1
                     # Track which wrapper domain
@@ -517,39 +539,26 @@ def web_search(
                         wrapper_stats['aol'] += 1
                     elif 'google.com' in domain:
                         wrapper_stats['google_news'] += 1
-            else:
-                # Resolution failed - drop unresolved wrappers
-                # (HTML-based resolution is too slow for pre-ranking phase)
-                logger.info(f"Dropping unresolved wrapper: {url[:80]}")
-                all_candidates.remove(candidate)
-                dropped_count += 1
-                # Track which wrapper domain
-                domain = urlparse(url).netloc.lower()
-                if 'msn.com' in domain:
-                    wrapper_stats['msn'] += 1
-                elif 'yahoo.com' in domain:
-                    wrapper_stats['yahoo'] += 1
-                elif 'aol.com' in domain:
-                    wrapper_stats['aol'] += 1
-                elif 'google.com' in domain:
-                    wrapper_stats['google_news'] += 1
-    
-    wrapper_resolution_time_ms = (time.perf_counter() - wrapper_resolution_start) * 1000
-    
-    if resolved_count > 0 or dropped_count > 0:
-        print(f"  • Wrapper resolution: {resolved_count} resolved, {dropped_count} dropped ({wrapper_resolution_time_ms:.0f}ms)")
-        if dropped_count > 0:
-            dropped_details = []
-            if wrapper_stats['msn'] > 0:
-                dropped_details.append(f"MSN: {wrapper_stats['msn']}")
-            if wrapper_stats['yahoo'] > 0:
-                dropped_details.append(f"Yahoo: {wrapper_stats['yahoo']}")
-            if wrapper_stats['aol'] > 0:
-                dropped_details.append(f"AOL: {wrapper_stats['aol']}")
-            if wrapper_stats['google_news'] > 0:
-                dropped_details.append(f"Google News: {wrapper_stats['google_news']}")
-            if dropped_details:
-                print(f"    [dim]└─ {', '.join(dropped_details)}[/dim]")
+        
+        wrapper_resolution_time_ms = (time.perf_counter() - wrapper_resolution_start) * 1000
+        
+        if resolved_count > 0 or dropped_count > 0:
+            print(f"  • Wrapper resolution: {resolved_count} resolved, {dropped_count} dropped ({wrapper_resolution_time_ms:.0f}ms)")
+            if dropped_count > 0:
+                dropped_details = []
+                if wrapper_stats['msn'] > 0:
+                    dropped_details.append(f"MSN: {wrapper_stats['msn']}")
+                if wrapper_stats['yahoo'] > 0:
+                    dropped_details.append(f"Yahoo: {wrapper_stats['yahoo']}")
+                if wrapper_stats['aol'] > 0:
+                    dropped_details.append(f"AOL: {wrapper_stats['aol']}")
+                if wrapper_stats['google_news'] > 0:
+                    dropped_details.append(f"Google News: {wrapper_stats['google_news']}")
+                if dropped_details:
+                    print(f"    [dim]└─ {', '.join(dropped_details)}[/dim]")
+    else:
+        # Snippets mode: keep all wrapper URLs (they have valid titles/summaries)
+        print(f"  • Wrapper resolution: skipped (snippets mode keeps all sources)")
     
     if candidate_count == 0:
         print(f"[red]✗ No candidates discovered[/red]")
@@ -570,21 +579,87 @@ def web_search(
     
     print(f"  • Ranking {len(all_candidates)} candidates by relevance")
     print(f"  • Using: title, snippet, domain quality, authority")
-    print(f"  • Selecting top {EXTRACTION_COUNT} for content extraction")
+    
+    if snippets_only:
+        print(f"  • Selecting top {EXTRACTION_COUNT} snippets (--snippets mode)")
+    else:
+        print(f"  • Selecting top {EXTRACTION_COUNT} for content extraction")
     
     # Use staged_ranker if available, otherwise simple ranking
     try:
         from .staged_ranker import rank_candidates_initial
-        ranked = rank_candidates_initial(all_candidates, query)
+        ranked = rank_candidates_initial(all_candidates, query, top_k=EXTRACTION_COUNT)
     except Exception as e:
         logger.warning(f"staged_ranker not available, using simple ranking: {e}")
         # Fallback: simple ranking by position
-        ranked = sorted(all_candidates, key=lambda x: x.get('position', 999))
+        ranked = sorted(all_candidates, key=lambda x: x.get('position', 999))[:EXTRACTION_COUNT]
     
     ranking_time = (time.time() - ranking_start) * 1000
     
     print(f"  ✓ Ranked in {ranking_time:.0f}ms")
-    print(f"  ✓ Selected top {EXTRACTION_COUNT} for extraction")
+    
+    if snippets_only:
+        print(f"  ✓ Selected top {min(EXTRACTION_COUNT, len(ranked))} snippets")
+    else:
+        print(f"  ✓ Selected top {EXTRACTION_COUNT} for extraction")
+    
+    # ══════════════════════════════════════════════════════════════════
+    # SNIPPETS MODE: Skip extraction and return ranked snippets
+    # ══════════════════════════════════════════════════════════════════
+    
+    if snippets_only:
+        total_execution_time = round(time.time() - start_time, 3)
+        top_snippets = ranked[:EXTRACTION_COUNT]
+        
+        print(f"\n[green]✓ Snippet search complete![/green]")
+        print(f"  • Total execution time: {total_execution_time:.2f}s")
+        print(f"  • Discovery: {discovery_time:.2f}s")
+        print(f"  • Ranking: {ranking_time/1000:.2f}s")
+        print(f"  • Mode: snippets (extraction skipped)")
+        print(f"  • Results: {len(top_snippets)}")
+        
+        # Format snippets output (discovery metadata only)
+        snippets_output = []
+        for idx, candidate in enumerate(top_snippets, start=1):
+            snippet = {
+                'rank': idx,  # Assign sequential rank (1, 2, 3, ...)
+                'title': candidate.get('title', ''),
+                'summary': candidate.get('body', '') or candidate.get('description', '') or candidate.get('snippet', ''),
+                'url': candidate.get('url', '') or candidate.get('href', ''),
+                'source': candidate.get('source', ''),
+                'score': candidate.get('initial_rank_score', 0.0),  # Use the ranking score
+            }
+            snippets_output.append(snippet)
+        
+        print(f"\n✅ WEB SEARCH COMPLETE!")
+        print(f"   🔍 Query: {query}")
+        print(f"   📊 Total candidates discovered: {search_stats.get('candidates_collected', candidate_count)}")
+        print(f"   ✅ Snippets returned: {len(snippets_output)}")
+        print(f"   🎯 Snippets requested: {EXTRACTION_COUNT}")
+        print(f"   📋 Mode: snippets (no extraction)")
+        
+        combined_stats = {
+            'search_engine': {
+                **search_stats,
+                **{'execution_time': total_execution_time},
+                'candidates_collected': candidate_count,
+                'collection_time': discovery_time,
+                'ranking_time_ms': ranking_time,
+            },
+            'ranking': {
+                'ranking_time_ms': round(ranking_time, 2),
+                'candidates_total': candidate_count,
+                'candidates_selected': len(top_snippets),
+            },
+            'cleaner': {
+                'total_input': 0,
+                'successful': 0,
+                'failed': 0,
+                'processed': 0,
+            }
+        }
+        
+        return snippets_output, combined_stats
     
     # ══════════════════════════════════════════════════════════════
     # Phase 3: Select Top N
@@ -2591,7 +2666,14 @@ def main():
                     '(3) Waiting and trying again later, or (4) Checking your internet connection.'
     )
     web_parser.add_argument('--query', '-q', required=True, help='Search query')
-    web_parser.add_argument('--max', '-m', type=int, default=5, help='Max results (1-100)')
+    web_parser.add_argument('--max', '-m', type=int, default=None, 
+                             help='Number of results to return. Default: 10 (full extraction), 30 (--snippets mode). '
+                                  'Pipeline: Collect snippets from all sources → Rank by relevance → '
+                                  'Extract full content for top N (or return snippets only with --snippets). '
+                                  'Example: -m 20 will rank all candidates and extract top 20.')
+    web_parser.add_argument('--snippets', action='store_true',
+                             help='Return ranked snippets only. Skips content extraction for ~10x faster results (~2-4s vs 20-70s). '
+                                  'Perfect for quickly browsing large numbers of candidates. Default limit: 30 snippets.')
     web_parser.add_argument('--workers', '-w', type=int, default=5, help='Parallel workers')
     web_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/struct_format_results.json)')
     web_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
@@ -3117,9 +3199,15 @@ def main():
     # Web search
     if args.command == 'web-search':
         print(f"\n🔍 Starting web search: '{args.query}'\n")
+        
+        # Adjust default max_results based on mode
+        max_results = args.max
+        if max_results is None:
+            max_results = 30 if args.snippets else 10
+        
         structured_results, stats = web_search(
             args.query,
-            max_results=args.max,
+            max_results=max_results,
             workers=args.workers,
             retry_on_zero_success=args.retry_on_zero,
             retry_attempts=args.retry_attempts,
@@ -3138,13 +3226,15 @@ def main():
             enable_bandit=args.enable_bandit,
             source=args.sources,
             categories=args.category,
+            snippets_only=args.snippets,
         )
         
         output = {
             'query': args.query,
             'search_type': 'web',
+            'mode': 'snippets' if args.snippets else 'full',
             'parameters': {
-                'max_results': args.max,
+                'max_results': max_results,
                 'workers': args.workers,
                 'region': args.region,
                 'safesearch': args.safesearch,
@@ -3155,6 +3245,7 @@ def main():
                 'retry_backoff': args.retry_backoff,
                 'max_fetch_retries': args.max_fetch_retries,
                 'enable_js_fallback': args.enable_js_fallback,
+                'snippets_only': args.snippets,
             },
             'stats': stats,
             'structured_results': structured_results
