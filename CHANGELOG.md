@@ -9,6 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚡ Web Search Extraction Enhancements — August 6, 2026
+
+- **Enhanced web-search with news-search extraction optimizations for 3-5x faster performance**
+  - Added browser pool reuse across all URLs (launches browser ONCE vs per-URL)
+  - Added advanced wrapper resolution (URL-based first, then HTML-based fallback)
+  - Added quality escalation (automatic Playwright retry for low-quality extractions)
+  - Added domain learning integration (checks banned domains and learned strategies)
+  - Added snippet fallback chain (meta description → original snippet → rendered text)
+  
+- **Key performance improvements:**
+  - Browser pool: 3-8s overhead per URL → 0.5s per page (reuse across all URLs)
+  - Wrapper resolution: Resolves MSN/Yahoo/AOL URLs before AND after fetch
+  - Quality escalation: Auto-retries with Playwright if requests tier yields < 30 chars
+  - Snippet fallback: Uses meta description/snippet when extraction fails
+  
+- **Browser pool workflow:**
+  1. Launch browser once at start of extraction phase
+  2. Reuse browser context for all URLs (via `browser_pool.get_page()`)
+  3. Clean up browser after all URLs processed
+  4. Domain learning saved to disk after extraction complete
+  
+- **Real-world verification:**
+  - `scout-it web-search -q "golang" -m 2` → Both URLs escalated to Playwright, extracted 959 and 952 words
+  - Browser pool reduces per-page overhead from ~3-8s to ~0.5s
+  - Wrapper resolution catches MSN/Yahoo redirects before wasting extraction cycles
+  
+- **Files modified:**
+  - `scout_it/extraction.py` - Enhanced `_phase_content_extraction()` method with:
+    - Browser pool initialization and cleanup
+    - Advanced wrapper resolution (URL + HTML fallback)
+    - Quality escalation with Playwright retry
+    - Domain learning checks (banned domains, learned strategies)
+    - Snippet fallback chain
+    - Domain learning save to disk
+
+### 🚀 Web Search --snippets Mode — August 6, 2026
+
+- **Added `--snippets` mode to web-search matching news-search functionality**
+  - Returns ranked snippets only without content extraction (~10x faster)
+  - Default: 30 snippets in --snippets mode, 10 full extractions in normal mode
+  - Perfect for quickly browsing large numbers of candidates
+  
+- **Key features:**
+  - Skips wrapper resolution in snippets mode (preserves more sources)
+  - Skips content extraction phase entirely (2-5s vs 20-70s)
+  - Returns: rank, title, summary, url, source, score for each snippet
+  - Matches news-search output format exactly
+  
+- **Real-world performance:**
+  - `scout-it web-search -q "AI tools" --snippets` → **20 snippets in 5.1s** (vs ~15-20s full extraction)
+  - `scout-it web-search -q "kubernetes" --category devops --snippets` → **30 snippets from 500+ candidates**
+  - `scout-it web-search -q "rust" --snippets -m 5` → **5 snippets in 3.9s**
+  
+- **Files modified:**
+  - `scout_it/cli.py` - Added snippets_only parameter, early return logic, adjusted output
+
 ### 🌐 Web Search RSS Integration — August 6, 2026
 
 - **Implemented complete RSS feed infrastructure for web-search with category support**

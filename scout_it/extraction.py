@@ -52,6 +52,9 @@ except ImportError:
     print("❌ Install: pip install duckduckgo-search rich trafilatura requests beautifulsoup4 justext boilerpy3")
     sys.exit(1)
 
+# Initialize logger
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class EnterpriseResult:
@@ -1123,14 +1126,73 @@ class EnterpriseSearchEngine:
             progress.advance(search_task)
     
     def _phase_content_extraction(self):
-        """Parallel enterprise extraction"""
+        """Parallel enterprise extraction with news-search optimizations"""
         self.console.print(Panel("[bold yellow]⚡ PARALLEL CONTENT EXTRACTION[/bold yellow]", padding=(1, 2)))
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # BROWSER POOL: Launch browser ONCE for all URLs (news-search optimization)
+        # ═══════════════════════════════════════════════════════════════════
+        browser_pool = None
+        if self.enable_js_fallback:
+            try:
+                from .browser_pool import PlaywrightBrowserPool
+                browser_pool = PlaywrightBrowserPool.get_instance()
+                browser_pool.start()
+                logger.info("Browser pool started - will reuse browser for all URLs")
+            except Exception as e:
+                logger.warning(f"Failed to start browser pool: {e}")
+                browser_pool = None
         
         def extract_worker(result: EnterpriseResult) -> EnterpriseResult:
             start_time = time.time()
             try:
+                url = result.url
+                original_url = url
+                
+                # ═══════════════════════════════════════════════════════════
+                # DOMAIN LEARNING: Check learned strategy
+                # ═══════════════════════════════════════════════════════════
+                force_js = False
+                if self.enable_js_fallback:
+                    try:
+                        from .domain_routing import get_domain_learning
+                        learning = get_domain_learning()
+                        strategy, confidence = learning.get_strategy(url)
+                        
+                        if strategy == "banned":
+                            result.extraction_status = "failed"
+                            result.main_content = ""
+                            result.errors.append("Domain is banned (never returns valid content)")
+                            result.fetch_time = time.time() - start_time
+                            logger.info(f"Domain learning: Skipping banned domain - {url[:80]}")
+                            return result
+                        elif strategy == "playwright" and confidence >= 0.80:
+                            force_js = True
+                            logger.info(f"Domain learning: Using Playwright (strategy={strategy}, conf={confidence:.0%}) - {url[:80]}")
+                    except Exception as e:
+                        logger.debug(f"Domain learning check failed: {e}")
+                
+                # ═══════════════════════════════════════════════════════════
+                # WRAPPER RESOLUTION: Advanced (URL + HTML fallback)
+                # ═══════════════════════════════════════════════════════════
+                try:
+                    from .source_resolvers import is_wrapper_domain, resolve_source_url
+                    
+                    if is_wrapper_domain(url):
+                        logger.info(f"Wrapper domain detected: {url[:80]}")
+                        # First attempt: Try to resolve from URL alone
+                        resolved = resolve_source_url(url, html=None)
+                        if resolved:
+                            url = resolved
+                            result.url = resolved
+                            result.final_url = resolved
+                            logger.info(f"Resolved to publisher: {url[:80]}")
+                except Exception as e:
+                    logger.debug(f"Wrapper resolution failed: {e}")
+                
+                # Initial fetch
                 fetch_outcome = fetch_resilient(
-                    result.url,
+                    url,
                     session=self.extractor.session,
                     timeout=self.timeout,
                     max_retries=self.max_fetch_retries,
@@ -1141,7 +1203,10 @@ class EnterpriseSearchEngine:
                     enable_persistent_profile=self.enable_persistent_profile,
                     browser_profile_name=self.browser_profile_name,
                     enable_bandit=self.enable_bandit,
+                    force_js=force_js,
+                    browser_pool=browser_pool,  # Pass browser pool
                 )
+                
                 with self._stats_lock:
                     self.stats['fetch_tiers'][fetch_outcome['tier']] = (
                         self.stats['fetch_tiers'].get(fetch_outcome['tier'], 0) + 1
@@ -1157,11 +1222,124 @@ class EnterpriseSearchEngine:
 
                 # Multi-strategy extraction
                 main_content, method, confidence = self.extractor.extract_content(
-                    result.url, fetch_outcome['html']
+                    url, fetch_outcome['html']
                 )
                 
+                # ═══════════════════════════════════════════════════════════
+                # WRAPPER RE-RESOLUTION: Try again with HTML if still a wrapper
+                # ═══════════════════════════════════════════════════════════
+                try:
+                    from .source_resolvers import is_wrapper_domain, resolve_source_url
+                    
+                    if is_wrapper_domain(url):
+                        resolved_from_html = resolve_source_url(url, html=fetch_outcome.get("html", ""))
+                        if resolved_from_html and resolved_from_html != url:
+                            logger.info(f"Re-resolved wrapper from HTML: {resolved_from_html[:80]}")
+                            url = resolved_from_html
+                            result.url = resolved_from_html
+                            result.final_url = resolved_from_html
+                            # Re-fetch the resolved URL
+                            fetch_outcome = fetch_resilient(
+                                url,
+                                session=self.extractor.session,
+                                timeout=self.timeout,
+                                max_retries=self.max_fetch_retries,
+                                enable_js_fallback=self.enable_js_fallback,
+                                enable_alternate_source=self.enable_alternate_source,
+                                enable_dns_fallback=self.enable_dns_fallback,
+                                enable_tls_impersonate=self.enable_tls_impersonate,
+                                enable_persistent_profile=self.enable_persistent_profile,
+                                browser_profile_name=self.browser_profile_name,
+                                enable_bandit=self.enable_bandit,
+                                force_js=force_js,
+                                browser_pool=browser_pool,
+                            )
+                            if fetch_outcome["status"] == "success":
+                                main_content, method, confidence = self.extractor.extract_content(url, fetch_outcome["html"])
+                                result.final_url = fetch_outcome['final_url']
+                except Exception as e:
+                    logger.debug(f"Wrapper re-resolution failed: {e}")
+                
+                # ═══════════════════════════════════════════════════════════
+                # QUALITY VALIDATION & AUTOMATIC PLAYWRIGHT ESCALATION
+                # ═══════════════════════════════════════════════════════════
+                try:
+                    from .extraction_quality import should_escalate_to_playwright
+                    
+                    should_escalate, escalation_reason = should_escalate_to_playwright(
+                        content=main_content,
+                        expected_title=result.title,
+                        html=fetch_outcome.get("html", ""),
+                        extraction_tier=fetch_outcome.get("tier", "requests"),
+                    )
+                    
+                    # Automatic escalation to Playwright if quality is poor
+                    if should_escalate and self.enable_js_fallback and fetch_outcome.get("tier") != "playwright":
+                        logger.info(f"Escalating to Playwright: {escalation_reason} - {url[:80]}")
+                        escalated_outcome = fetch_resilient(
+                            url,
+                            session=self.extractor.session,
+                            timeout=self.timeout,
+                            max_retries=self.max_fetch_retries,
+                            enable_js_fallback=True,
+                            force_js=True,
+                            browser_pool=browser_pool,
+                        )
+                        if escalated_outcome["status"] == "success":
+                            fetch_outcome = escalated_outcome
+                            main_content, method, confidence = self.extractor.extract_content(url, fetch_outcome["html"])
+                            result.final_url = fetch_outcome['final_url']
+                except Exception as e:
+                    logger.debug(f"Quality escalation failed: {e}")
+                
+                # ═══════════════════════════════════════════════════════════
+                # DOMAIN LEARNING: Record extraction outcome
+                # ═══════════════════════════════════════════════════════════
+                word_count = len(main_content.split())
+                try:
+                    from .domain_routing import get_domain_learning
+                    learning = get_domain_learning()
+                    learning.record_extraction(
+                        url=url,
+                        tier=fetch_outcome.get("tier", "unknown"),
+                        success=(word_count >= 200),
+                        word_count=word_count,
+                    )
+                except Exception as e:
+                    logger.debug(f"Domain learning record failed: {e}")
+                
+                # ═══════════════════════════════════════════════════════════
+                # FALLBACK CHAIN: snippet → meta description → rendered text
+                # ═══════════════════════════════════════════════════════════
+                # If extraction yields no content, use the original snippet
+                if len(main_content.strip()) < 30:
+                    # Try meta description
+                    try:
+                        from .cli import _extract_meta_description
+                        meta_desc = _extract_meta_description(fetch_outcome.get("html", ""))
+                        if meta_desc and len(meta_desc) > len(main_content.strip()):
+                            main_content = meta_desc
+                            method = "meta-description"
+                            confidence = 0.4
+                    except:
+                        pass
+                    
+                    # Fall back to original snippet
+                    if len(main_content.strip()) < 30 and result.snippet.strip() and len(result.snippet) > len(main_content.strip()):
+                        main_content = result.snippet
+                        method = "snippet-fallback"
+                        confidence = 0.5
+                    
+                    # Try rendered text
+                    if len(main_content.strip()) < 30:
+                        rendered_text = fetch_outcome.get("rendered_text", "")
+                        if rendered_text.strip() and len(rendered_text.strip()) > len(main_content.strip()):
+                            main_content = rendered_text
+                            method = "rendered-text"
+                            confidence = 0.6
+                
                 result.main_content = main_content
-                result.content_word_count = len(main_content.split())
+                result.content_word_count = word_count
                 result.extraction_method = f"{method} ({fetch_outcome['tier']})"
                 result.confidence_score = confidence
                 result.extraction_status = "success" if main_content.strip() else "failed"
@@ -1170,6 +1348,7 @@ class EnterpriseSearchEngine:
             except Exception as e:
                 result.errors.append(str(e))
                 result.extraction_status = "failed"
+                result.fetch_time = time.time() - start_time
             
             return result
         
@@ -1189,6 +1368,26 @@ class EnterpriseSearchEngine:
                 for future in as_completed(futures):
                     result = future.result()
                     progress.advance(task)
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # BROWSER POOL CLEANUP: Close browser after all URLs are processed
+        # ═══════════════════════════════════════════════════════════════════
+        if browser_pool:
+            try:
+                browser_pool.stop()
+                logger.info("Browser pool stopped")
+            except Exception as e:
+                logger.warning(f"Error stopping browser pool: {e}")
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # DOMAIN LEARNING: Save learned strategies to disk
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            from .domain_routing import get_domain_learning
+            learning = get_domain_learning()
+            learning.force_save()
+        except Exception as e:
+            logger.debug(f"Domain learning save failed: {e}")
     
     def _phase_quality_analysis(self):
         """Enterprise quality scoring & ranking"""
