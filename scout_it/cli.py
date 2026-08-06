@@ -2024,12 +2024,31 @@ def _extract_news_content(
             r["errors"] = [str(exc)]
         return r
 
+    # Display progress with Rich
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, TextColumn, MofNCompleteColumn, TimeElapsedColumn
+    from rich.panel import Panel
+    
+    console = Console()
+    console.print(Panel("[bold yellow]⚡ PARALLEL CONTENT EXTRACTION[/bold yellow]", padding=(1, 2)))
+    
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_extract_one, r): idx for idx, r in enumerate(results)}
         enriched = [None] * len(results)
-        for future in as_completed(futures):
-            idx = futures[future]
-            enriched[idx] = future.result()
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console
+        ) as progress:
+            task = progress.add_task("  Extracting content...", total=len(futures))
+            
+            for future in as_completed(futures):
+                idx = futures[future]
+                enriched[idx] = future.result()
+                progress.advance(task)
     
     # ═══════════════════════════════════════════════════════════════════
     # BROWSER POOL CLEANUP: Close browser after all URLs are processed
