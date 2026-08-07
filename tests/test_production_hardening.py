@@ -3,9 +3,24 @@
 
 import json
 import os
-from scout_it.tech_crunch_rss import (
-    # Configuration
-    RSSConfig,
+import importlib
+
+_tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+
+# Import all needed items
+RSSConfig = _tech_crunch_rss.RSSConfig
+TechCrunchRSSProvider = _tech_crunch_rss.TechCrunchRSSProvider
+get_available_domains = _tech_crunch_rss.get_available_domains
+get_feed_urls = _tech_crunch_rss.get_feed_urls
+validate_feed = _tech_crunch_rss.validate_feed
+fetch_feed = _tech_crunch_rss.fetch_feed
+get_latest_entries = _tech_crunch_rss.get_latest_entries
+search_entries = _tech_crunch_rss.search_entries
+rank_entries = _tech_crunch_rss.rank_entries
+deduplicate_entries = _tech_crunch_rss.deduplicate_entries
+sort_entries = _tech_crunch_rss.sort_entries
+get_feed_health = _tech_crunch_rss.get_feed_health
+_CIRCUIT_BREAKERS = _tech_crunch_rss._CIRCUIT_BREAKERS
     DEFAULT_CONFIG,
     
     # Exceptions
@@ -299,7 +314,7 @@ def test_circuit_breaker():
     print("TEST 8: Circuit Breaker")
     print("=" * 60)
     
-    from scout_it.tech_crunch_rss import _CIRCUIT_BREAKERS, get_feed_health
+    from scout_it.news_search.tech_crunch_rss import _CIRCUIT_BREAKERS, get_feed_health
     
     # Get feed health info
     health = get_feed_health()

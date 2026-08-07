@@ -24,7 +24,10 @@ def techcrunch_ai_provider(query: str, max_results: int = 500, **kwargs) -> List
     Discovery-first approach: Return ALL RSS entries, let ranking decide relevance.
     """
     try:
-        from .tech_crunch_rss import get_all_feed_entries
+        # Import using importlib for hyphenated folder name
+        import importlib
+        _tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+        get_all_feed_entries = _tech_crunch_rss.get_all_feed_entries
         
         logger.info(f"Fetching ALL TechCrunch AI RSS entries (no query filtering)")
         # Get ALL entries from AI feeds (NO query filtering)
@@ -63,7 +66,9 @@ def techcrunch_ai_provider(query: str, max_results: int = 500, **kwargs) -> List
 def techcrunch_startups_provider(query: str, max_results: int = 500, **kwargs) -> List[Dict[str, Any]]:
     """TechCrunch startups news provider - returns ALL matching entries (no query filtering)."""
     try:
-        from .tech_crunch_rss import get_all_feed_entries
+        import importlib
+        _tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+        get_all_feed_entries = _tech_crunch_rss.get_all_feed_entries
         
         logger.info(f"Fetching ALL TechCrunch startups RSS entries (no query filtering)")
         results = get_all_feed_entries(domains=["startups", "venture"], limit=max_results)
@@ -100,7 +105,9 @@ def techcrunch_startups_provider(query: str, max_results: int = 500, **kwargs) -
 def techcrunch_security_provider(query: str, max_results: int = 500, **kwargs) -> List[Dict[str, Any]]:
     """TechCrunch security news provider - returns ALL matching entries (no query filtering)."""
     try:
-        from .tech_crunch_rss import get_all_feed_entries
+        import importlib
+        _tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+        get_all_feed_entries = _tech_crunch_rss.get_all_feed_entries
         
         logger.info(f"Fetching ALL TechCrunch security RSS entries (no query filtering)")
         results = get_all_feed_entries(domains=["security"], limit=max_results)
@@ -137,7 +144,9 @@ def techcrunch_security_provider(query: str, max_results: int = 500, **kwargs) -
 def techcrunch_cloud_provider(query: str, max_results: int = 500, **kwargs) -> List[Dict[str, Any]]:
     """TechCrunch cloud/enterprise news provider - returns ALL matching entries (no query filtering)."""
     try:
-        from .tech_crunch_rss import get_all_feed_entries
+        import importlib
+        _tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+        get_all_feed_entries = _tech_crunch_rss.get_all_feed_entries
         
         logger.info(f"Fetching ALL TechCrunch cloud RSS entries (no query filtering)")
         results = get_all_feed_entries(domains=["cloud", "enterprise"], limit=max_results)
@@ -174,7 +183,9 @@ def techcrunch_cloud_provider(query: str, max_results: int = 500, **kwargs) -> L
 def techcrunch_general_provider(query: str, max_results: int = 500, categories: Optional[List[str]] = None, **kwargs) -> List[Dict[str, Any]]:
     """TechCrunch general news provider - returns ALL matching entries across categories (no query filtering)."""
     try:
-        from .tech_crunch_rss import get_all_feed_entries
+        import importlib
+        _tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+        get_all_feed_entries = _tech_crunch_rss.get_all_feed_entries
         
         # Default categories for general tech news
         domains = categories or ["all", "ai", "startups", "apps", "business"]

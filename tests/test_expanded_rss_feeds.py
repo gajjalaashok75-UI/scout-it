@@ -11,7 +11,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def test_feeds_expanded():
     """Test that TECHCRUNCH_FEEDS has been expanded with new sources."""
-    from scout_it.tech_crunch_rss import TECHCRUNCH_FEEDS
+    import importlib
+    _tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+    TECHCRUNCH_FEEDS = _tech_crunch_rss.TECHCRUNCH_FEEDS
     
     print("\n" + "="*70)
     print("TEST 1: Verify RSS Feeds Were Expanded")
@@ -48,7 +50,9 @@ def test_feeds_expanded():
 
 def test_cloud_feeds_detail():
     """Test cloud category specifically - this is the user's example."""
-    from scout_it.tech_crunch_rss import TECHCRUNCH_FEEDS
+    import importlib
+    _tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+    TECHCRUNCH_FEEDS = _tech_crunch_rss.TECHCRUNCH_FEEDS
     
     print("\n" + "="*70)
     print("TEST 2: Detailed Cloud Category Feed Check")
@@ -91,7 +95,9 @@ def test_cloud_feeds_detail():
 
 def test_provider_integration():
     """Test that category_providers.py can use the expanded feeds."""
-    from scout_it.tech_crunch_rss import TechCrunchRSSProvider
+    import importlib
+    _tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+    TechCrunchRSSProvider = _tech_crunch_rss.TechCrunchRSSProvider
     
     print("\n" + "="*70)
     print("TEST 3: Provider Integration Test")
@@ -120,7 +126,9 @@ def test_provider_integration():
 
 def test_get_all_feed_entries():
     """Test that get_all_feed_entries works with expanded feeds."""
-    from scout_it.tech_crunch_rss import get_all_feed_entries
+    import importlib
+    _tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+    get_all_feed_entries = _tech_crunch_rss.get_all_feed_entries
     
     print("\n" + "="*70)
     print("TEST 4: get_all_feed_entries() Function Test")

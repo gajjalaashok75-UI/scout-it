@@ -9,17 +9,18 @@ from typing import Any, Dict, List, Optional, Sequence
 # Import web search feed registry
 from .web_search_feed import WEB_SEARCH_FEEDS
 
-# Import core RSS functions from tech_crunch_rss
-from .tech_crunch_rss import (
-    TechCrunchRSSProvider,
-    RSSProvider,
-    deduplicate_entries,
-    sort_entries,
-    _domain_from_url,
-    _feed_name_from_url,
-    _enrich_entries,
-    _log_event,
-)
+# Import core RSS functions from tech_crunch_rss (using importlib for hyphenated folder)
+import importlib
+_tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+
+TechCrunchRSSProvider = _tech_crunch_rss.TechCrunchRSSProvider
+RSSProvider = _tech_crunch_rss.RSSProvider
+deduplicate_entries = _tech_crunch_rss.deduplicate_entries
+sort_entries = _tech_crunch_rss.sort_entries
+_domain_from_url = _tech_crunch_rss._domain_from_url
+_feed_name_from_url = _tech_crunch_rss._feed_name_from_url
+_enrich_entries = _tech_crunch_rss._enrich_entries
+_log_event = _tech_crunch_rss._log_event
 
 __all__ = [
     'WebSearchRSSProvider',
@@ -148,19 +149,20 @@ class WebSearchRSSProvider(RSSProvider):
     def fetch_feed(self, url: str, timeout: float = 15.0) -> Optional[str]:
         """Inherit from parent - uses TechCrunchRSSProvider implementation."""
         # Create temporary TechCrunchRSSProvider to reuse fetch logic
-        from .tech_crunch_rss import TechCrunchRSSProvider as TCProvider
+        TCProvider = TechCrunchRSSProvider
         temp_provider = TCProvider()
         return temp_provider.fetch_feed(url, timeout)
     
     def fetch_multiple_feeds(self, urls: Sequence[str], timeout: float = 15.0, max_workers: int = 8) -> List[tuple]:
         """Inherit from parent."""
-        from .tech_crunch_rss import TechCrunchRSSProvider as TCProvider
+        TCProvider = TechCrunchRSSProvider
         temp_provider = TCProvider()
         return temp_provider.fetch_multiple_feeds(urls, timeout, max_workers)
     
     def parse_feed(self, feed: Any, domain: str = "all") -> List[Dict[str, Any]]:
         """Inherit from parent - but use UNLIMITED entries for web search."""
-        from .tech_crunch_rss import TechCrunchRSSProvider as TCProvider, DEFAULT_CONFIG
+        TCProvider = TechCrunchRSSProvider
+        DEFAULT_CONFIG = _tech_crunch_rss.DEFAULT_CONFIG
         
         # Temporarily increase limit for web search (we want ALL entries)
         original_limit = DEFAULT_CONFIG.max_entries_per_feed

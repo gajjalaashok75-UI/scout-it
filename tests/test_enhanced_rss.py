@@ -2,9 +2,20 @@
 """Test script for enhanced TechCrunch RSS module."""
 
 import json
-from scout_it.tech_crunch_rss import (
-    # Core functions
-    get_available_domains,
+import importlib
+
+_tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+
+# Import all needed items
+globals().update({name: getattr(_tech_crunch_rss, name) for name in [
+    'RSSConfig', 'TechCrunchRSSProvider', 'get_available_domains',
+    'get_feed_urls', 'validate_domain', 'validate_feed', 'validate_all_feeds',
+    'fetch_feed', 'fetch_multiple_feeds', 'parse_feed', 'get_latest_entries',
+    'search_entries', 'rank_entries', 'filter_entries', 'search_feeds',
+    'deduplicate_entries', 'sort_entries', 'get_feed_statistics',
+    'get_feed_metadata', 'get_feed_health', 'to_json', 'export_json',
+    'filter_by_date', 'filter_by_domain', 'get_all_feed_entries',
+]})
     get_latest_entries,
     search_feeds,
     search_entries,

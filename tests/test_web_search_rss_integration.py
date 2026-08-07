@@ -9,7 +9,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def test_web_feeds_loaded():
     """Test that web search RSS feeds are loaded."""
-    from scout_it.web_search_feed import WEB_SEARCH_FEEDS
+    import importlib
+    _web_search_feed = importlib.import_module('.web_search_feed', 'scout_it.web-search')
+    WEB_SEARCH_FEEDS = _web_search_feed.WEB_SEARCH_FEEDS
     
     print("\n" + "="*70)
     print("TEST 1: Web Search RSS Feeds Loaded")
@@ -32,7 +34,10 @@ def test_web_feeds_loaded():
 
 def test_web_rss_provider():
     """Test WebSearchRSSProvider."""
-    from scout_it.web_search_rss import WebSearchRSSProvider, get_available_web_categories
+    import importlib
+    _web_search_rss = importlib.import_module('.web_search_rss', 'scout_it.web-search')
+    WebSearchRSSProvider = _web_search_rss.WebSearchRSSProvider
+    get_available_web_categories = _web_search_rss.get_available_web_categories
     
     print("\n" + "="*70)
     print("TEST 2: WebSearchRSSProvider")

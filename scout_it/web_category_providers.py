@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 def web_ai_provider(query: str, max_results: int = 500, **kwargs) -> List[Dict[str, Any]]:
     """Web AI provider - OpenAI, Hugging Face, DeepMind, etc."""
     try:
-        from .web_search_rss import get_all_web_feed_entries
+        import importlib
+        _web_search_rss = importlib.import_module('.web_search_rss', 'scout_it.web-search')
+        get_all_web_feed_entries = _web_search_rss.get_all_web_feed_entries
         
         logger.info(f"Fetching ALL web AI RSS entries (no query filtering)")
         results = get_all_web_feed_entries(categories=["ai"], limit=max_results)
@@ -48,7 +50,9 @@ def web_ai_provider(query: str, max_results: int = 500, **kwargs) -> List[Dict[s
 def web_engineering_provider(query: str, max_results: int = 500, **kwargs) -> List[Dict[str, Any]]:
     """Web Engineering provider - Netflix, Cloudflare, Stripe, etc."""
     try:
-        from .web_search_rss import get_all_web_feed_entries
+        import importlib
+        _web_search_rss = importlib.import_module('.web_search_rss', 'scout_it.web-search')
+        get_all_web_feed_entries = _web_search_rss.get_all_web_feed_entries
         
         logger.info(f"Fetching ALL web engineering RSS entries")
         results = get_all_web_feed_entries(categories=["engineering"], limit=max_results)
@@ -80,7 +84,9 @@ def web_engineering_provider(query: str, max_results: int = 500, **kwargs) -> Li
 def web_cloud_provider(query: str, max_results: int = 500, **kwargs) -> List[Dict[str, Any]]:
     """Web Cloud provider - AWS, Azure, HashiCorp, etc."""
     try:
-        from .web_search_rss import get_all_web_feed_entries
+        import importlib
+        _web_search_rss = importlib.import_module('.web_search_rss', 'scout_it.web-search')
+        get_all_web_feed_entries = _web_search_rss.get_all_web_feed_entries
         
         results = get_all_web_feed_entries(categories=["cloud"], limit=max_results)
         
@@ -110,7 +116,9 @@ def web_cloud_provider(query: str, max_results: int = 500, **kwargs) -> List[Dic
 def web_devops_provider(query: str, max_results: int = 500, **kwargs) -> List[Dict[str, Any]]:
     """Web DevOps provider - Kubernetes, Helm, DevOps.com, etc."""
     try:
-        from .web_search_rss import get_all_web_feed_entries
+        import importlib
+        _web_search_rss = importlib.import_module('.web_search_rss', 'scout_it.web-search')
+        get_all_web_feed_entries = _web_search_rss.get_all_web_feed_entries
         
         results = get_all_web_feed_entries(categories=["devops"], limit=max_results)
         
@@ -140,7 +148,9 @@ def web_devops_provider(query: str, max_results: int = 500, **kwargs) -> List[Di
 def web_research_provider(query: str, max_results: int = 500, **kwargs) -> List[Dict[str, Any]]:
     """Web Research provider - arXiv, Nature, Papers with Code, etc."""
     try:
-        from .web_search_rss import get_all_web_feed_entries
+        import importlib
+        _web_search_rss = importlib.import_module('.web_search_rss', 'scout_it.web-search')
+        get_all_web_feed_entries = _web_search_rss.get_all_web_feed_entries
         
         results = get_all_web_feed_entries(categories=["research"], limit=max_results)
         

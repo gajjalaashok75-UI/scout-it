@@ -62,8 +62,9 @@ print("TEST 2: TechCrunch RSS Module")
 print("=" * 70)
 
 try:
-    from scout_it import tech_crunch_rss
-    print("✅ scout_it.tech_crunch_rss module exists")
+    import importlib
+    tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+    print("✅ scout_it.news-search.tech_crunch_rss module exists")
     
     # Check main functions
     assert hasattr(tech_crunch_rss, 'search_feeds'), "Missing search_feeds"
