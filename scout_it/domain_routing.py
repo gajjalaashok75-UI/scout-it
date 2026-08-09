@@ -21,6 +21,15 @@ BANNED_DOMAINS = {
     "msn.com",
 }
 
+# Compatibility fast-path domain lists used by the older DomainRouter API.
+ALWAYS_PLAYWRIGHT_DOMAINS = {
+    "arstechnica.com",
+}
+
+ALWAYS_REQUESTS_DOMAINS = {
+    "techcrunch.com",
+}
+
 
 def normalize_domain(domain: str) -> str:
     """Normalize domain by removing www. prefix and lowercasing."""
@@ -268,3 +277,72 @@ def get_domain_learning() -> DomainLearningSystem:
     if _learning_instance is None:
         _learning_instance = DomainLearningSystem()
     return _learning_instance
+
+
+class DomainRouter(DomainLearningSystem):
+    """Backward-compatible domain router facade.
+
+    DomainLearningSystem is the newer learning implementation. Older callers and
+    tests still import DomainRouter and expect should_use_playwright(), stats,
+    and a domain_stats.json default persistence path.
+    """
+
+    def __init__(self, stats_file: Optional[Path] = None):
+        if stats_file is None:
+            stats_file = Path.home() / ".scout-it" / "domain_stats.json"
+        super().__init__(stats_file=stats_file)
+        self.stats = self.domains
+        self._sync_legacy_success_keys()
+
+    def _sync_legacy_success_keys(self) -> None:
+        for stats in self.domains.values():
+            stats["requests_success"] = stats.get("requests_successes", stats.get("requests_success", 0))
+            stats["playwright_success"] = stats.get("playwright_successes", stats.get("playwright_success", 0))
+
+    def should_use_playwright(self, url: str) -> Tuple[bool, str, float]:
+        """Return the legacy routing decision tuple.
+
+        Returns:
+            (should_use_playwright, reason, confidence)
+        """
+        domain = self.get_domain(url)
+        if domain in ALWAYS_PLAYWRIGHT_DOMAINS:
+            return True, "always_playwright", 1.0
+        if domain in ALWAYS_REQUESTS_DOMAINS:
+            return False, "always_requests", 1.0
+
+        strategy, confidence = self.get_strategy(url)
+        if strategy == "playwright":
+            return True, "learned_playwright", confidence
+        if strategy == "requests":
+            return False, "learned_requests", confidence
+        if strategy == "banned":
+            return False, "banned", confidence
+        return False, "unknown", confidence
+
+    def record_extraction(
+        self,
+        url: str,
+        tier: str,
+        success: bool,
+        word_count: int = 0,
+        quality_score: float = 0.0,
+    ):
+        """Record extraction outcome while accepting the legacy quality_score."""
+        super().record_extraction(url, tier, success, word_count)
+        domain = self.get_domain(url)
+        if domain in self.domains:
+            self.domains[domain]["quality_score"] = quality_score
+        self.stats = self.domains
+        self._sync_legacy_success_keys()
+
+
+_router_instance = None
+
+
+def get_domain_router() -> DomainRouter:
+    """Get global backward-compatible domain router instance."""
+    global _router_instance
+    if _router_instance is None:
+        _router_instance = DomainRouter()
+    return _router_instance

@@ -177,6 +177,61 @@ def web_research_provider(query: str, max_results: int = 500, **kwargs) -> List[
         return []
 
 
+# Generic provider function generator for remaining categories
+def _make_web_category_provider(category_name: str):
+    """Factory function to create provider functions for any web category."""
+    def provider(query: str, max_results: int = 500, **kwargs) -> List[Dict[str, Any]]:
+        try:
+            import importlib
+            _web_search_rss = importlib.import_module('.web_search_rss', 'scout_it.web-search')
+            get_all_web_feed_entries = _web_search_rss.get_all_web_feed_entries
+            
+            logger.info(f"Fetching ALL web {category_name} RSS entries")
+            results = get_all_web_feed_entries(categories=[category_name], limit=max_results)
+            
+            normalized = []
+            for entry in results:
+                normalized.append({
+                    "title": entry.get("title", ""),
+                    "url": entry.get("url", ""),
+                    "href": entry.get("url", ""),
+                    "body": entry.get("summary", ""),
+                    "snippet": entry.get("summary", ""),
+                    "source": f"rss:{entry.get('domain', category_name)}",
+                    "publish_date": entry.get("published", ""),
+                    "rss_metadata": {
+                        "feed_name": entry.get("feed_name", ""),
+                        "category": entry.get("category", ""),
+                    },
+                })
+            
+            logger.info(f"Web {category_name} provider returning {len(normalized)} entries")
+            return normalized
+            
+        except Exception as e:
+            logger.error(f"Web {category_name} provider failed: {e}")
+            return []
+    
+    provider.__name__ = f"web_{category_name}_provider"
+    return provider
+
+
+# Generate provider functions for all categories
+web_android_development_provider = _make_web_category_provider("android_development")
+web_ios_development_provider = _make_web_category_provider("ios_development")
+web_programming_provider = _make_web_category_provider("programming")
+web_ui_ux_provider = _make_web_category_provider("ui_ux")
+web_web_development_provider = _make_web_category_provider("web_development")
+web_software_engineering_provider = _make_web_category_provider("software_engineering")
+web_open_source_provider = _make_web_category_provider("open_source")
+web_data_science_provider = _make_web_category_provider("data_science")
+web_databases_provider = _make_web_category_provider("databases")
+web_frontend_provider = _make_web_category_provider("frontend")
+web_backend_provider = _make_web_category_provider("backend")
+web_security_research_provider = _make_web_category_provider("security_research")
+web_community_provider = _make_web_category_provider("community")
+
+
 # Category provider registry
 WEB_CATEGORY_PROVIDERS: Dict[str, List[Any]] = {
     "ai": [web_ai_provider],
@@ -184,7 +239,19 @@ WEB_CATEGORY_PROVIDERS: Dict[str, List[Any]] = {
     "cloud": [web_cloud_provider],
     "devops": [web_devops_provider],
     "research": [web_research_provider],
-    # Can add more as needed
+    "android_development": [web_android_development_provider],
+    "ios_development": [web_ios_development_provider],
+    "programming": [web_programming_provider],
+    "ui_ux": [web_ui_ux_provider],
+    "web_development": [web_web_development_provider],
+    "software_engineering": [web_software_engineering_provider],
+    "open_source": [web_open_source_provider],
+    "data_science": [web_data_science_provider],
+    "databases": [web_databases_provider],
+    "frontend": [web_frontend_provider],
+    "backend": [web_backend_provider],
+    "security_research": [web_security_research_provider],
+    "community": [web_community_provider],
 }
 
 

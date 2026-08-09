@@ -222,6 +222,92 @@ def techcrunch_general_provider(query: str, max_results: int = 500, categories: 
         return []
 
 
+# Generic provider function generator for remaining categories
+def _make_news_category_provider(category_name: str):
+    """Factory function to create provider functions for any news category."""
+    def provider(query: str, max_results: int = 500, **kwargs) -> List[Dict[str, Any]]:
+        try:
+            import importlib
+            _tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+            get_all_feed_entries = _tech_crunch_rss.get_all_feed_entries
+            
+            logger.info(f"Fetching ALL {category_name} RSS entries (no query filtering)")
+            results = get_all_feed_entries(domains=[category_name], limit=max_results)
+            
+            logger.info(f"{category_name}: fetched {len(results)} total RSS entries")
+            
+            normalized = []
+            for entry in results:
+                normalized.append({
+                    "title": entry.get("title", ""),
+                    "url": entry.get("url", ""),
+                    "href": entry.get("url", ""),
+                    "body": entry.get("summary", ""),
+                    "source": f"rss:{entry.get('domain', category_name)}",
+                    "publish_date": entry.get("published", ""),
+                    "score": entry.get("score", 0),
+                    "author": entry.get("author", ""),
+                    "categories": entry.get("categories", []),
+                    "rss_metadata": {
+                        "feed_name": entry.get("feed_name", ""),
+                        "category": entry.get("category", ""),
+                        "categories": entry.get("categories", []),
+                    },
+                })
+            
+            logger.info(f"{category_name} provider returning {len(normalized)} entries for ranking")
+            return normalized
+            
+        except Exception as e:
+            logger.error(f"{category_name} provider failed: {e}")
+            return []
+    
+    provider.__name__ = f"{category_name}_provider"
+    return provider
+
+
+# Generate provider functions for all categories
+all_provider = _make_news_category_provider("all")
+news_provider = _make_news_category_provider("news")
+business_provider = _make_news_category_provider("business")
+venture_provider = _make_news_category_provider("venture")
+space_provider = _make_news_category_provider("space")
+apps_provider = _make_news_category_provider("apps")
+enterprise_provider = _make_news_category_provider("enterprise")
+fintech_provider = _make_news_category_provider("fintech")
+transportation_provider = _make_news_category_provider("transportation")
+robotics_provider = _make_news_category_provider("robotics")
+hardware_provider = _make_news_category_provider("hardware")
+mobile_provider = _make_news_category_provider("mobile")
+gaming_provider = _make_news_category_provider("gaming")
+cryptocurrency_provider = _make_news_category_provider("cryptocurrency")
+climate_provider = _make_news_category_provider("climate")
+social_provider = _make_news_category_provider("social")
+commerce_provider = _make_news_category_provider("commerce")
+open_source_provider = _make_news_category_provider("open_source")
+sports_provider = _make_news_category_provider("sports")
+football_provider = _make_news_category_provider("football")
+cricket_provider = _make_news_category_provider("cricket")
+tennis_provider = _make_news_category_provider("tennis")
+movies_provider = _make_news_category_provider("movies")
+television_provider = _make_news_category_provider("television")
+music_provider = _make_news_category_provider("music")
+fashion_provider = _make_news_category_provider("fashion")
+beauty_provider = _make_news_category_provider("beauty")
+food_provider = _make_news_category_provider("food")
+travel_provider = _make_news_category_provider("travel")
+cars_provider = _make_news_category_provider("cars")
+architecture_provider = _make_news_category_provider("architecture")
+books_provider = _make_news_category_provider("books")
+interior_design_provider = _make_news_category_provider("interior_design")
+diy_provider = _make_news_category_provider("diy")
+funny_provider = _make_news_category_provider("funny")
+history_provider = _make_news_category_provider("history")
+personal_finance_provider = _make_news_category_provider("personal_finance")
+photography_provider = _make_news_category_provider("photography")
+science_provider = _make_news_category_provider("science")
+
+
 # Category provider registry
 # Maps category names to lists of provider functions
 CATEGORY_PROVIDERS: Dict[str, List[Any]] = {
@@ -229,13 +315,45 @@ CATEGORY_PROVIDERS: Dict[str, List[Any]] = {
     "startups": [techcrunch_startups_provider],
     "security": [techcrunch_security_provider],
     "cloud": [techcrunch_cloud_provider],
-    # Future categories can be added here:
-    # "linux": [techcrunch_linux_provider, phoronix_provider],
-    # "opensource": [techcrunch_opensource_provider, github_blog_provider],
-    # "programming": [hacker_news_provider, dev_to_provider],
-    # "business": [techcrunch_business_provider, venturebeat_provider],
-    # "gadgets": [techcrunch_hardware_provider, verge_provider],
-    # "science": [arxiv_provider, nature_provider],
+    "all": [all_provider],
+    "news": [news_provider],
+    "business": [business_provider],
+    "venture": [venture_provider],
+    "space": [space_provider],
+    "apps": [apps_provider],
+    "enterprise": [enterprise_provider],
+    "fintech": [fintech_provider],
+    "transportation": [transportation_provider],
+    "robotics": [robotics_provider],
+    "hardware": [hardware_provider],
+    "mobile": [mobile_provider],
+    "gaming": [gaming_provider],
+    "cryptocurrency": [cryptocurrency_provider],
+    "climate": [climate_provider],
+    "social": [social_provider],
+    "commerce": [commerce_provider],
+    "open_source": [open_source_provider],
+    "sports": [sports_provider],
+    "football": [football_provider],
+    "cricket": [cricket_provider],
+    "tennis": [tennis_provider],
+    "movies": [movies_provider],
+    "television": [television_provider],
+    "music": [music_provider],
+    "fashion": [fashion_provider],
+    "beauty": [beauty_provider],
+    "food": [food_provider],
+    "travel": [travel_provider],
+    "cars": [cars_provider],
+    "architecture": [architecture_provider],
+    "books": [books_provider],
+    "interior_design": [interior_design_provider],
+    "diy": [diy_provider],
+    "funny": [funny_provider],
+    "history": [history_provider],
+    "personal_finance": [personal_finance_provider],
+    "photography": [photography_provider],
+    "science": [science_provider],
 }
 
 

@@ -3,6 +3,14 @@
 This module contains RSS feed URLs for web-search category providers.
 Similar to tech_crunch_rss.py but focused on technical blogs, engineering,
 research, and open source content rather than news.
+
+Developer/engineering-focused categories curated from the "Recommended
+Categories" section of plenaryapp/awesome-rss-feeds have been added here
+(Android Development, iOS Development, Programming, UI/UX, Web Development) —
+country-specific national news sources were intentionally excluded. General
+news, lifestyle, and consumer-tech categories (Android, Apple, Gaming,
+Startups, Space, Tech, Science, etc.) live in news_search_feed.py instead,
+since those sources are news/media outlets rather than technical blogs.
 """
 
 from typing import Any, Dict, List
@@ -10,7 +18,6 @@ from typing import Any, Dict, List
 __all__ = ['WEB_SEARCH_FEEDS']
 
 WEB_SEARCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
-
     "ai": [
         {"url": "https://openai.com/news/rss.xml", "verified": False, "notes": "OpenAI announcements and releases."},
         {"url": "https://huggingface.co/blog/feed.xml", "verified": False, "notes": "Hugging Face blog and model updates."},
@@ -20,7 +27,6 @@ WEB_SEARCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
         {"url": "https://ollama.com/blog/rss.xml", "verified": False, "notes": "Ollama releases and updates."},
         {"url": "https://weaviate.io/blog/rss.xml", "verified": False, "notes": "Weaviate vector search blog."},
     ],
-
     "engineering": [
         {"url": "https://netflixtechblog.com/feed", "verified": False, "notes": "Netflix engineering blog."},
         {"url": "https://blog.cloudflare.com/rss/", "verified": False, "notes": "Cloudflare engineering and security."},
@@ -32,7 +38,6 @@ WEB_SEARCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
         {"url": "https://engineering.atspotify.com/feed", "verified": False, "notes": "Spotify engineering."},
         {"url": "https://discord.com/blog/rss.xml", "verified": False, "notes": "Discord engineering and product updates."},
     ],
-
     "cloud": [
         {"url": "https://aws.amazon.com/blogs/aws/feed/", "verified": False, "notes": "AWS official news blog."},
         {"url": "https://azure.microsoft.com/en-us/blog/feed/", "verified": False, "notes": "Azure platform updates."},
@@ -40,7 +45,6 @@ WEB_SEARCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
         {"url": "https://www.hashicorp.com/blog/feed.xml", "verified": False, "notes": "HashiCorp tooling updates."},
         {"url": "https://www.linode.com/blog/feed/", "verified": False, "notes": "Linode cloud updates."},
     ],
-
     "software_engineering": [
         {"url": "https://feed.infoq.com/", "verified": False, "notes": "Software engineering articles."},
         {"url": "https://stackoverflow.blog/feed/", "verified": False, "notes": "Stack Overflow blog."},
@@ -49,7 +53,6 @@ WEB_SEARCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
         {"url": "https://thenewstack.io/feed/", "verified": False, "notes": "Cloud-native engineering."},
         {"url": "https://www.infoq.com/feed/", "verified": False, "notes": "Software engineering news."},
     ],
-
     "open_source": [
         {"url": "https://opensource.com/feed", "verified": False, "notes": "Open source community."},
         {"url": "https://www.linux.com/feed/", "verified": False, "notes": "Linux ecosystem."},
@@ -58,14 +61,12 @@ WEB_SEARCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
         {"url": "https://planet.mozilla.org/rss20.xml", "verified": False, "notes": "Mozilla development."},
         {"url": "https://planet.gnome.org/rss20.xml", "verified": False, "notes": "GNOME community."},
     ],
-
     "data_science": [
         {"url": "https://towardsdatascience.com/feed", "verified": False, "notes": "Data science articles."},
         {"url": "https://www.kdnuggets.com/feed", "verified": False, "notes": "Analytics and AI content."},
         {"url": "https://www.datanami.com/feed/", "verified": False, "notes": "Big data industry."},
         {"url": "https://aws.amazon.com/blogs/big-data/feed/", "verified": False, "notes": "AWS big data."},
     ],
-
     "research": [
         {"url": "https://rss.arxiv.org/rss/cs", "verified": False, "notes": "Computer science papers."},
         {"url": "https://rss.arxiv.org/rss/ai", "verified": False, "notes": "Artificial intelligence papers."},
@@ -73,21 +74,18 @@ WEB_SEARCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
         {"url": "https://www.sciencedaily.com/rss/computers_math.xml", "verified": False, "notes": "Research summaries."},
         {"url": "https://paperswithcode.com/rss/latest", "verified": False, "notes": "Latest ML papers."},
     ],
-
     "devops": [
         {"url": "https://www.devops.com/feed/", "verified": False, "notes": "DevOps ecosystem."},
         {"url": "https://containerjournal.com/feed/", "verified": False, "notes": "Containers and Kubernetes."},
         {"url": "https://kubernetes.io/feed.xml", "verified": False, "notes": "Kubernetes updates."},
         {"url": "https://helm.sh/blog/index.xml", "verified": False, "notes": "Helm project updates."},
     ],
-
     "databases": [
         {"url": "https://www.datanami.com/feed/", "verified": False, "notes": "Big data and databases."},
         {"url": "https://planet.postgresql.org/rss20.xml", "verified": False, "notes": "PostgreSQL community."},
         {"url": "https://www.mongodb.com/blog/rss", "verified": False, "notes": "MongoDB updates."},
         {"url": "https://www.percona.com/blog/feed/", "verified": False, "notes": "MySQL and PostgreSQL insights."},
     ],
-
     "frontend": [
         {"url": "https://react.dev/rss.xml", "verified": False, "notes": "React updates."},
         {"url": "https://blog.angular.dev/feed", "verified": False, "notes": "Angular blog."},
@@ -95,23 +93,148 @@ WEB_SEARCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
         {"url": "https://nextjs.org/feed.xml", "verified": False, "notes": "Next.js releases."},
         {"url": "https://astro.build/rss.xml", "verified": False, "notes": "Astro framework updates."},
     ],
-
     "backend": [
         {"url": "https://nodejs.org/en/feed/blog.xml", "verified": False, "notes": "Node.js updates."},
         {"url": "https://go.dev/blog/feed.atom", "verified": False, "notes": "Go language updates."},
         {"url": "https://blog.rust-lang.org/feed.xml", "verified": False, "notes": "Rust language updates."},
     ],
-
     "security_research": [
         {"url": "https://www.schneier.com/feed/atom/", "verified": False, "notes": "Security research."},
         {"url": "https://unit42.paloaltonetworks.com/feed/", "verified": False, "notes": "Threat intelligence."},
         {"url": "https://www.crowdstrike.com/blog/feed/", "verified": False, "notes": "Security analysis."},
         {"url": "https://www.sentinelone.com/blog/feed/", "verified": False, "notes": "Threat research."},
     ],
-
     "community": [
         {"url": "https://news.ycombinator.com/rss", "verified": False, "notes": "Hacker News front page."},
         {"url": "https://lobste.rs/rss", "verified": False, "notes": "Programming community discussions."},
         {"url": "https://www.producthunt.com/feed", "verified": False, "notes": "Product launches and discovery."},
-    ]
+    ],
+    "android_development": [
+        {"url": "https://buffer.com/resources/android/rss/", "verified": False, "notes": "Android - Buffer Resources"},
+        {"url": "https://www.youtube.com/feeds/videos.xml?user=androiddevelopers", "verified": False, "notes": "Android Developers"},
+        {"url": "https://medium.com/feed/androiddevelopers", "verified": False, "notes": "Android Developers - Medium"},
+        {"url": "http://feeds.feedburner.com/blogspot/androiddevelopersbackstage", "verified": False, "notes": "Android Developers Backstage"},
+        {"url": "http://feeds.feedburner.com/blogspot/hsDu", "verified": False, "notes": "Android Developers Blog"},
+        {"url": "https://us2.campaign-archive.com/feed?u=887caf4f48db76fd91e20a06d&id=4eb677ad19", "verified": False, "notes": "Android Weekly Archive Feed"},
+        {"url": "https://instagram-engineering.com/feed/tagged/android", "verified": False, "notes": "Android in Instagram Engineering on Medium"},
+        {"url": "https://medium.com/feed/mindorks/tagged/android", "verified": False, "notes": "Android in MindOrks on Medium"},
+        {"url": "https://medium.com/feed/airbnb-engineering/tagged/android", "verified": False, "notes": "Android in The Airbnb Tech Blog on Medium"},
+        {"url": "https://blog.danlew.net/rss/", "verified": False, "notes": "Dan Lew Codes"},
+        {"url": "https://reddit.com/r/androiddev.rss", "verified": False, "notes": "Developing Android Apps"},
+        {"url": "https://feeds.simplecast.com/LpAGSLnY", "verified": False, "notes": "Fragmented - The Software Podcast"},
+        {"url": "https://handstandsam.com/feed/", "verified": False, "notes": "Handstand Sam"},
+        {"url": "https://jakewharton.com/atom.xml", "verified": False, "notes": "Jake Wharton"},
+        {"url": "https://blog.jetbrains.com/blog/feed", "verified": False, "notes": "JetBrains News - JetBrains Blog"},
+        {"url": "https://joebirch.co/feed", "verified": False, "notes": "Joe Birch"},
+        {"url": "https://www.youtube.com/feeds/videos.xml?playlist_id=PLQ176FUIyIUa6SChjajjVc-LMzxWiz6dy", "verified": False, "notes": "Kotlin"},
+        {"url": "https://blog.kotlin-academy.com/feed", "verified": False, "notes": "Kt. Academy - Medium"},
+        {"url": "https://okkotlin.com/rss.xml", "verified": False, "notes": "OkKotlin"},
+        {"url": "https://proandroiddev.com/feed", "verified": False, "notes": "ProAndroidDev - Medium"},
+        {"url": "https://publicobject.com/rss/", "verified": False, "notes": "Public Object"},
+        {"url": "https://saket.me/feed/", "verified": False, "notes": "Saket Narayan"},
+        {"url": "http://feeds.feedburner.com/StylingAndroid", "verified": False, "notes": "Styling Android"},
+        {"url": "https://feeds.soundcloud.com/users/soundcloud:users:280353173/sounds.rss", "verified": False, "notes": "Talking Kotlin"},
+        {"url": "https://feeds.feedburner.com/Android_Arsenal", "verified": False, "notes": "The Android Arsenal"},
+        {"url": "https://www.zacsweers.dev/rss/", "verified": False, "notes": "Zac Sweers"},
+        {"url": "https://zarah.dev/feed.xml", "verified": False, "notes": "Zarah Dominguez"},
+        {"url": "https://chrynan.codes/rss/", "verified": False, "notes": "chRyNaN Codes"},
+        {"url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCSLXy31j2Z0sdDeeAX5JpPw", "verified": False, "notes": "droidcon NYC"},
+        {"url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCKubKoe1CBw_-n_GXetEQbg", "verified": False, "notes": "droidcon SF"},
+        {"url": "https://goobar.io/feed", "verified": False, "notes": "goobar"},
+        {"url": "https://zsmb.co/index.xml", "verified": False, "notes": "zsmb.co"},
+    ],
+    "ios_development": [
+        {"url": "https://feeds.feedwrench.com/all-shows-devchattv.rss", "verified": False, "notes": "ALL SHOWS - Devchat.tv"},
+        {"url": "https://albertodebortoli.com/rss/", "verified": False, "notes": "Alberto De Bortoli"},
+        {"url": "https://augmentedcode.io/feed/", "verified": False, "notes": "Augmented Code"},
+        {"url": "https://benoitpasquier.com/index.xml", "verified": False, "notes": "Benoit Pasquier - Swift, Data and more"},
+        {"url": "https://www.fabisevi.ch/feed.xml", "verified": False, "notes": "Fabisevi.ch"},
+        {"url": "https://mobilea11y.com/index.xml", "verified": False, "notes": "Mobile A11y"},
+        {"url": "https://feeds.fireside.fm/mtjc/rss", "verified": False, "notes": "More Than Just Code podcast - iOS and Swift development, news and advice"},
+        {"url": "https://developer.apple.com/news/rss/news.rss", "verified": False, "notes": "News - Apple Developer"},
+        {"url": "https://oleb.net/blog/atom.xml", "verified": False, "notes": "Ole Begemann"},
+        {"url": "https://nerdyak.tech/feed.xml", "verified": False, "notes": "Pavel Zak’s dev blog"},
+        {"url": "https://www.swiftbysundell.com/feed.rss", "verified": False, "notes": "Swift by Sundell"},
+        {"url": "https://swiftbysundell.com/feed.rss", "verified": False, "notes": "Swift by Sundell"},
+        {"url": "https://swiftrocks.com/rss.xml", "verified": False, "notes": "SwiftRocks"},
+        {"url": "https://atomicbird.com/index.xml", "verified": False, "notes": "The Atomic Birdhouse"},
+        {"url": "https://www.relay.fm/radar/feed", "verified": False, "notes": "Under the Radar"},
+        {"url": "https://useyourloaf.com/blog/rss.xml", "verified": False, "notes": "Use Your Loaf - iOS Development News & Tips"},
+        {"url": "https://inessential.com/xml/rss.xml", "verified": False, "notes": "inessential.com"},
+        {"url": "https://tyler.io/feed/", "verified": False, "notes": "tyler.io"},
+    ],
+    "programming": [
+        {"url": "https://medium.com/feed/better-programming", "verified": False, "notes": "Better Programming - Medium"},
+        {"url": "https://codeascraft.com/feed/atom/", "verified": False, "notes": "Code as Craft"},
+        {"url": "http://feeds.codenewbie.org/cnpodcast.xml", "verified": False, "notes": "CodeNewbie"},
+        {"url": "https://feeds.feedburner.com/codinghorror", "verified": False, "notes": "Coding Horror"},
+        {"url": "https://completedeveloperpodcast.com/feed/podcast/", "verified": False, "notes": "Complete Developer Podcast"},
+        {"url": "https://overreacted.io/rss.xml", "verified": False, "notes": "Dan Abramov's Overreacted Blog RSS Feed"},
+        {"url": "https://feeds.simplecast.com/dLRotFGk", "verified": False, "notes": "Developer Tea"},
+        {"url": "https://blog.twitter.com/engineering/en_us/blog.rss", "verified": False, "notes": "English (US)"},
+        {"url": "https://feeds.twit.tv/floss.xml", "verified": False, "notes": "FLOSS Weekly (Audio)"},
+        {"url": "https://engineering.fb.com/feed/", "verified": False, "notes": "Facebook Engineering"},
+        {"url": "https://about.gitlab.com/atom.xml", "verified": False, "notes": "GitLab"},
+        {"url": "http://feeds.feedburner.com/GDBcode", "verified": False, "notes": "Google Developers Blog"},
+        {"url": "https://www.youtube.com/feeds/videos.xml?user=GoogleTechTalks", "verified": False, "notes": "Google TechTalks"},
+        {"url": "https://medium.com/feed/hackernoon", "verified": False, "notes": "HackerNoon.com - Medium"},
+        {"url": "https://feeds.simplecast.com/gvtxUiIf", "verified": False, "notes": "Hanselminutes with Scott Hanselman"},
+        {"url": "https://feed.infoq.com", "verified": False, "notes": "InfoQ"},
+        {"url": "https://instagram-engineering.com/feed/", "verified": False, "notes": "Instagram Engineering - Medium"},
+        {"url": "https://blog.jooq.org/feed", "verified": False, "notes": "Java, SQL and jOOQ."},
+        {"url": "https://blog.jetbrains.com/feed", "verified": False, "notes": "JetBrains Blog"},
+        {"url": "https://www.joelonsoftware.com/feed/", "verified": False, "notes": "Joel on Software"},
+        {"url": "https://engineering.linkedin.com/blog.rss.html", "verified": False, "notes": "LinkedIn Engineering"},
+        {"url": "https://martinfowler.com/feed.atom", "verified": False, "notes": "Martin Fowler"},
+        {"url": "https://netflixtechblog.com/feed", "verified": False, "notes": "Netflix TechBlog - Medium"},
+        {"url": "https://buffer.com/resources/overflow/rss/", "verified": False, "notes": "Overflow - Buffer Resources"},
+        {"url": "https://softwareengineeringdaily.com/category/podcast/feed", "verified": False, "notes": "Podcast – Software Engineering Daily"},
+        {"url": "https://www.thirtythreeforty.net/posts/index.xml", "verified": False, "notes": "Posts on &> /dev/null"},
+        {"url": "https://engineering.prezi.com/feed", "verified": False, "notes": "Prezi Engineering - Medium"},
+        {"url": "http://feeds.feedburner.com/ProgrammingThrowdown", "verified": False, "notes": "Programming Throwdown"},
+        {"url": "https://www.thecrazyprogrammer.com/category/programming/feed", "verified": False, "notes": "Programming – The Crazy Programmer"},
+        {"url": "https://robertheaton.com/feed.xml", "verified": False, "notes": "Robert Heaton - Blog"},
+        {"url": "http://feeds.hanselman.com/ScottHanselman", "verified": False, "notes": "Scott Hanselman's Blog"},
+        {"url": "http://scripting.com/rss.xml", "verified": False, "notes": "Scripting News"},
+        {"url": "https://m.signalvnoise.com/feed/", "verified": False, "notes": "Signal v. Noise"},
+        {"url": "https://slack.engineering/feed", "verified": False, "notes": "Slack Engineering"},
+        {"url": "https://feeds.fireside.fm/sdt/rss", "verified": False, "notes": "Software Defined Talk"},
+        {"url": "http://feeds.feedburner.com/se-radio", "verified": False, "notes": "Software Engineering Radio - The Podcast for Professional Software Developers"},
+        {"url": "https://developers.soundcloud.com/blog/blog.rss", "verified": False, "notes": "SoundCloud Backstage Blog"},
+        {"url": "https://labs.spotify.com/feed/", "verified": False, "notes": "Spotify Engineering"},
+        {"url": "https://stackabuse.com/rss/", "verified": False, "notes": "Stack Abuse"},
+        {"url": "https://stackoverflow.blog/feed/", "verified": False, "notes": "Stack Overflow Blog"},
+        {"url": "http://6figuredev.com/feed/rss/", "verified": False, "notes": "The 6 Figure Developer"},
+        {"url": "https://medium.com/feed/airbnb-engineering", "verified": False, "notes": "The Airbnb Tech Blog - Medium"},
+        {"url": "https://cynicaldeveloper.com/feed/podcast", "verified": False, "notes": "The Cynical Developer"},
+        {"url": "https://github.blog/feed/", "verified": False, "notes": "The GitHub Blog"},
+        {"url": "https://feeds.transistor.fm/productivity-in-tech-podcast", "verified": False, "notes": "The PIT Show: Reflections and Interviews in the Tech World"},
+        {"url": "http://therabbithole.libsyn.com/rss", "verified": False, "notes": "The Rabbit Hole: The Definitive Developer's Podcast"},
+        {"url": "https://feeds.simplecast.com/XA_851k3", "verified": False, "notes": "The Stack Overflow Podcast"},
+        {"url": "https://feeds.fireside.fm/standup/rss", "verified": False, "notes": "The Standup"},
+        {"url": "https://thewomenintechshow.com/category/podcast/feed/", "verified": False, "notes": "The Women in Tech Show: A Technical Podcast"},
+        {"url": "https://www.reddit.com/r/programming/.rss", "verified": False, "notes": "programming"},
+    ],
+    "ui_ux": [
+        {"url": "https://www.smashingmagazine.com/feed", "verified": False, "notes": "Articles on Smashing Magazine — For Web Designers And Developers"},
+        {"url": "http://boxesandarrows.com/rss/", "verified": False, "notes": "Boxes and Arrows"},
+        {"url": "https://www.designernews.co/?format=rss", "verified": False, "notes": "Designer News Feed"},
+        {"url": "https://www.invisionapp.com/inside-design/feed", "verified": False, "notes": "Inside Design"},
+        {"url": "https://feeds.feedburner.com/JustCreativeDesignBlog", "verified": False, "notes": "JUST™ Creative"},
+        {"url": "https://www.nngroup.com/feed/rss/", "verified": False, "notes": "NN/g latest articles and announcements"},
+        {"url": "https://uxstudioteam.com/ux-blog/feed/", "verified": False, "notes": "UX Blog – UX Studio"},
+        {"url": "https://uxdesign.cc/feed", "verified": False, "notes": "UX Collective - Medium"},
+        {"url": "https://uxmovement.com/feed/", "verified": False, "notes": "UX Movement"},
+        {"url": "https://usabilitygeek.com/feed/", "verified": False, "notes": "Usability Geek"},
+        {"url": "https://www.reddit.com/r/userexperience/.rss", "verified": False, "notes": "User Experience"},
+    ],
+    "web_development": [
+        {"url": "https://alistapart.com/main/feed/", "verified": False, "notes": "A List Apart: The Full Feed"},
+        {"url": "https://css-tricks.com/feed/", "verified": False, "notes": "CSS-Tricks"},
+        {"url": "https://www.codewall.co.uk/feed/", "verified": False, "notes": "Code Wall"},
+        {"url": "https://davidwalsh.name/feed", "verified": False, "notes": "David Walsh Blog"},
+        {"url": "https://hacks.mozilla.org/feed/", "verified": False, "notes": "Mozilla Hacks – the Web developer blog"},
+        {"url": "https://gosink.in/rss/", "verified": False, "notes": "Sink In - Tech and Travel"},
+        {"url": "https://developers.google.com/web/updates/rss.xml", "verified": False, "notes": "Updates"},
+    ],
 }
