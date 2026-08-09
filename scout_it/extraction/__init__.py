@@ -1,15 +1,10 @@
-"""
-Extraction module - backward compatibility shim.
-
-This file re-exports from the new modular structure (scout_it/extraction/)
-to maintain backward compatibility.
-"""
+"""Extraction module - content extraction and search engines."""
 
 # Import from new modular structure
-from .extraction.types import EnterpriseResult, ImageSearchResult
-from .extraction.engine import ExtractionEngine
-from .extraction.fetcher import fetch_resilient
-from .extraction.search import (
+from .types import EnterpriseResult, ImageSearchResult
+from .engine import ExtractionEngine
+from .fetcher import fetch_resilient
+from .search import (
     EnterpriseSearchEngine,
     ImageSearchEngine,
     _compact_options,
