@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.1] - 2026-08-09 11:38:47 UTC
+
+### 🔨 Refactoring — Code Organization & Maintainability Improvements
+
+#### Task 1: Remove Clutter Files
+- Deleted one-off scripts and internal docs that shouldn't be shipped:
+  - `remove_old_code.py` (cleanup script)
+  - `REFACTORING_COMPLETE.md` (internal log)
+  - `REFACTORING_PLAN.md` (internal plan)
+  - `COMPARISON_WEB_VS_NEWS.md` (internal comparison)
+
+#### Task 2: Split cli.py into Focused Modules
+- **Reduced cli.py from 2,810 lines to 1,647 lines (41% reduction)**
+- Extracted command functions to new `scout_it/commands/` directory:
+  - `commands/image.py` - image_search()
+  - `commands/video.py` - video_search(), video_extract(), YouTube functions
+  - `commands/url.py` - fetch_url(), fatchurl()
+  - `commands/web.py` - multi_search()
+  - `commands/wikipedia.py` - wikipedia_search() + helper functions
+- Extracted utilities to new `scout_it/utils/` directory:
+  - `utils/net.py` - Internet connection checking functions
+  - `utils/output.py` - Logging and output formatting utilities
+- **100% backward compatible** - all functions re-exported from `scout_it/__init__.py`
+
+#### Task 3: Split extraction.py into Focused Modules
+- **Eliminated 1,675-line monolithic extraction.py**
+- Created modular `scout_it/extraction/` package with 4 focused modules:
+  - `extraction/types.py` - Data classes (EnterpriseResult, ImageSearchResult)
+  - `extraction/engine.py` - ExtractionEngine with multi-strategy extraction
+  - `extraction/fetcher.py` - fetch_resilient() with multi-tier fallback
+  - `extraction/search.py` - EnterpriseSearchEngine, ImageSearchEngine, DDGS helpers
+- Deleted `extraction_old.py` after successful migration
+- **100% backward compatible** - shim file maintains all existing imports
+
+#### Task 5: Make SOURCE_QUALITY_SCORES Configurable
+- Externalized hardcoded source quality scores to `scout_it/data/source_quality.json`
+- Modified `staged_ranker.py` to load from JSON file with fallback to defaults
+- Added `load_source_quality_scores(path)` function for custom configurations
+- Enables users to customize news source rankings without code changes
+
+#### Task 6: Fix Mislabeled Function Name
+- Renamed `_readability_extract()` to `_heuristic_readability_extract()` in `extraction/engine.py`
+- Updated docstring to clarify it uses BeautifulSoup heuristics, not readability-lxml library
+- Improved code clarity and accuracy
+
+#### Task 7: Tone Down Overblown Branding
+- Removed unverified "98%+ Success Rate" claims
+- Changed "Enterprise-grade" to "Python toolkit" in descriptions
+- Updated `pyproject.toml` description to be more accurate and grounded
+
+#### Task 8: Add Deprecation Warning
+- Added DeprecationWarning to `fatchurl()` function (typo in original name)
+- Guides users to migrate to correctly-named `fetch_url()` function
+- Maintains backward compatibility while encouraging best practices
+
+### 📊 Impact Summary
+- **Code size reduced:** 41% reduction in cli.py, extraction.py fully modularized
+- **Improved maintainability:** Functions grouped into logical, focused modules
+- **Better separation of concerns:** Commands, utilities, extraction logic now separate
+- **Enhanced configurability:** Source quality scores externalized to JSON
+- **100% backward compatible:** All existing imports and APIs continue to work
+- **Clearer code:** Better naming, improved documentation, deprecation warnings
+
+---
+
 ## [Unreleased]
 
 ### 🔥 Unified Extraction Engine (Code Deduplication) — August 6, 2026
