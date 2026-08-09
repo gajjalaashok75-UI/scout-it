@@ -9,9 +9,11 @@ Performance targets:
 - Final ranking: < 1s
 """
 
+import json
 import re
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 from urllib.parse import urlparse
 
@@ -20,7 +22,8 @@ from urllib.parse import urlparse
 # Source Quality Scores
 # ============================================================================
 
-SOURCE_QUALITY_SCORES = {
+# Default fallback scores (used if source_quality.json cannot be loaded)
+_DEFAULT_SOURCE_QUALITY_SCORES = {
     # Premium tech sources
     'techcrunch': 1.0,
     'techcrunch:ai': 1.0,
@@ -40,21 +43,71 @@ SOURCE_QUALITY_SCORES = {
     'default': 0.80,
 }
 
+# Global cache for loaded scores
+_LOADED_SOURCE_QUALITY_SCORES = None
+
+
+def load_source_quality_scores(path: Optional[str] = None) -> Dict[str, float]:
+    """Load source quality scores from JSON file with fallback to defaults.
+    
+    Args:
+        path: Optional custom path to JSON file. If None, uses default location.
+    
+    Returns:
+        Dictionary of source names to quality scores (0.0-1.0)
+    """
+    if path is None:
+        # Default location: scout_it/data/source_quality.json
+        default_path = Path(__file__).parent / "data" / "source_quality.json"
+    else:
+        default_path = Path(path)
+    
+    try:
+        if default_path.exists():
+            with open(default_path, 'r', encoding='utf-8') as f:
+                scores = json.load(f)
+                # Validate that scores are floats between 0 and 1
+                for key, value in scores.items():
+                    if not isinstance(value, (int, float)) or not (0.0 <= value <= 1.0):
+                        raise ValueError(f"Invalid score for '{key}': {value} (must be 0.0-1.0)")
+                return scores
+    except Exception as e:
+        import warnings
+        warnings.warn(f"Could not load source_quality.json: {e}. Using defaults.", UserWarning)
+    
+    return _DEFAULT_SOURCE_QUALITY_SCORES.copy()
+
 
 def get_source_quality_score(source: str) -> float:
-    """Get quality score for a news source."""
+    """Get quality score for a news source.
+    
+    Loads scores from scout_it/data/source_quality.json on first call,
+    with fallback to hardcoded defaults if the file is missing or invalid.
+    
+    Args:
+        source: Source name (e.g., 'techcrunch', 'google-news')
+    
+    Returns:
+        Quality score (0.0-1.0), or default score if source not found
+    """
+    global _LOADED_SOURCE_QUALITY_SCORES
+    
+    # Load scores on first call (lazy initialization)
+    if _LOADED_SOURCE_QUALITY_SCORES is None:
+        _LOADED_SOURCE_QUALITY_SCORES = load_source_quality_scores()
+    
     source_lower = (source or '').lower()
     
     # Exact match
-    if source_lower in SOURCE_QUALITY_SCORES:
-        return SOURCE_QUALITY_SCORES[source_lower]
+    if source_lower in _LOADED_SOURCE_QUALITY_SCORES:
+        return _LOADED_SOURCE_QUALITY_SCORES[source_lower]
     
     # Prefix match
-    for key, score in SOURCE_QUALITY_SCORES.items():
+    for key, score in _LOADED_SOURCE_QUALITY_SCORES.items():
         if source_lower.startswith(key):
             return score
     
-    return SOURCE_QUALITY_SCORES['default']
+    return _LOADED_SOURCE_QUALITY_SCORES.get('default', 0.80)
 
 
 # ============================================================================

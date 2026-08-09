@@ -1,0 +1,12 @@
+{
+  "techcrunch": 1.0,
+  "techcrunch:ai": 1.0,
+  "techcrunch:startups": 1.0,
+  "techcrunch:security": 1.0,
+  "techcrunch:cloud": 1.0,
+  "google-news": 0.95,
+  "duckduckgo": 0.90,
+  "timesofindia": 0.85,
+  "toi": 0.85,
+  "default": 0.80
+}
