@@ -1,5 +1,5 @@
 """
-scout-it: Enterprise-grade DuckDuckGo search toolkit with content extraction, cleaning, and structured JSON output.
+scout-it: Python toolkit for AI-powered web search, content extraction, and structured data output.
 
 Version: 1.5.0
 Author: Ashok-gakr
@@ -31,14 +31,16 @@ from .extraction import (
     ImageSearchResult,
     fetch_resilient,
 )
-from .cli import (
+# Import from CLI for web_search and news_search (in hyphenated folders)
+from .cli import news_search, web_search
+# Import from command modules
+from .commands import (
     fetch_url,
     image_search,
     multi_search,
-    news_search,
     video_extract,
     video_search,
-    web_search,
+    wikipedia_search,
 )
 from .engines import list_engines, multi_engine_search
 from .github_extract import (
@@ -104,6 +106,7 @@ __all__ = [
     "video_extract",
     "fetch_url",
     "multi_search",
+    "wikipedia_search",
     "list_engines",
     "multi_engine_search",
     "github_repo",

@@ -36,15 +36,17 @@ from scout_it.cleaner import (
 
 # Import modules to test
 from scout_it.cli import (
+    news_search,
+    web_search,
+)
+from scout_it.commands.url import (
     _check_max_size_warning,
     _extract_html_title,
     fatchurl,
     fetch_url,
-    image_search,
-    news_search,
-    video_search,
-    web_search,
 )
+from scout_it.commands.image import image_search
+from scout_it.commands.video import video_search
 from scout_it.extraction import (
     EnterpriseResult,
     EnterpriseSearchEngine,
