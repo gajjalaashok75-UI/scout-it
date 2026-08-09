@@ -186,3 +186,6 @@ references/
 .gakrcli/
 url_raw_result.json
 video_extract_results.json
+# Refactoring documentation (internal)
+REFACTORING_COMPLETE_SUMMARY.md
+REFACTORING_TRACKER.md
