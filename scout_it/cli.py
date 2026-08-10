@@ -303,6 +303,12 @@ def main():
                              help='Check robots.txt allowance before searching')
     wiki_parser.add_argument('--no-clean', action='store_false', dest='clean_text',
                              help='Disable text cleaning')
+    # Unified pipeline flags (discover -> rank -> output), mirroring image/video/news search.
+    wiki_parser.add_argument('--rss', action='store_true', dest='rss',
+                             help='Include MediaWiki RecentChanges RSS feeds in discovery (uses --project as default category)')
+    wiki_parser.add_argument('--category', '-c', dest='category', action='append', default=None,
+                             choices=None,
+                             help='Wikimedia project RSS category to include (repeatable): wikipedia, commons, wiktionary, wikivoyage, wikibooks, wikidata, wikiversity, wikiquote, mediawiki, wikisource, wikispecies, wikifunctions. Adds recently-changed pages to the candidate pool before ranking.')
     wiki_parser.set_defaults(clean_text=True)
 
     # Image search subcommand
@@ -1143,6 +1149,8 @@ def main():
             bundle=args.bundle,
             robots=args.robots,
             clean_text=args.clean_text,
+            categories=args.category,
+            include_rss=getattr(args, 'rss', False),
         )
 
         output = {

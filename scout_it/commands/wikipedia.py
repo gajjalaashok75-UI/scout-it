@@ -1,10 +1,26 @@
-"""Wikipedia search command module."""
+"""Wikipedia search command module — unified discovery -> rank -> enrich -> output.
 
+Mirrors the web-search/news-search/image-search/video-search unified flow:
+discover candidate pages from multiple sources (MediaWiki Action API search +
+RecentChanges RSS feeds), rank them with the shared ``rank_candidates_initial``
+scorer, enrich the top results with full-page content, and return structured
+output. RSS feeds are fetched in parallel and only add candidates when
+``categories`` are requested (or ``include_rss=True``).
+
+Single-page modes (``--summary`` / ``--extract`` / ``--sections`` /
+``--crawl`` / ``--bundle``) bypass the multi-source ranking pipeline because
+they operate on one known page title, not a ranked candidate set.
+"""
+
+import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import quote
 
 from ..extraction import ExtractionEngine, fetch_resilient
+from ..staged_ranker import rank_candidates_initial
+
+logger = logging.getLogger(__name__)
 
 
 def _wiki_do_bundle(
@@ -227,26 +243,51 @@ def wikipedia_search(
     bundle: bool = False,
     robots: bool = False,
     clean_text: bool = True,
+    categories: Optional[Sequence[str]] = None,
+    include_rss: bool = False,
+    top_k: Optional[int] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """Search Wikimedia projects via the MediaWiki Action API.
+    """Search Wikimedia projects via the unified discover -> rank -> enrich pipeline.
 
     This is the backend for the ``wikipedia-search`` CLI command.
 
+    Default (search) mode runs the unified pipeline:
+      1. Discovery stream 1 — MediaWiki Action API ``list=search`` (always):
+         query-relevant page titles + snippets.
+      2. Discovery stream 2 — MediaWiki RecentChanges RSS feeds (when
+         ``categories`` given or ``include_rss=True``): recently-changed
+         pages across the chosen Wikimedia project(s). These broaden
+         discovery and add a recency signal; the shared ranker orders the
+         merged candidate set by query relevance + source quality + recency.
+      3. Rank with ``rank_candidates_initial`` (shared with
+         web/news/image/video search).
+      4. Enrich the top ranked pages with full content via
+         ``_wiki_enrich_results``.
+
+    Single-page modes (``summary``/``extract``/``sections``/``crawl``/
+    ``bundle``) bypass the ranking pipeline because they operate on one
+    known page title, not a ranked candidate set.
+
     Args:
-        query: Search query or page title
-        max_results: Maximum results (1-50)
-        project: Wikimedia project key (any SITE_MAP key)
-        language: Project language for language-scoped wikis
-        timeout: HTTP timeout
-        workers: Parallel workers
-        summary: Fetch Wikipedia REST summary instead of search
-        extract: Fetch full-page Action API extract
-        sections: Export section-by-section text
-        crawl: Enable recursive crawl
-        crawl_depth: Crawl depth
-        bundle: Run multi-project topic bundle (searches all 12 projects)
-        robots: Check robots.txt
-        clean_text: Apply text cleaning
+        query: Search query or page title.
+        max_results: Maximum results (1-50).
+        project: Wikimedia project key (any SITE_MAP key).
+        language: Project language for language-scoped wikis.
+        timeout: HTTP timeout.
+        workers: Parallel workers.
+        summary: Fetch Wikipedia REST summary instead of search.
+        extract: Fetch full-page Action API extract.
+        sections: Export section-by-section text.
+        crawl: Enable recursive crawl.
+        crawl_depth: Crawl depth.
+        bundle: Run multi-project topic bundle (searches all 12 projects).
+        robots: Check robots.txt.
+        clean_text: Apply text cleaning.
+        categories: Wikimedia project RSS feeds to include (e.g.
+            ``["wikipedia","commons"]``). Adds RecentChanges candidates.
+        include_rss: Force RSS discovery even without ``categories`` (uses
+            the current ``project`` as the default category).
+        top_k: Number of ranked results to return (defaults to ``max_results``).
 
     Returns:
         (results_list, stats_dict) — same pattern as web_search / news_search.
@@ -264,30 +305,129 @@ def wikipedia_search(
         else:
             stats["robots_error"] = rr.error
 
-    # Dispatch to mode handler
+    # Dispatch to mode handler.
+    # Single-page modes bypass the unified ranking pipeline.
     if bundle:
         results, mode_stats = _wiki_do_bundle(ex, query, clean_text)
         stats.update(mode_stats)
         return results, stats
 
-    if summary:
-        results, mode_stats = _wiki_do_summary(ex, query, language, clean_text)
-    elif extract:
-        results, mode_stats = _wiki_do_extract(ex, project, query, clean_text)
-    elif sections:
-        results, mode_stats = _wiki_do_sections(ex, project, query, clean_text)
-    elif crawl:
-        results, mode_stats = _wiki_do_crawl(ex, project, query, max_results, crawl_depth, clean_text)
-    else:
-        results, mode_stats = _wiki_do_search(ex, project, query, max_results, clean_text)
+    single_page_mode = summary or extract or sections or crawl
+    if single_page_mode:
+        if summary:
+            results, mode_stats = _wiki_do_summary(ex, query, language, clean_text)
+        elif extract:
+            results, mode_stats = _wiki_do_extract(ex, project, query, clean_text)
+        elif sections:
+            results, mode_stats = _wiki_do_sections(ex, project, query, clean_text)
+        else:  # crawl
+            results, mode_stats = _wiki_do_crawl(ex, project, query, max_results, crawl_depth, clean_text)
 
-    errors = mode_stats.get("errors", [])
-    stats.update(mode_stats)
-    stats["results_count"] = len(results)
+        errors = mode_stats.get("errors", [])
+        stats.update(mode_stats)
+        stats["results_count"] = len(results)
 
-    # Parallel content enrichment for search results
-    enrich_stats = _wiki_enrich_results(results, timeout, workers, clean_text, max_results)
+        # Parallel content enrichment for single-page search results.
+        enrich_stats = _wiki_enrich_results(results, timeout, workers, clean_text, max_results)
+        if enrich_stats:
+            stats.update(enrich_stats)
+
+        return results, {**stats, "errors": errors or None}
+
+    # ---- Default (search) mode: unified discover -> rank -> enrich ----
+    api_results, api_stats = _wiki_do_search(ex, project, query, max_results, clean_text)
+    api_errors = api_stats.get("errors", [])
+
+    # Normalize API search results into ranking candidate shape.
+    candidates: List[Dict[str, Any]] = []
+    for r in api_results:
+        candidates.append({
+            "title": r.get("title", ""),
+            "href": r.get("href", ""),
+            "url": r.get("href", ""),
+            "body": r.get("body", ""),
+            "snippet": r.get("body", ""),
+            "description": r.get("body", ""),
+            "source": r.get("source", f"wikimedia:{project}"),
+            "project": project,
+            "publish_date": r.get("timestamp", ""),
+            "pageid": r.get("pageid"),
+        })
+
+    # ---- Discovery stream 2: RecentChanges RSS feeds ----
+    rss_count = 0
+    rss_categories = list(categories) if categories else []
+    if rss_categories:
+        rss_entries = _fetch_wiki_category_feeds_safe(rss_categories, query, max_results=max_results)
+        candidates.extend(rss_entries)
+        rss_count += len(rss_entries)
+    elif include_rss:
+        # No categories given: use the current project as the default RSS
+        # category so --rss always adds a relevant feed.
+        rss_entries = _fetch_wiki_category_feeds_safe([project], query, max_results=max_results)
+        candidates.extend(rss_entries)
+        rss_count += len(rss_entries)
+
+    # ---- Rank (shared scorer) ----
+    limit = int(top_k) if top_k is not None else int(max_results)
+    ranked = rank_candidates_initial(candidates, query, top_k=max(limit, len(candidates)))
+
+    # Dedupe by canonical href and emit ranked output.
+    seen: set = set()
+    output: List[Dict[str, Any]] = []
+    for entry in ranked:
+        href = entry.get("href") or entry.get("url") or ""
+        # Keep href-less entries too (e.g. stub API results in tests) by
+        # falling back to a title-based key so they are not silently dropped.
+        key = href or f"title:{entry.get('title', '')}"
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        output.append({
+            "position": len(output) + 1,
+            "title": entry.get("title", ""),
+            "href": href,
+            "url": href,
+            "body": entry.get("body", ""),
+            "snippet": entry.get("snippet", ""),
+            "source": entry.get("source", f"wikimedia:{project}"),
+            "project": entry.get("project", project),
+            "pageid": entry.get("pageid"),
+            "publish_date": entry.get("publish_date", ""),
+            "initial_rank_score": entry.get("initial_rank_score", 0.0),
+            "rank_breakdown": entry.get("rank_breakdown", {}),
+        })
+        if len(output) >= limit:
+            break
+
+    stats.update({
+        "mode": "search",
+        "pipeline": "unified",
+        "api_candidates": len(api_results),
+        "rss_candidates": rss_count,
+        "total_candidates": len(candidates),
+        "ranked_output": len(output),
+        "rss_categories": rss_categories,
+        "results_count": len(output),
+    })
+
+    # Parallel content enrichment for the ranked search results.
+    enrich_stats = _wiki_enrich_results(output, timeout, workers, clean_text, limit)
     if enrich_stats:
         stats.update(enrich_stats)
 
-    return results, {**stats, "errors": errors or None}
+    print(f"📈 Found {len(output)} ranked wiki pages for query: {query} "
+          f"(API: {len(api_results)}, RSS: {rss_count})")
+    return output, {**stats, "errors": api_errors or None}
+
+
+def _fetch_wiki_category_feeds_safe(
+    categories: Sequence[str], query: str, max_results: int,
+) -> List[Dict[str, Any]]:
+    """Fetch wiki RSS category feeds, never raising to the caller."""
+    try:
+        from .wiki_category_providers import fetch_wiki_category_feeds
+        return fetch_wiki_category_feeds(categories, query, max_results=max_results)
+    except Exception as exc:
+        logger.warning("wiki RSS category fetch failed: %s", exc)
+        return []

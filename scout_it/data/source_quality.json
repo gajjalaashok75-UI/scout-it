@@ -8,5 +8,37 @@
   "duckduckgo": 0.90,
   "timesofindia": 0.85,
   "toi": 0.85,
+
+  "wikimedia:wikipedia": 1.0,
+  "wikimedia:commons": 0.9,
+  "wikimedia:wiktionary": 0.85,
+  "wikimedia:wikivoyage": 0.85,
+  "wikimedia:wikibooks": 0.85,
+  "wikimedia:wikidata": 0.95,
+  "wikimedia:wikiversity": 0.85,
+  "wikimedia:wikiquote": 0.8,
+  "wikimedia:mediawiki": 0.85,
+  "wikimedia:wikisource": 0.85,
+  "wikimedia:wikispecies": 0.8,
+  "wikimedia:wikifunctions": 0.8,
+
+  "rss:en.wikipedia.org": 0.95,
+  "rss:commons.wikimedia.org": 0.85,
+  "rss:www.wikidata.org": 0.9,
+  "rss:en.wiktionary.org": 0.8,
+  "rss:en.wikivoyage.org": 0.8,
+  "rss:en.wikibooks.org": 0.8,
+  "rss:en.wikiversity.org": 0.8,
+  "rss:en.wikiquote.org": 0.75,
+  "rss:www.mediawiki.org": 0.8,
+  "rss:en.wikisource.org": 0.8,
+  "rss:species.wikimedia.org": 0.75,
+  "rss:www.wikifunctions.org": 0.75,
+  "rss:simple.wikipedia.org": 0.85,
+
+  "rss:www.nasa.gov": 0.95,
+  "rss:www.flickr.com": 0.85,
+  "rss:www.youtube.com": 0.9,
+
   "default": 0.80
 }
