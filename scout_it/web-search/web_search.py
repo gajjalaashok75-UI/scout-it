@@ -448,7 +448,8 @@ def web_search(
     print(f"  • Playwright tier: {playwright_count}/{len(results_dicts)}")
     print(f"  • Failed/Low quality: {failed_count}/{len(results_dicts)}")
     print(f"  • Total time: {extraction_time:.2f}s")
-    print(f"  • Average per URL: {extraction_time/len(results_dicts):.2f}s")
+    if results_dicts:
+        print(f"  • Average per URL: {extraction_time/len(results_dicts):.2f}s")
     
     if playwright_count > 0:
         print(f"  [yellow]⚠️  {playwright_count} URLs used Playwright (3-8s browser launch overhead each)[/yellow]")

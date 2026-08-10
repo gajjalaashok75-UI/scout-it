@@ -10,18 +10,30 @@ from concurrent.futures import ThreadPoolExecutor
 
 
 class TestExtractionConcurrency:
-    """Test that extraction runs concurrently, not sequentially."""
-    
-    @patch('scout_it.cli.fetch_resilient')
-    @patch('scout_it.cli.ExtractionEngine')
-    def test_extraction_uses_threadpool(self, mock_engine_class, mock_fetch):
-        """Verify extraction uses ThreadPoolExecutor for parallel processing."""
-        from scout_it.cli import _extract_news_content
-        
-        mock_engine = MagicMock()
-        mock_engine_class.return_value = mock_engine
-        
-        # Mock fetch to simulate realistic timing
+    """Test that the unified EnterpriseSearchEngine extraction runs concurrently."""
+
+    @staticmethod
+    def _no_domain_learning():
+        learning = MagicMock()
+        learning.get_strategy.return_value = ("requests", 0.0)
+        return learning
+
+    @patch('scout_it.domain_routing.get_domain_learning')
+    @patch('scout_it.extraction.search.fetch_resilient')
+    @patch('scout_it.extraction.search.ExtractionEngine')
+    def test_extraction_uses_threadpool(self, mock_engine_class, mock_fetch, mock_learning):
+        """Verify EnterpriseSearchEngine extracts in parallel (ThreadPoolExecutor)."""
+        from scout_it.extraction import EnterpriseSearchEngine
+
+        mock_learning.return_value = self._no_domain_learning()
+        engine = EnterpriseSearchEngine(
+            max_workers=5,
+            enable_js_fallback=False,
+            enable_alternate_source=False,
+            enable_dns_fallback=False,
+            enable_bandit=False,
+        )
+
         def slow_fetch(*args, **kwargs):
             time.sleep(0.1)  # Simulate 100ms per fetch
             return {
@@ -29,71 +41,67 @@ class TestExtractionConcurrency:
                 'html': '<html><body>Article content</body></html>',
                 'final_url': args[0],
                 'tier': 'requests',
+                'attempts': 1,
                 'errors': [],
             }
-        
+
         mock_fetch.side_effect = slow_fetch
-        
-        # Mock extraction
-        mock_engine.extract_content.return_value = (
-            "Article content with many words " * 50,
-            "heuristic",
-            0.9,
-        )
-        
-        # Create 10 test articles
-        results = [
-            {
-                'url': f'https://example.com/article-{i}',
-                'title': f'Article {i}',
-                'body': 'Summary',
-            }
+        mock_engine = MagicMock()
+        mock_engine.extract_content.return_value = ("article word " * 60, "heuristic", 0.9)
+        engine.extractor = mock_engine
+
+        seeds = [
+            {'url': f'https://example.com/article-{i}', 'title': f'Article {i}', 'body': 'Summary'}
             for i in range(10)
         ]
-        
-        # Measure extraction time
+
         start = time.time()
-        enriched = _extract_news_content(
-            results,
-            max_workers=5,
-            enable_js_fallback=True,
-            max_fetch_retries=1,
-        )
+        out = engine.execute_search_from_urls(seeds)
         elapsed = time.time() - start
-        
-        # Verify results
-        assert len(enriched) == 10
-        
-        # Sequential would take 10 * 0.1 = 1.0s
-        # Parallel with 5 workers should take ~0.2s (2 batches)
-        # Allow some overhead, but it should be much faster than sequential
+
+        assert len(out) == 10
+        # Sequential would take 10 * 0.1 = 1.0s; 5 workers in parallel ~0.2-0.4s
         assert elapsed < 0.6, f"Extraction took {elapsed:.2f}s, expected <0.6s (parallel with 5 workers)"
-        print(f"✅ Parallel extraction completed in {elapsed:.2f}s (expected ~0.2-0.4s)")
-    
-    def test_threadpool_executor_max_workers_parameter(self):
-        """Verify ThreadPoolExecutor respects max_workers parameter."""
-        from scout_it.cli import _extract_news_content
-        from unittest.mock import patch
-        
-        with patch('scout_it.cli.ThreadPoolExecutor') as mock_executor_class:
-            mock_executor = MagicMock()
-            mock_executor_class.return_value.__enter__.return_value = mock_executor
-            mock_executor.submit.return_value.result.return_value = {
-                'url': 'test',
-                'extraction_status': 'success',
-                'main_content': 'content',
-            }
-            
-            # Call with max_workers=3
-            _extract_news_content(
-                [{'url': 'test1'}, {'url': 'test2'}],
+        print(f"Parallel extraction completed in {elapsed:.2f}s (expected ~0.2-0.4s)")
+
+    @patch('scout_it.domain_routing.get_domain_learning')
+    @patch('scout_it.extraction.search.fetch_resilient')
+    @patch('scout_it.extraction.search.ExtractionEngine')
+    def test_threadpool_executor_max_workers_parameter(self, mock_engine_class, mock_fetch, mock_learning):
+        """Verify EnterpriseSearchEngine caps ThreadPoolExecutor workers at max_workers."""
+        from concurrent.futures import ThreadPoolExecutor as _RealTPE
+        from scout_it.extraction import EnterpriseSearchEngine
+        import scout_it.extraction.search as search_mod
+
+        mock_learning.return_value = self._no_domain_learning()
+        captured = {}
+
+        real_tpe = _RealTPE
+
+        class _CapturingTPE(real_tpe):
+            def __init__(self, *a, **kw):
+                captured.update(kw)
+                super().__init__(*a, **kw)
+
+        mock_fetch.return_value = {
+            'status': 'success', 'html': '<html>x</html>', 'final_url': 'u',
+            'tier': 'requests', 'attempts': 1, 'errors': [],
+        }
+        mock_engine = MagicMock()
+        mock_engine.extract_content.return_value = ("article word " * 60, "heuristic", 0.9)
+
+        with patch.object(search_mod, 'ThreadPoolExecutor', _CapturingTPE):
+            engine = EnterpriseSearchEngine(
                 max_workers=3,
-                enable_js_fallback=True,
-                max_fetch_retries=1,
+                enable_js_fallback=False,
+                enable_alternate_source=False,
+                enable_dns_fallback=False,
+                enable_bandit=False,
             )
-            
-            # Verify ThreadPoolExecutor was created with max_workers=3
-            mock_executor_class.assert_called_once_with(max_workers=3)
+            engine.extractor = mock_engine
+            engine.execute_search_from_urls([{'url': 'u1'}, {'url': 'u2'}])
+
+        assert captured.get('max_workers') == 3, f"ThreadPoolExecutor max_workers={captured.get('max_workers')!r}, expected 3"
 
 
 class TestExtractionPerformance:

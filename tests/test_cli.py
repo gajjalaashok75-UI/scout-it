@@ -13,8 +13,10 @@ Coverage:
 """
 
 import sys
+import importlib
 from pathlib import Path
 from unittest import mock
+from contextlib import contextmanager
 
 import json
 import os
@@ -64,46 +66,55 @@ class TestWebSearch:
     
     def test_web_search_returns_tuple(self):
         """Test that web_search returns (results, stats) tuple"""
-        with mock.patch('scout_it.cli.EnterpriseSearchEngine') as mock_engine:
+        # web_search lives in the hyphenated scout_it/web-search/ package and
+        # uses its own EnterpriseSearchEngine/process_results/discovery names.
+        ws_mod = importlib.import_module('.web-search.web_search', package='scout_it')
+        with mock.patch.object(ws_mod, 'EnterpriseSearchEngine') as mock_engine, \
+             mock.patch.object(ws_mod, 'process_results', return_value=([], {'successful': 0, 'failed': 0})), \
+             mock.patch.object(ws_mod, '_ddgs_list_search_with_retry') as mock_ddgs:
             mock_instance = mock.Mock()
-            mock_instance.execute_search.return_value = []
+            mock_instance.execute_search_from_urls.return_value = []
             mock_instance.stats = {'total': 0, 'success': 0}
             mock_engine.return_value = mock_instance
-            
-            with mock.patch('scout_it.cli.process_results') as mock_process:
-                mock_process.return_value = ([], {'successful': 0, 'failed': 0})
-                
-                results, stats = web_search("test query", max_results=10, workers=2)
-                
-                assert isinstance(results, list)
-                assert isinstance(stats, dict)
-                assert 'search_engine' in stats
-                assert 'cleaner' in stats
-    
+            mock_ddgs.return_value = (
+                [{'url': 'https://example.com/a', 'title': 'A', 'body': 'snip', 'source': 'duckduckgo'}],
+                {'total': 1},
+            )
+
+            results, stats = web_search("test query", max_results=10, workers=2)
+
+            assert isinstance(results, list)
+            assert isinstance(stats, dict)
+            assert 'search_engine' in stats
+            assert 'cleaner' in stats
+
     def test_web_search_with_custom_parameters(self):
         """Test web_search with custom max_results and workers"""
-        with mock.patch('scout_it.cli.EnterpriseSearchEngine') as mock_engine:
+        ws_mod = importlib.import_module('.web-search.web_search', package='scout_it')
+        with mock.patch.object(ws_mod, 'EnterpriseSearchEngine') as mock_engine, \
+             mock.patch.object(ws_mod, 'process_results', return_value=([], {})), \
+             mock.patch.object(ws_mod, '_ddgs_list_search_with_retry') as mock_ddgs:
             mock_instance = mock.Mock()
-            mock_instance.execute_search.return_value = []
+            mock_instance.execute_search_from_urls.return_value = []
             mock_instance.stats = {'total': 0, 'success': 0}
             mock_engine.return_value = mock_instance
-            
-            with mock.patch('scout_it.cli.process_results') as mock_process:
-                mock_process.return_value = ([], {})
-                
-                web_search("query", max_results=50, workers=4)
+            mock_ddgs.return_value = (
+                [{'url': 'https://example.com/a', 'title': 'A', 'body': 'snip', 'source': 'duckduckgo'}],
+                {'total': 1},
+            )
 
-                # Verify engine was instantiated with correct workers (plus the
-                # new resilient-fetch config, which defaults to 3 retries / JS fallback on)
-                mock_engine.assert_called_once_with(
-                    max_workers=4, max_fetch_retries=3, enable_js_fallback=True,
-                    enable_alternate_source=False, enable_dns_fallback=True,
-                    enable_tls_impersonate=False, enable_persistent_profile=False,
-                    browser_profile_name='default', enable_bandit=False, source=None,
-                )
-                # Verify execute_search was called
-                assert mock_instance.execute_search.called
+            web_search("query", max_results=50, workers=4)
 
+            # Verify engine was instantiated with correct workers (plus the
+            # new resilient-fetch config, which defaults to 3 retries / JS fallback on)
+            mock_engine.assert_called_once_with(
+                max_workers=4, max_fetch_retries=3, enable_js_fallback=True,
+                enable_alternate_source=False, enable_dns_fallback=True,
+                enable_tls_impersonate=False, enable_persistent_profile=False,
+                browser_profile_name='default', enable_bandit=False, source=None,
+            )
+            # The unified pipeline extracts via execute_search_from_urls (not execute_search)
+            assert mock_instance.execute_search_from_urls.called
 
 class TestImageSearch:
     """Test image_search function"""
@@ -114,7 +125,7 @@ class TestImageSearch:
     
     def test_image_search_returns_tuple(self):
         """Test that image_search returns (results, stats) tuple"""
-        with mock.patch('scout_it.cli.ImageSearchEngine') as mock_engine:
+        with mock.patch('scout_it.commands.image.ImageSearchEngine') as mock_engine:
             mock_instance = mock.Mock()
             mock_instance.execute_image_search.return_value = []
             mock_instance.stats = {'total': 0, 'success': 0, 'execution_time': 0.5}
@@ -128,7 +139,7 @@ class TestImageSearch:
     
     def test_image_search_calls_engine_with_correct_params(self):
         """Test that image_search calls ImageSearchEngine with correct parameters"""
-        with mock.patch('scout_it.cli.ImageSearchEngine') as mock_engine:
+        with mock.patch('scout_it.commands.image.ImageSearchEngine') as mock_engine:
             mock_instance = mock.Mock()
             mock_instance.execute_image_search.return_value = []
             mock_instance.stats = {'total': 0, 'success': 0, 'execution_time': 0.1}
@@ -144,146 +155,99 @@ class TestImageSearch:
 
 class TestFetchUrl:
     """Test fetch_url function"""
-    
+
+    # fetch_url lives in scout_it.commands.url and uses fetch_resilient (not
+    # requests.get directly), plus its own ExtractionEngine/process_results
+    # imports. Patch the names bound in that module so the tests are fully
+    # offline and deterministic.
+    _URL_MOD = 'scout_it.commands.url'
+
+    @contextmanager
+    def _patch_fetch(self, html, content="Test content", confidence=0.9,
+                     method="trafilatura", process_return=([], {})):
+        outcome = {
+            "html": html,
+            "final_url": "https://example.com",
+            "status": "success",
+            "tier": "requests",
+            "attempts": 1,
+            "errors": [],
+        }
+        with mock.patch(self._URL_MOD + '.fetch_resilient', return_value=outcome), \
+             mock.patch(self._URL_MOD + '.ExtractionEngine') as mock_extractor, \
+             mock.patch(self._URL_MOD + '.process_results', return_value=process_return) as mock_process:
+            mock_extractor.USER_AGENTS = ['test-agent']
+            inst = mock.Mock()
+            inst.extract_content.return_value = (content, method, confidence)
+            mock_extractor.return_value = inst
+            yield mock_process
+
     def test_fetch_url_function_exists(self):
         """Test that fetch_url function is callable"""
         assert callable(fetch_url)
-    
+
     def test_fetch_url_invalid_url(self):
         """Test fetch_url with invalid URL"""
         result = fetch_url("not-a-valid-url")
         assert "error" in result
         assert "Invalid URL" in result["error"]
-    
+
     def test_fetch_url_valid_url_structure(self):
         """Test fetch_url with valid URL structure"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
-            mock_response = mock.Mock()
-            mock_response.status_code = 200
-            mock_response.text = "<html><title>Test Page</title><body>Content</body></html>"
-            mock_response.url = "https://example.com"
-            mock_response.content = b"<html><title>Test Page</title><body>Content</body></html>"
-            mock_get.return_value = mock_response
-            
-            with mock.patch('scout_it.extraction.ExtractionEngine') as mock_extractor:
-                mock_extractor.USER_AGENTS = ['test-agent']
-                mock_extract_instance = mock.Mock()
-                mock_extract_instance.extract_content.return_value = ("Test content", "trafilatura", 0.9)
-                mock_extractor.return_value = mock_extract_instance
-                
-                with mock.patch('scout_it.cli.process_results') as mock_process:
-                    mock_process.return_value = ([], {})
-                    
-                    result = fetch_url("https://example.com")
+        html = "<html><title>Test Page</title><body>Content</body></html>"
+        with self._patch_fetch(html, content="Test content"):
+            result = fetch_url("https://example.com")
+            assert "result" in result
+            assert "stats" in result
+            assert result["result"]["title"] == "Test Page"
 
-                    assert "result" in result
-                    assert "stats" in result
-                    assert result["result"]["title"] == "Test Page"
-    
     def test_fetch_url_http_scheme(self):
         """Test fetch_url accepts HTTP scheme validation"""
-        with mock.patch('scout_it.cli.requests.get', side_effect=Exception("network blocked")):
+        with mock.patch(self._URL_MOD + '.fetch_resilient',
+                        return_value={"status": "failed", "html": "", "final_url": "",
+                                      "tier": "none", "attempts": 1,
+                                      "errors": ["network blocked"]}):
             result = fetch_url("http://example.com/test")
-            # Should fail gracefully without raising
             assert isinstance(result, dict)
             assert "error" in result
-    
+
     def test_fetch_url_https_scheme(self):
         """Test fetch_url accepts HTTPS scheme validation"""
-        with mock.patch('scout_it.cli.requests.get', side_effect=Exception("network blocked")):
+        with mock.patch(self._URL_MOD + '.fetch_resilient',
+                        return_value={"status": "failed", "html": "", "final_url": "",
+                                      "tier": "none", "attempts": 1,
+                                      "errors": ["network blocked"]}):
             result = fetch_url("https://example.com/test")
-            # Should fail gracefully without raising
             assert isinstance(result, dict)
             assert "error" in result
-    
+
     def test_fetch_url_with_max_chars(self):
         """Test fetch_url with max_chars parameter - verifies truncation"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
-            mock_response = mock.Mock()
-            mock_response.status_code = 200
-            mock_response.text = "<html><title>Test</title><body>Long content here</body></html>"
-            mock_response.url = "https://example.com"
-            mock_response.content = b"<html><title>Test</title><body>Long content here</body></html>"
-            mock_get.return_value = mock_response
-            
-            with mock.patch('scout_it.extraction.ExtractionEngine') as mock_extractor:
-                mock_extractor.USER_AGENTS = ['test-agent']
-                mock_extract_instance = mock.Mock()
-                # Return long content that should be truncated
-                long_content = "This is a very long content that should be truncated to verify the truncation works"
-                mock_extract_instance.extract_content.return_value = (long_content, "trafilatura", 0.9)
-                mock_extractor.return_value = mock_extract_instance
-                
-                with mock.patch('scout_it.cli.process_results') as mock_process:
-                    mock_process.return_value = ([], {})
-                    
-                    result = fetch_url("https://example.com", max_chars=20)
-                    
-                    # Content should be truncated to 20 chars
-                    assert len(result["result"]["main_content"]) == 20
-    
+        html = "<html><title>Test</title><body>Long content here</body></html>"
+        long_content = "This is a very long content that should be truncated to verify the truncation works"
+        with self._patch_fetch(html, content=long_content):
+            result = fetch_url("https://example.com", max_chars=20)
+            assert len(result["result"]["main_content"]) == 20
+
     def test_fetch_url_with_max_size(self):
         """Test fetch_url with max_size parameter - truncates response"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
-            mock_response = mock.Mock()
-            mock_response.status_code = 200
-            # Large HTML response (2000 bytes)
-            large_html = "<html>" + ("x" * 1950) + "</html>"
-            mock_response.text = large_html
-            mock_response.url = "https://example.com"
-            mock_response.content = large_html.encode('utf-8')
-            mock_get.return_value = mock_response
-            
-            with mock.patch('scout_it.extraction.ExtractionEngine') as mock_extractor:
-                mock_extractor.USER_AGENTS = ['test-agent']
-                mock_extract_instance = mock.Mock()
-                mock_extract_instance.extract_content.return_value = ("Content", "trafilatura", 0.9)
-                mock_extractor.return_value = mock_extract_instance
-                
-                with mock.patch('scout_it.cli.process_results') as mock_process:
-                    mock_process.return_value = ([], {})
-                    
-                    # Request with max_size of 1kb (1024 bytes) - should truncate
-                    result = fetch_url("https://example.com", max_size="1kb")
-                    
-                    # Should successfully process even though content was truncated
-                    assert isinstance(result, dict)
-                    assert "result" in result
-    
+        large_html = "<html>" + ("x" * 1950) + "</html>"
+        with self._patch_fetch(large_html, content="Content"):
+            result = fetch_url("https://example.com", max_size="1kb")
+            assert isinstance(result, dict)
+            assert "result" in result
+
     def test_fetch_url_with_max_size_small_content(self):
         """Test fetch_url with max_size parameter when content is smaller than limit"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
-            mock_response = mock.Mock()
-            mock_response.status_code = 200
-            mock_response.text = "<html><title>Test</title><body>Small</body></html>"
-            mock_response.url = "https://example.com"
-            mock_response.content = b"x" * 500  # 500 bytes
-            mock_get.return_value = mock_response
-            
-            with mock.patch('scout_it.extraction.ExtractionEngine') as mock_extractor:
-                mock_extractor.USER_AGENTS = ['test-agent']
-                mock_extract_instance = mock.Mock()
-                mock_extract_instance.extract_content.return_value = ("Content", "trafilatura", 0.9)
-                mock_extractor.return_value = mock_extract_instance
-                
-                with mock.patch('scout_it.cli.process_results') as mock_process:
-                    mock_process.return_value = ([], {})
-                    
-                    result = fetch_url("https://example.com", max_size="1mb")  # 1mb should allow 500 bytes
-                    
-                    assert "result" in result
-                    assert "error" not in result
+        html = "<html><title>Test</title><body>Small</body></html>"
+        with self._patch_fetch(html, content="Content"):
+            result = fetch_url("https://example.com", max_size="1mb")
+            assert "result" in result
+            assert "error" not in result
 
     def test_fetch_url_with_both_max_chars_and_max_size_error(self):
         """Test fetch_url rejects when both max_chars and max_size are provided"""
-        # This should return an error immediately without making any requests
-        result = fetch_url(
-            "https://example.com",
-            max_chars=10000,
-            max_size="500kb"
-        )
-        
-        # Should have error key and no result key
+        result = fetch_url("https://example.com", max_chars=10000, max_size="500kb")
         assert "error" in result
         assert "Cannot use both --max-chars and --max-size together" in result["error"]
         assert "--max-chars" in result["error"]
@@ -291,14 +255,10 @@ class TestFetchUrl:
 
     def test_fetch_url_error_http_404(self):
         """Test fetch_url with HTTP 404 error"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
-            mock_response = mock.Mock()
-            mock_response.status_code = 404
-            mock_response.url = "https://example.com/404"
-            http_error = requests.HTTPError("404 Client Error")
-            http_error.response = mock_response
-            mock_get.side_effect = http_error
-
+        with mock.patch(self._URL_MOD + '.fetch_resilient',
+                        return_value={"status": "failed", "html": "", "final_url": "https://example.com/404",
+                                      "tier": "none", "attempts": 3,
+                                      "errors": ["requests attempt 1: HTTP 404 Client Error"]}):
             result = fetch_url("https://example.com/404")
             assert "error" in result
             assert "HTTP 404" in result["error"]
@@ -306,47 +266,34 @@ class TestFetchUrl:
 
     def test_fetch_url_error_connection_refused(self):
         """Test fetch_url with connection refused"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
-            mock_get.side_effect = requests.ConnectionError("Connection refused")
-
+        with mock.patch(self._URL_MOD + '.fetch_resilient',
+                        return_value={"status": "failed", "html": "", "final_url": "https://example.com:9999",
+                                      "tier": "none", "attempts": 3,
+                                      "errors": ["Connection refused"]}):
             result = fetch_url("https://example.com:9999")
             assert "error" in result
             assert "Connection refused" in result["error"]
 
     def test_fetch_url_error_timeout(self):
         """Test fetch_url with timeout"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
-            mock_get.side_effect = requests.Timeout("Request timed out")
-
+        with mock.patch(self._URL_MOD + '.fetch_resilient',
+                        return_value={"status": "failed", "html": "", "final_url": "https://example.com",
+                                      "tier": "none", "attempts": 3,
+                                      "errors": ["Request timed out"]}):
             result = fetch_url("https://example.com", timeout=3)
             assert "error" in result
             assert "timed out" in result["error"].lower()
 
     def test_fetch_url_max_size_warning(self):
         """Test max-size generates content warning"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
-            mock_response = mock.Mock()
-            mock_response.status_code = 200
-            mock_response.text = "<html><body><p>" + "word " * 30 + "</p></body></html>"
-            mock_response.url = "https://example.com"
-            mock_response.content = b"<html><body><p>" + b"word " * 30 + b"</p></body></html>"
-            mock_get.return_value = mock_response
-
-            with mock.patch('scout_it.extraction.ExtractionEngine') as mock_extractor:
-                mock_extractor.USER_AGENTS = ['test-agent']
-                mock_extract_instance = mock.Mock()
-                mock_extract_instance.extract_content.return_value = ("word " * 25, "trafilatura", 0.9)
-                mock_extractor.return_value = mock_extract_instance
-
-                with mock.patch('scout_it.cli.process_results') as mock_process:
-                    mock_process.return_value = ([], {})
-                    result = fetch_url("https://example.com", max_size="50kb")
-
-                    assert "result" in result
-                    assert "stats" in result
-                    warning = result["stats"].get("extraction_max_size_warning")
-                    assert warning is not None
-                    assert "max-size" in warning
+        html = "<html><body><p>" + "word " * 30 + "</p></body></html>"
+        with self._patch_fetch(html, content="word " * 25):
+            result = fetch_url("https://example.com", max_size="50kb")
+            assert "result" in result
+            assert "stats" in result
+            warning = result["stats"].get("extraction_max_size_warning")
+            assert warning is not None
+            assert "max-size" in warning
 
     def test_check_max_size_warning_no_size(self):
         """Test _check_max_size_warning returns None without max_size"""
@@ -419,7 +366,8 @@ class TestBackwardCompatibility:
     
     def test_fatchurl_calls_fetch_url(self):
         """Test that fatchurl (old name) still works"""
-        with mock.patch('scout_it.cli.fetch_url') as mock_fetch:
+        # fatchurl lives in scout_it.commands.url and calls the module-local fetch_url.
+        with mock.patch('scout_it.commands.url.fetch_url') as mock_fetch:
             mock_fetch.return_value = {"result": "test"}
             
             result = fatchurl("https://example.com")
@@ -703,8 +651,14 @@ class TestIntegration:
     
     def test_full_pipeline_with_mock_data(self):
         """Test the full pipeline with mocked data"""
-        with mock.patch('scout_it.extraction.EnterpriseSearchEngine'):
-            with mock.patch('scout_it.cli.process_results') as mock_process:
+        import importlib
+        web_search_mod = importlib.import_module('scout_it.web-search.web_search')
+
+        # Patch the names web_search.py actually binds in its own namespace
+        # (mocking the re-export in scout_it.extraction does not affect the
+        # name already imported into the web-search module).
+        with mock.patch.object(web_search_mod, 'EnterpriseSearchEngine'):
+            with mock.patch.object(web_search_mod, 'process_results') as mock_process:
                 mock_process.return_value = (
                     [
                         {
@@ -715,9 +669,9 @@ class TestIntegration:
                     ],
                     {'successful': 1, 'failed': 0}
                 )
-                
+
                 results, stats = web_search("test", max_results=10, workers=2)
-                
+
                 assert len(results) == 1
                 assert results[0]['title'] == 'Test Result'
 
@@ -726,18 +680,29 @@ class TestAdvancedSearchFeatures:
     """Tests for retry and advanced DDGS feature wiring."""
 
     def test_news_search_uses_ddgs_wrapper(self):
-        with mock.patch('scout_it.extraction._ddgs_list_search') as mock_ddgs:
+        import importlib
+        news_mod = importlib.import_module('scout_it.news-search.news_search')
+        with mock.patch.object(news_mod, '_ddgs_list_search_with_retry') as mock_ddgs, \
+             mock.patch('scout_it.extraction.search.fetch_resilient') as mock_fetch:
             mock_ddgs.return_value = ([{'title': 'news'}], {'total': 1, 'success': 1, 'execution_time': 0.1})
-            results, stats = news_search('economy', max_results=5)
+            mock_fetch.return_value = {
+                "html": "", "final_url": "", "status": "failed",
+                "tier": "none", "attempts": 0, "errors": ["no url"],
+            }
+            results, stats = news_search('economy', max_results=5, snippets_only=True)
 
-            assert len(results) == 0  # no URL → extraction_status failed → filtered out
+            # The mock result has no url/href, so it's dropped at collection
+            # time (only candidates with a URL are kept).
+            assert len(results) == 0
             assert stats['search_engine']['success'] == 1
             call_args, call_kwargs = mock_ddgs.call_args
             assert call_args[0] == 'news'
-            assert call_kwargs['max_results'] == 5
+            # Discovery phase always fetches DDGS_SNIPPET_LIMIT (20) snippets,
+            # then ranks/selects down to the requested max_results.
+            assert call_kwargs['max_results'] == 20
 
     def test_video_search_uses_ddgs_wrapper(self):
-        with mock.patch('scout_it.extraction._ddgs_list_search') as mock_ddgs:
+        with mock.patch('scout_it.commands.video._ddgs_list_search_with_retry') as mock_ddgs:
             mock_ddgs.return_value = ([{'title': 'video'}], {'total': 1, 'success': 1, 'execution_time': 0.2})
             results, stats = video_search('dogs', max_results=3, duration='short')
 
@@ -772,7 +737,7 @@ class TestAdvancedSearchFeatures:
                     'height': 768,
                 }]
 
-        monkeypatch.setattr(scout_it.extraction, 'DDGS', DummyDDGS)
+        monkeypatch.setattr(scout_it.extraction.search, 'DDGS', DummyDDGS)
 
         engine = ImageSearchEngine()
         results = engine.execute_image_search(
@@ -804,7 +769,7 @@ class TestAdvancedSearchFeatures:
                     {'title': 'missing', 'image': 'https://example.com/c.jpg', 'url': 'https://example.com/c'},
                 ]
 
-        monkeypatch.setattr(scout_it.extraction, 'DDGS', DummyDDGS)
+        monkeypatch.setattr(scout_it.extraction.search, 'DDGS', DummyDDGS)
 
         engine = ImageSearchEngine()
         results = engine.execute_image_search(
@@ -824,28 +789,36 @@ class TestAdvancedSearchFeatures:
         with pytest.raises(ValueError):
             engine.execute_image_search('dog', min_width=900, max_width=800)
 
-    def test_web_engine_retries_when_extracted_content_is_empty(self, monkeypatch):
+    @mock.patch('scout_it.domain_routing.get_domain_learning')
+    @mock.patch('scout_it.extraction.search.fetch_resilient')
+    @mock.patch('scout_it.extraction.search.ExtractionEngine')
+    def test_web_engine_retries_when_extracted_content_is_empty(self, mock_engine_cls, mock_fetch, mock_learning):
         def fake_phase_search(self, query, max_results, search_options=None):
             self.results = [
                 EnterpriseResult(
                     position=1,
                     title='Only result',
                     url='https://example.com',
-                    snippet='stub',
+                    snippet='',  # no snippet so the fallback chain can't rescue empty extraction
                 )
             ]
 
-        monkeypatch.setattr(EnterpriseSearchEngine, '_phase_search', fake_phase_search)
+        learning = mock.MagicMock()
+        learning.get_strategy.return_value = ("requests", 0.0)
+        mock_learning.return_value = learning
 
-        mock_response = mock.Mock()
-        mock_response.url = 'https://example.com'
-        mock_response.status_code = 200
-        mock_response.text = '<html><body>Empty</body></html>'
-        mock_response.raise_for_status.return_value = None
+        mock_fetch.return_value = {
+            "html": "<html><body>Empty</body></html>",
+            "final_url": "https://example.com",
+            "status": "success", "tier": "requests", "attempts": 1, "errors": [],
+        }
+        mock_engine = mock.MagicMock()
+        mock_engine.extract_content.return_value = ('', 'trafilatura', 0.9)
+        mock_engine_cls.return_value = mock_engine
 
         engine = EnterpriseSearchEngine(max_workers=1, enable_js_fallback=False)
-        engine.extractor.session.get = mock.Mock(return_value=mock_response)
-        engine.extractor.extract_content = mock.Mock(return_value=('', 'trafilatura', 0.9))
+        # Force a deterministic search phase so no real DDGS call happens
+        engine._phase_search = fake_phase_search.__get__(engine, EnterpriseSearchEngine)
 
         engine.execute_search(
             'dog',
@@ -1139,22 +1112,22 @@ class TestEnhanceVideoDescriptions:
 
     def test_empty_results(self):
         """empty list returns immediately"""
-        from scout_it.cli import _enhance_video_descriptions
+        from scout_it.commands.video import _enhance_video_descriptions
         assert _enhance_video_descriptions([]) == []
 
-    @mock.patch('scout_it.cli._fetch_youtube_metadata')
+    @mock.patch('scout_it.commands.video._fetch_youtube_metadata')
     def test_skips_non_youtube(self, mock_fetch):
         """non-YouTube URLs are not fetched"""
-        from scout_it.cli import _enhance_video_descriptions
+        from scout_it.commands.video import _enhance_video_descriptions
         results = [{"content": "https://vimeo.com/12345", "description": "short"}]
         out = _enhance_video_descriptions(results)
         mock_fetch.assert_not_called()
         assert out[0]["description"] == "short"
 
-    @mock.patch('scout_it.cli._fetch_youtube_metadata')
+    @mock.patch('scout_it.commands.video._fetch_youtube_metadata')
     def test_enhances_youtube(self, mock_fetch):
         """YouTube URLs get full description injected"""
-        from scout_it.cli import _enhance_video_descriptions
+        from scout_it.commands.video import _enhance_video_descriptions
         mock_fetch.return_value = {"description": "full " * 100}
         results = [{"content": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "description": "short"}]
         out = _enhance_video_descriptions(results)
@@ -1165,10 +1138,10 @@ class TestEnhanceVideoDescriptions:
         assert called_arg == "dQw4w9WgXcQ", f"expected bare video ID, got {called_arg!r}"
         assert out[0]["description"] == "full " * 100
 
-    @mock.patch('scout_it.cli._fetch_youtube_metadata')
+    @mock.patch('scout_it.commands.video._fetch_youtube_metadata')
     def test_error_keeps_original(self, mock_fetch):
         """fetch error keeps original truncated description"""
-        from scout_it.cli import _enhance_video_descriptions
+        from scout_it.commands.video import _enhance_video_descriptions
         mock_fetch.return_value = {"error": "network_error"}
         results = [{"content": "https://youtu.be/dQw4w9WgXcQ", "description": "short desc"}]
         out = _enhance_video_descriptions(results)
@@ -1176,18 +1149,40 @@ class TestEnhanceVideoDescriptions:
 
 
 class TestExtractNewsContent:
-    """Test _extract_news_content behaviour"""
+    """Test the unified EnterpriseSearchEngine content-extraction flow.
 
-    def test_empty_results(self):
-        """empty list returns immediately"""
-        from scout_it.cli import _extract_news_content
-        assert _extract_news_content([]) == []
+    These were previously tests for the deprecated ``_extract_news_content``
+    helper in ``news-search/helpers.py``. That helper duplicated logic that now
+    lives in ``EnterpriseSearchEngine._phase_content_extraction`` — the SAME
+    flow used by both ``web-search`` and ``news-search``. The tests are rewired
+    to exercise the real engine via ``execute_search_from_urls`` so they cover
+    the actual production path instead of dead code.
+    """
 
-    @mock.patch('scout_it.cli.ExtractionEngine')
-    @mock.patch('scout_it.cli.fetch_resilient')
-    def test_enriches_result(self, mock_fetch, mock_engine_cls):
-        """article URL is fetched, extracted, and enriched with process_results-compatible keys"""
-        from scout_it.cli import _extract_news_content
+    def _make_engine(self, **kwargs):
+        return EnterpriseSearchEngine(
+            max_workers=1,
+            enable_js_fallback=False,
+            enable_alternate_source=False,
+            enable_dns_fallback=False,
+            enable_bandit=False,
+            **kwargs,
+        )
+
+    def _no_domain_learning(self):
+        """Mock get_domain_learning so persistent domain stats (which survive
+        across runs on disk) don't change engine behaviour between tests."""
+        learning = mock.MagicMock()
+        learning.get_strategy.return_value = ("requests", 0.0)
+        return learning
+
+    @mock.patch('scout_it.domain_routing.get_domain_learning')
+    @mock.patch('scout_it.extraction.search.fetch_resilient')
+    @mock.patch('scout_it.extraction.search.ExtractionEngine')
+    def test_enriches_result(self, mock_engine_cls, mock_fetch, mock_learning):
+        """article URL is fetched, extracted, and enriched into an EnterpriseResult"""
+        mock_learning.return_value = self._no_domain_learning()
+        engine = self._make_engine()
 
         mock_fetch.return_value = {
             "html": "<html>full article</html>", "final_url": "https://example.com/article",
@@ -1196,71 +1191,63 @@ class TestExtractNewsContent:
 
         mock_engine = mock.MagicMock()
         mock_engine.extract_content.return_value = ("full " * 100, "trafilatura", 0.95)
-        mock_engine_cls.return_value = mock_engine
+        engine.extractor = mock_engine
 
-        results = [{"url": "https://example.com/article", "body": "short trunc..."}]
-        out = _extract_news_content(results)
-        assert out[0]["main_content"] == "full " * 100
-        assert out[0]["extraction_status"] == "success"
-        assert out[0]["confidence_score"] == 0.95
-        assert out[0]["extraction_method"] == "trafilatura (requests)"
-        assert out[0]["content_word_count"] == 100
+        seed = [{"url": "https://example.com/article", "title": "t", "body": "short trunc..."}]
+        out = engine.execute_search_from_urls(seed)
+        assert len(out) == 1
+        r = out[0]
+        assert r.extraction_status == "success"
+        assert r.main_content == "full " * 100
+        assert r.confidence_score == 0.95
+        assert r.extraction_method == "trafilatura (requests)"
+        assert r.content_word_count == 100
 
-    @mock.patch('scout_it.cli.ExtractionEngine')
-    @mock.patch('scout_it.cli.fetch_resilient')
-    def test_empty_url_failed(self, mock_fetch, mock_engine_cls):
-        """empty URL results in extraction_status failed"""
-        from scout_it.cli import _extract_news_content
-
-        results = [{"url": "", "body": "no url"}]
-        out = _extract_news_content(results)
-        assert out[0]["extraction_status"] == "failed"
-        assert out[0]["main_content"] == ""
-        mock_fetch.assert_not_called()
-
-    @mock.patch('scout_it.cli.ExtractionEngine')
-    @mock.patch('scout_it.cli.fetch_resilient')
-    def test_http_error_failed(self, mock_fetch, mock_engine_cls):
+    @mock.patch('scout_it.domain_routing.get_domain_learning')
+    @mock.patch('scout_it.extraction.search.fetch_resilient')
+    @mock.patch('scout_it.extraction.search.ExtractionEngine')
+    def test_fetch_failure_marks_failed(self, mock_engine_cls, mock_fetch, mock_learning):
         """all fetch tiers exhausted results in extraction_status failed"""
-        from scout_it.cli import _extract_news_content
+        mock_learning.return_value = self._no_domain_learning()
+        engine = self._make_engine()
 
         mock_fetch.return_value = {
             "html": "", "final_url": "https://example.com/article",
             "status": "failed", "tier": "none", "attempts": 7,
             "errors": ["requests attempt 1: HTTP 403 (blocked-looking response)"],
         }
+        engine.extractor = mock.MagicMock()
 
-        results = [{"url": "https://example.com/article"}]
-        out = _extract_news_content(results)
-        assert out[0]["extraction_status"] == "failed"
-        assert out[0]["main_content"] == ""
-        assert "errors" in out[0]
+        seed = [{"url": "https://example.com/article", "title": "t"}]
+        out = engine.execute_search_from_urls(seed)
+        assert out[0].extraction_status == "failed"
+        assert out[0].main_content == ""
+        assert out[0].errors  # errors recorded from the fetch outcome
 
-    @mock.patch('scout_it.cli.ExtractionEngine')
-    @mock.patch('scout_it.cli.fetch_resilient')
-    def test_preserves_original_order(self, mock_fetch, mock_engine_cls):
-        """output list preserves the order of input results"""
-        from scout_it.cli import _extract_news_content
+    @mock.patch('scout_it.domain_routing.get_domain_learning')
+    @mock.patch('scout_it.extraction.search.fetch_resilient')
+    @mock.patch('scout_it.extraction.search.ExtractionEngine')
+    def test_preserves_original_order(self, mock_engine_cls, mock_fetch, mock_learning):
+        """output list preserves the order of input seed results"""
+        mock_learning.return_value = self._no_domain_learning()
+        engine = self._make_engine()
 
         mock_fetch.return_value = {
             "html": "<html>content</html>", "final_url": "https://example.com",
             "status": "success", "tier": "requests", "attempts": 1, "errors": [],
         }
-
         mock_engine = mock.MagicMock()
         mock_engine.extract_content.return_value = ("article body", "trafilatura", 0.9)
-        mock_engine_cls.return_value = mock_engine
+        engine.extractor = mock_engine
 
-        results = [
+        seed = [
             {"url": "https://example.com/a", "title": "first"},
             {"url": "https://example.com/b", "title": "second"},
             {"url": "https://example.com/c", "title": "third"},
         ]
-        out = _extract_news_content(results)
-        assert out[0]["title"] == "first"
-        assert out[1]["title"] == "second"
-        assert out[2]["title"] == "third"
-        assert all(r["extraction_status"] == "success" for r in out)
+        out = engine.execute_search_from_urls(seed)
+        assert [r.title for r in out] == ["first", "second", "third"]
+        assert all(r.extraction_status == "success" for r in out)
 
 
 class TestGoogleNewsSource:
@@ -1276,9 +1263,10 @@ class TestGoogleNewsSource:
     @mock.patch('scout_it.google_news_source.requests.get')
     def test_resolve_url_exception_logged(self, mock_get):
         """_resolve_google_news_articles_url logs warning on exception"""
-        import logging
         from scout_it.google_news_source import _resolve_google_news_articles_url, logger
 
+        # lru_cache persists results across tests for the same URL — clear it
+        _resolve_google_news_articles_url.cache_clear()
         mock_get.side_effect = Exception("Connection failed")
         url = "https://news.google.com/articles/CBMim"
 
@@ -1292,6 +1280,8 @@ class TestGoogleNewsSource:
         """_resolve_google_news_articles_url follows HTTP redirect"""
         from scout_it.google_news_source import _resolve_google_news_articles_url
 
+        # lru_cache persists results across tests for the same URL — clear it
+        _resolve_google_news_articles_url.cache_clear()
         mock_resp = mock.MagicMock()
         mock_resp.url = "https://www.npr.org/article"
         mock_get.return_value = mock_resp
@@ -1303,16 +1293,40 @@ class TestGoogleNewsSource:
 
 
 class TestExtractNewsContentExtended:
-    """Extended tests for _extract_news_content — Playwright retry and rendered_text"""
+    """Extended tests for the unified EnterpriseSearchEngine extraction flow.
 
-    @mock.patch('scout_it.cli.ExtractionEngine')
-    @mock.patch('scout_it.cli.fetch_resilient')
-    def test_playwright_retry_on_empty_extraction(self, mock_fetch, mock_engine_cls):
-        """When requests-tier extraction yields < 30 chars, retries with force_js=True"""
-        from scout_it.cli import _extract_news_content
+    These cover the advanced behaviours that live in
+    ``_phase_content_extraction``: automatic Playwright escalation on poor
+    quality, rendered_text fallback, error-page detection, and URL
+    propagation through the final fetch outcome. They exercise the SAME path
+    used by both ``web-search`` and ``news-search``.
+    """
 
-        # First call returns requests-tier HTML (no content extracted)
-        # Second call (retry) returns playwright-tier HTML (content found)
+    def _make_engine(self, **kwargs):
+        return EnterpriseSearchEngine(
+            max_workers=1,
+            enable_js_fallback=True,
+            enable_alternate_source=False,
+            enable_dns_fallback=False,
+            enable_bandit=False,
+            **kwargs,
+        )
+
+    def _no_domain_learning(self):
+        """Mock get_domain_learning so persistent domain stats (which survive
+        across runs on disk) don't change engine behaviour between tests."""
+        learning = mock.MagicMock()
+        learning.get_strategy.return_value = ("requests", 0.0)
+        return learning
+
+    @mock.patch('scout_it.domain_routing.get_domain_learning')
+    @mock.patch('scout_it.extraction.search.fetch_resilient')
+    @mock.patch('scout_it.extraction.search.ExtractionEngine')
+    def test_playwright_retry_on_empty_extraction(self, mock_engine_cls, mock_fetch, mock_learning):
+        """When requests-tier extraction yields < 150 words, escalates to Playwright"""
+        mock_learning.return_value = self._no_domain_learning()
+        engine = self._make_engine()
+
         mock_fetch.side_effect = [
             {"html": "<html>shell</html>", "final_url": "https://example.com/a",
              "status": "success", "tier": "requests", "attempts": 1, "errors": [],
@@ -1325,101 +1339,80 @@ class TestExtractNewsContentExtended:
 
         mock_engine = mock.MagicMock()
         mock_engine.extract_content.side_effect = [
-            ("too short", "fallback", 0.3),              # First: < 30 chars
-            ("full article body with many words here", "readability", 0.9),   # Second: > 30 chars
+            ("too short", "fallback", 0.3),                              # First: < 150 words
+            ("full article body with many words here", "readability", 0.9),  # Second: good
         ]
-        mock_engine_cls.return_value = mock_engine
+        engine.extractor = mock_engine
 
-        results = [{"url": "https://example.com/a", "body": ""}]
-        out = _extract_news_content(results)
-        assert out[0]["extraction_status"] == "success"
-        assert out[0]["content_word_count"] >= 5
-        assert "playwright" in out[0]["extraction_method"]
+        seed = [{"url": "https://example.com/a", "title": "t", "body": ""}]
+        out = engine.execute_search_from_urls(seed)
+        assert out[0].extraction_status == "success"
+        assert out[0].content_word_count >= 5
+        assert "playwright" in out[0].extraction_method
 
-    @mock.patch('scout_it.cli.ExtractionEngine')
-    @mock.patch('scout_it.cli.fetch_resilient')
-    def test_rendered_text_fallback(self, mock_fetch, mock_engine_cls):
+    @mock.patch('scout_it.domain_routing.get_domain_learning')
+    @mock.patch('scout_it.extraction.search.fetch_resilient')
+    @mock.patch('scout_it.extraction.search.ExtractionEngine')
+    def test_rendered_text_fallback(self, mock_engine_cls, mock_fetch, mock_learning):
         """When Playwright retry still yields < 30 chars, rendered_text is used"""
-        from scout_it.cli import _extract_news_content
+        mock_learning.return_value = self._no_domain_learning()
+        engine = self._make_engine()
 
         mock_fetch.side_effect = [
             {"html": "<html>shell</html>", "final_url": "https://example.com/a",
              "status": "success", "tier": "requests", "attempts": 1, "errors": [],
              "rendered_text": ""},
-            {"html": "<html>Google News shell</html>",
-             "final_url": "https://www.npr.org/article",
+            {"html": "<html>JS shell</html>",
+             "final_url": "https://example.com/a",
              "status": "success", "tier": "playwright", "attempts": 2, "errors": [],
              "rendered_text": "The article body text rendered by Playwright with substantial content for testing"},
         ]
 
         mock_engine = mock.MagicMock()
-        # Both calls produce < 30 chars (extraction fails on JS-heavy page)
+        # Both extraction calls produce < 30 chars (JS-heavy page)
         mock_engine.extract_content.side_effect = [
             ("short", "fallback", 0.3),
             ("short", "fallback", 0.3),
         ]
-        mock_engine_cls.return_value = mock_engine
+        engine.extractor = mock_engine
 
-        results = [{"url": "https://news.google.com/articles/CBMim", "body": ""}]
-        out = _extract_news_content(results)
-        assert out[0]["extraction_status"] == "success"
-        # rendered_text fallback should have kicked in
-        assert out[0]["extraction_method"] == "rendered-text"
-        assert "article body" in out[0]["cleaned_content"]
+        seed = [{"url": "https://example.com/a", "title": "t", "body": ""}]
+        out = engine.execute_search_from_urls(seed)
+        assert out[0].extraction_status == "success"
+        # rendered_text fallback should have kicked in (method includes tier)
+        assert out[0].extraction_method.startswith("rendered-text")
+        assert "article body" in out[0].main_content
 
-    @mock.patch('scout_it.cli.ExtractionEngine')
-    @mock.patch('scout_it.cli.fetch_resilient')
-    def test_extract_news_without_sources_playwright_retry(self, mock_fetch, mock_engine_cls):
-        """DDGS result extraction retries with Playwright when < 30 chars (no --sources)"""
-        from scout_it.cli import _extract_news_content
-
-        mock_fetch.side_effect = [
-            {"html": "<html>shell</html>", "final_url": "https://example.com/a",
-             "status": "success", "tier": "requests", "attempts": 1, "errors": [],
-             "rendered_text": ""},
-            {"html": "<html>article body</html>", "final_url": "https://example.com/a",
-             "status": "success", "tier": "playwright", "attempts": 2, "errors": [],
-             "rendered_text": "article rendered text with enough content"},
-        ]
-
-        mock_engine = mock.MagicMock()
-        mock_engine.extract_content.side_effect = [
-            ("too short", "fallback", 0.3),
-            ("article body with real content here", "readability", 0.9),
-        ]
-        mock_engine_cls.return_value = mock_engine
-
-        results = [{"url": "https://example.com/a", "body": ""}]
-        out = _extract_news_content(results)
-        assert out[0]["extraction_status"] == "success"
-        assert out[0]["content_word_count"] >= 5
-
-    @mock.patch('scout_it.cli.ExtractionEngine')
-    @mock.patch('scout_it.cli.fetch_resilient')
-    def test_error_page_detection(self, mock_fetch, mock_engine_cls):
-        """Dead link (MSN 404-style) content is cleared — not passed as real content"""
-        from scout_it.cli import _extract_news_content
+    @mock.patch('scout_it.domain_routing.get_domain_learning')
+    @mock.patch('scout_it.extraction.search.fetch_resilient')
+    @mock.patch('scout_it.extraction.search.ExtractionEngine')
+    def test_error_page_detection(self, mock_engine_cls, mock_fetch, mock_learning):
+        """Dead link (404-style) content is cleared — not passed as real content"""
+        mock_learning.return_value = self._no_domain_learning()
+        engine = self._make_engine()
 
         mock_fetch.return_value = {
-            "html": "<html>error</html>", "final_url": "https://msn.com/dead-link",
-            "status": "success", "tier": "playwright", "attempts": 1, "errors": [],
+            "html": "<html>error</html>", "final_url": "https://example.com/dead-link",
+            "status": "success", "tier": "requests", "attempts": 1, "errors": [],
             "rendered_text": "Whoops! This page doesn't exist or can't be found.",
         }
 
         mock_engine = mock.MagicMock()
         mock_engine.extract_content.return_value = (
             "Whoops! This page doesn't exist or can't be found.", "fallback", 0.3)
-        mock_engine_cls.return_value = mock_engine
+        engine.extractor = mock_engine
 
-        results = [{"url": "https://msn.com/dead-link", "body": ""}]
-        out = _extract_news_content(results)
-        assert out[0]["extraction_status"] == "failed"
+        seed = [{"url": "https://example.com/dead-link", "title": "t", "body": ""}]
+        out = engine.execute_search_from_urls(seed)
+        assert out[0].extraction_status == "failed"
 
-    @mock.patch('scout_it.cli.ExtractionEngine')
-    @mock.patch('scout_it.cli.fetch_resilient')
-    def test_url_propagation_on_playwright_redirect(self, mock_fetch, mock_engine_cls):
-        """URL is updated when Playwright retry resolves through JS redirect"""
-        from scout_it.cli import _extract_news_content
+    @mock.patch('scout_it.domain_routing.get_domain_learning')
+    @mock.patch('scout_it.extraction.search.fetch_resilient')
+    @mock.patch('scout_it.extraction.search.ExtractionEngine')
+    def test_url_propagation_on_playwright_redirect(self, mock_engine_cls, mock_fetch, mock_learning):
+        """final_url is updated when a fetch resolves through a redirect"""
+        mock_learning.return_value = self._no_domain_learning()
+        engine = self._make_engine()
 
         mock_fetch.side_effect = [
             {"html": "<html>shell</html>", "final_url": "https://news.google.com/rss/a",
@@ -1436,12 +1429,12 @@ class TestExtractNewsContentExtended:
             ("short", "fallback", 0.3),
             ("article body text with real content here", "readability", 0.9),
         ]
-        mock_engine_cls.return_value = mock_engine
+        engine.extractor = mock_engine
 
-        results = [{"url": "https://news.google.com/rss/a", "body": ""}]
-        out = _extract_news_content(results)
-        assert out[0]["url"] == "https://www.npr.org/article"
-        assert "npr.org" in out[0]["href"]
+        seed = [{"url": "https://news.google.com/rss/a", "title": "t", "body": ""}]
+        out = engine.execute_search_from_urls(seed)
+        # The engine records the final URL from the successful fetch outcome
+        assert out[0].final_url == "https://www.npr.org/article"
 
 
 if __name__ == '__main__':

@@ -466,7 +466,8 @@ def news_search(
     print(f"  • Playwright tier: {playwright_count}/{len(enriched_results)}")
     print(f"  • Failed/Low quality: {failed_count}/{len(enriched_results)}")
     print(f"  • Total time: {extraction_time_ms/1000:.2f}s")
-    print(f"  • Average per URL: {extraction_time_ms/len(enriched_results)/1000:.2f}s")
+    if enriched_results:
+        print(f"  • Average per URL: {extraction_time_ms/len(enriched_results)/1000:.2f}s")
     
     if playwright_count > 0:
         print(f"  [yellow]⚠️  {playwright_count} URLs used Playwright (3-8s browser launch overhead each)[/yellow]")

@@ -170,12 +170,11 @@ class TestBrowserPoolIntegration:
             pool.stop()
     
     def test_browser_pool_integration_with_cli(self):
-        """Test that browser pool is properly integrated with _extract_news_content."""
+        """Test that browser pool is properly integrated with the unified extraction engine."""
         pytest.importorskip("playwright")
-        
-        from scout_it.cli import _extract_news_content
-        
-        # Create mock results (minimal data needed for extraction)
+
+        from scout_it.extraction import EnterpriseSearchEngine
+
         mock_results = [
             {
                 "url": "about:blank",
@@ -183,25 +182,22 @@ class TestBrowserPoolIntegration:
                 "body": "Test content for extraction",
             }
         ]
-        
-        # Run extraction (should use browser pool internally)
+
+        # Run extraction via the unified engine (should use the browser pool
+        # internally when escalating to Playwright).
         try:
-            enriched = _extract_news_content(
-                results=mock_results,
+            engine = EnterpriseSearchEngine(
                 max_workers=1,
                 max_fetch_retries=1,
                 enable_js_fallback=True,
             )
-            
-            # Should have processed the result
+            enriched = engine.execute_search_from_urls(mock_results)
+
             assert len(enriched) == 1
             assert enriched[0] is not None
-            
-            # Check that extraction was attempted
-            assert "extraction_status" in enriched[0]
-            
+            assert hasattr(enriched[0], "extraction_status")
+
         except Exception as e:
-            # If there's an error, it should not be a greenlet error
             assert "greenlet" not in str(e).lower(), f"Greenlet error occurred: {e}"
 
 

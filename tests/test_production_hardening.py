@@ -21,28 +21,19 @@ deduplicate_entries = _tech_crunch_rss.deduplicate_entries
 sort_entries = _tech_crunch_rss.sort_entries
 get_feed_health = _tech_crunch_rss.get_feed_health
 _CIRCUIT_BREAKERS = _tech_crunch_rss._CIRCUIT_BREAKERS
-    DEFAULT_CONFIG,
-    
-    # Exceptions
-    RSSProviderError,
-    FeedValidationError,
-    FeedFetchError,
-    FeedParseError,
-    SearchError,
-    ExportError,
-    
-    # Core functions
-    get_latest_entries,
-    search_feeds,
-    search_entries,
-    
-    # Observability
-    get_runtime_statistics,
-    
-    # Export
-    export_json,
-    export_csv,
-)
+DEFAULT_CONFIG = _tech_crunch_rss.DEFAULT_CONFIG
+RSSProviderError = _tech_crunch_rss.RSSProviderError
+FeedValidationError = _tech_crunch_rss.FeedValidationError
+FeedFetchError = _tech_crunch_rss.FeedFetchError
+FeedParseError = _tech_crunch_rss.FeedParseError
+SearchError = _tech_crunch_rss.SearchError
+ExportError = _tech_crunch_rss.ExportError
+get_latest_entries = _tech_crunch_rss.get_latest_entries
+search_feeds = _tech_crunch_rss.search_feeds
+search_entries = _tech_crunch_rss.search_entries
+get_runtime_statistics = _tech_crunch_rss.get_runtime_statistics
+export_json = _tech_crunch_rss.export_json
+export_csv = _tech_crunch_rss.export_csv
 
 def test_configuration():
     """Test configuration system."""

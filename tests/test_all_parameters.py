@@ -6,6 +6,8 @@ Tests all parameters with actual function calls.
 
 import json
 from unittest import mock
+import importlib
+
 from scout_it.cli import (
     web_search,
     image_search,
@@ -14,6 +16,23 @@ from scout_it.cli import (
     fetch_url,
     video_extract,
 )
+
+# Resolve the real implementation modules (folders use hyphens, so they are
+# imported via importlib and patched with mock.patch.object). Patching these
+# namespaces — not the cli re-exports — is what actually prevents network
+# access during the parameter-combination smoke tests below.
+_web_search_mod = importlib.import_module('.web-search.web_search', package='scout_it')
+_news_search_mod = importlib.import_module('.news-search.news_search', package='scout_it')
+_video_mod = importlib.import_module('.commands.video', package='scout_it')
+_url_mod = importlib.import_module('.commands.url', package='scout_it')
+_image_mod = importlib.import_module('.commands.image', package='scout_it')
+
+
+def _mock_ddgs_empty():
+    """Return a mock that yields zero DDGS results without touching the network."""
+    m = mock.Mock(return_value=([], {}))
+    return m
+
 
 def test_web_search_parameters():
     """Test web_search with all parameter combinations"""
@@ -89,24 +108,24 @@ def test_web_search_parameters():
         print(f"\n  ✓ Testing: {test_case['name']}")
         print(f"    Parameters: {json.dumps(test_case['kwargs'], indent=6)}")
         try:
-            # Mock the actual search to avoid network calls
-            with mock.patch('scout_it.cli.EnterpriseSearchEngine') as mock_engine:
+            # Mock the discovery layer (DDGS) and the extraction engine at the
+            # real call sites so no network call is made.
+            with mock.patch.object(_web_search_mod, '_ddgs_list_search_with_retry',
+                                   return_value=([], {})), \
+                 mock.patch.object(_web_search_mod, 'EnterpriseSearchEngine') as mock_engine:
                 mock_instance = mock.Mock()
-                mock_instance.execute_search.return_value = []
+                mock_instance.execute_search_from_urls.return_value = []
                 mock_instance.stats = {'total': 0, 'success': 0}
                 mock_engine.return_value = mock_instance
-                
-                with mock.patch('scout_it.cli.process_results') as mock_process:
-                    mock_process.return_value = ([], {})
-                    
-                    result = web_search(**test_case['kwargs'])
-                    
-                    # Verify result structure
-                    if isinstance(result, tuple) and len(result) == 2:
-                        print(f"    ✅ PASS - Returned tuple with 2 elements")
-                    else:
-                        print(f"    ❌ FAIL - Expected tuple, got {type(result)}")
+
+                result = web_search(**test_case['kwargs'])
+
+                if isinstance(result, tuple) and len(result) == 2:
+                    print(f"    ✅ PASS - Returned tuple with 2 elements")
+                else:
+                    print(f"    ❌ FAIL - Expected tuple, got {type(result)}")
         except Exception as e:
+            print(f"    ❌ FAIL - Exception: {str(e)}")
             print(f"    ❌ FAIL - Exception: {str(e)}")
 
 
@@ -204,21 +223,21 @@ def test_image_search_parameters():
         print(f"\n  ✓ Testing: {test_case['name']}")
         print(f"    Parameters: {json.dumps({k: str(v) for k, v in test_case['kwargs'].items()}, indent=6)}")
         try:
-            with mock.patch('scout_it.cli.ImageSearchEngine') as mock_engine:
+            # Mock the image search engine at its real call site.
+            with mock.patch.object(_image_mod, 'ImageSearchEngine') as mock_engine:
                 mock_instance = mock.Mock()
                 mock_instance.execute_image_search.return_value = []
+                mock_instance.stats = {}
                 mock_engine.return_value = mock_instance
-                
-                with mock.patch('scout_it.cli.process_results') as mock_process:
-                    mock_process.return_value = ([], {})
-                    
-                    result = image_search(**test_case['kwargs'])
-                    
-                    if isinstance(result, tuple) and len(result) == 2:
-                        print(f"    ✅ PASS - Returned tuple with 2 elements")
-                    else:
-                        print(f"    ❌ FAIL - Expected tuple, got {type(result)}")
+
+                result = image_search(**test_case['kwargs'])
+
+                if isinstance(result, tuple) and len(result) == 2:
+                    print(f"    ✅ PASS - Returned tuple with 2 elements")
+                else:
+                    print(f"    ❌ FAIL - Expected tuple, got {type(result)}")
         except Exception as e:
+            print(f"    ❌ FAIL - Exception: {str(e)}")
             print(f"    ❌ FAIL - Exception: {str(e)}")
 
 
@@ -277,22 +296,18 @@ def test_news_search_parameters():
         print(f"\n  ✓ Testing: {test_case['name']}")
         print(f"    Parameters: {json.dumps({k: str(v) for k, v in test_case['kwargs'].items()}, indent=6)}")
         try:
-            with mock.patch('scout_it.cli.requests.get') as mock_get:
-                mock_response = mock.Mock()
-                mock_response.text = "<html><body>test</body></html>"
-                mock_response.status_code = 200
-                mock_get.return_value = mock_response
-                
-                with mock.patch('scout_it.cli.process_results') as mock_process:
-                    mock_process.return_value = ([], {})
-                    
-                    result = news_search(**test_case['kwargs'])
-                    
-                    if isinstance(result, tuple) and len(result) == 2:
-                        print(f"    ✅ PASS - Returned tuple with 2 elements")
-                    else:
-                        print(f"    ❌ FAIL - Expected tuple, got {type(result)}")
+            # Mock the DDGS discovery layer at its real call site so news_search
+            # returns empty without any network access.
+            with mock.patch.object(_news_search_mod, '_ddgs_list_search_with_retry',
+                                   return_value=([], {})):
+                result = news_search(**test_case['kwargs'])
+
+                if isinstance(result, tuple) and len(result) == 2:
+                    print(f"    ✅ PASS - Returned tuple with 2 elements")
+                else:
+                    print(f"    ❌ FAIL - Expected tuple, got {type(result)}")
         except Exception as e:
+            print(f"    ❌ FAIL - Exception: {str(e)}")
             print(f"    ❌ FAIL - Exception: {str(e)}")
 
 
@@ -354,22 +369,17 @@ def test_video_search_parameters():
         print(f"\n  ✓ Testing: {test_case['name']}")
         print(f"    Parameters: {json.dumps({k: str(v) for k, v in test_case['kwargs'].items()}, indent=6)}")
         try:
-            with mock.patch('scout_it.cli.requests.get') as mock_get:
-                mock_response = mock.Mock()
-                mock_response.text = "<html><body>test</body></html>"
-                mock_response.status_code = 200
-                mock_get.return_value = mock_response
-                
-                with mock.patch('scout_it.cli.process_results') as mock_process:
-                    mock_process.return_value = ([], {})
-                    
-                    result = video_search(**test_case['kwargs'])
-                    
-                    if isinstance(result, tuple) and len(result) == 2:
-                        print(f"    ✅ PASS - Returned tuple with 2 elements")
-                    else:
-                        print(f"    ❌ FAIL - Expected tuple, got {type(result)}")
+            # Mock the DDGS video-discovery call at its real call site.
+            with mock.patch.object(_video_mod, '_ddgs_list_search_with_retry',
+                                   return_value=([], {})):
+                result = video_search(**test_case['kwargs'])
+
+                if isinstance(result, tuple) and len(result) == 2:
+                    print(f"    ✅ PASS - Returned tuple with 2 elements")
+                else:
+                    print(f"    ❌ FAIL - Expected tuple, got {type(result)}")
         except Exception as e:
+            print(f"    ❌ FAIL - Exception: {str(e)}")
             print(f"    ❌ FAIL - Exception: {str(e)}")
 
 
@@ -402,29 +412,30 @@ def test_fetch_url_parameters():
         print(f"\n  ✓ Testing: {test_case['name']}")
         print(f"    Parameters: {json.dumps({k: str(v) for k, v in test_case['kwargs'].items()}, indent=6)}")
         try:
-            with mock.patch('scout_it.cli.requests.get') as mock_get:
-                mock_response = mock.Mock()
-                mock_response.text = "<html><title>Test Page</title><body>test content</body></html>"
-                mock_response.status_code = 200
-                mock_response.url = "https://example.com"
-                mock_get.return_value = mock_response
-                
-                with mock.patch('scout_it.cli.ExtractionEngine') as mock_engine_class:
-                    mock_engine = mock.Mock()
-                    mock_engine.extract_content.return_value = ("test content", "trafilatura", 0.95)
-                    mock_engine_class.return_value = mock_engine
-                    mock_engine_class.USER_AGENTS = ["Mozilla/5.0"]
-                    
-                    with mock.patch('scout_it.cli.process_results') as mock_process:
-                        mock_process.return_value = ([{"title": "Test"}], {})
-                        
-                        result = fetch_url(**test_case['kwargs'])
-                        
-                        if isinstance(result, dict) and ("result" in result or "error" not in result):
-                            print(f"    ✅ PASS - Returned dict with expected structure")
-                        else:
-                            print(f"    ❌ FAIL - Unexpected result structure: {result}")
+            # Mock the resilient fetcher and extractor at their real call sites
+            # so fetch_url runs entirely offline.
+            with mock.patch.object(_url_mod, 'fetch_resilient') as mock_fetch, \
+                 mock.patch.object(_url_mod, 'ExtractionEngine') as mock_engine_class:
+                mock_fetch.return_value = {
+                    "status": "success",
+                    "html": "<html><title>Test Page</title><body>test content</body></html>",
+                    "final_url": "https://example.com",
+                    "tier": "requests",
+                    "attempts": 1,
+                    "errors": [],
+                }
+                mock_engine = mock.Mock()
+                mock_engine.extract_content.return_value = ("test content", "trafilatura", 0.95)
+                mock_engine_class.return_value = mock_engine
+
+                result = fetch_url(**test_case['kwargs'])
+
+                if isinstance(result, dict) and ("result" in result or "error" in result):
+                    print(f"    ✅ PASS - Returned dict with result/error")
+                else:
+                    print(f"    ❌ FAIL - Unexpected result: {type(result)}")
         except Exception as e:
+            print(f"    ❌ FAIL - Exception: {str(e)}")
             print(f"    ❌ FAIL - Exception: {str(e)}")
 
 

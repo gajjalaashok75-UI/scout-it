@@ -459,7 +459,8 @@ def staged_ranking_pipeline(
     Args:
         all_candidates: All candidate articles from providers
         query: Search query
-        extract_content_fn: Function to extract content (e.g., _extract_news_content)
+        extract_content_fn: Function to extract content (e.g.
+            ``EnterpriseSearchEngine.execute_search_from_urls``)
         initial_top_k: Number of candidates to extract content for
         final_top_k: Final number of results to return
         **extract_kwargs: Arguments for extract_content_fn

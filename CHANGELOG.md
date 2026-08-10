@@ -74,6 +74,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧪 Tests — Retarget Suite to Post-Refactor Module Layout
+
+- Rewired mock patches from `scout_it.cli.*` / `scout_it.extraction.*` to the real
+  implementation modules (`scout_it.commands.url`, `scout_it.commands.video`,
+  `scout_it.web-search.web_search`, `scout_it.news-search.news_search`,
+  `scout_it.extraction.search`) so tests hit the names actually bound after the
+  module split
+- Replaced deprecated `_extract_news_content` tests with
+  `EnterpriseSearchEngine.execute_search_from_urls`, exercising the unified
+  production path shared by web-search and news-search
+- Fixed broken `globals().update(...)` syntax in `test_enhanced_rss.py` and
+  `test_production_hardening.py` (refactor leftovers)
+- Added `pytest.importorskip("playwright")` guards to Playwright-dependent
+  resilience tests
+
+### 🔧 Fixed — Post-Refactor Consistency Fixes
+
+- **`cli.py`**: Re-export `_enhance_video_descriptions` / `_fetch_youtube_metadata`
+  from `commands/video.py` so legacy imports and `mock.patch('scout_it.cli...')` keep working
+- **`extraction/engine.py`**: Add `extract_meta_description()` helper (meta/og/twitter
+  description extraction with HTML unescaping)
+- **`news-search/news_search.py`** & **`web-search/web_search.py`**: Guard division by
+  zero in the average-per-URL timing print when no URLs were enriched
+- **`source_resolvers.py`**: Add `news.google.com` to `WRAPPER_DOMAINS`
+- **`staged_ranker.py`**: Correct `extract_content_fn` docstring
+
 ### 🔥 Unified Extraction Engine (Code Deduplication) — August 6, 2026
 
 - **Unified web-search and news-search to use identical extraction engine**

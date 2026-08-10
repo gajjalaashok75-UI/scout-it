@@ -68,7 +68,7 @@ try:
     
     # Verify ranking happens before extraction
     rank_pos = source.find("rank_candidates_initial")
-    extract_pos = source.find("_extract_news_content")
+    extract_pos = source.find("execute_search_from_urls")
     
     assert rank_pos > 0, "Ranking function not found"
     assert extract_pos > 0, "Extraction function not found"
@@ -123,7 +123,7 @@ print("=" * 70)
 
 try:
     # Verify that extraction uses ranked_candidates, not all_raw_results
-    assert "_extract_news_content(" in source, "Extraction function not called"
+    assert "execute_search_from_urls(" in source, "Extraction function not called"
     assert "ranked_candidates," in source or "ranked_candidates)" in source, \
         "Extraction should use ranked_candidates, not all_raw_results"
     print("✅ Extraction uses ranked_candidates (correct)")

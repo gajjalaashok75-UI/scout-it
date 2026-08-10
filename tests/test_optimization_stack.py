@@ -57,8 +57,7 @@ class TestOptimizationStack:
         try:
             from scout_it.browser_pool import PlaywrightBrowserPool
             from scout_it.domain_routing import DomainRouter, get_domain_router
-            from scout_it.extraction import fetch_resilient
-            from scout_it.cli import _extract_news_content
+            from scout_it.extraction import fetch_resilient, EnterpriseSearchEngine
             assert True
         except ImportError as e:
             pytest.fail(f"Failed to import optimization modules: {e}")
@@ -76,19 +75,19 @@ class TestOptimizationStack:
         assert str(router.stats_file).endswith("domain_stats.json")
     
     def test_extraction_pipeline_components(self):
-        """Verify extraction pipeline has all optimization components."""
+        """Verify the unified extraction pipeline has all optimization components."""
         import inspect
-        from scout_it.cli import _extract_news_content
-        
-        # Check function signature
-        sig = inspect.signature(_extract_news_content)
+        from scout_it.extraction import EnterpriseSearchEngine
+
+        # The unified engine is the extraction entrypoint for both web-search
+        # and news-search flows.
+        sig = inspect.signature(EnterpriseSearchEngine.__init__)
         params = list(sig.parameters.keys())
-        
-        # Should have key parameters
-        assert 'results' in params
+
         assert 'max_workers' in params
         assert 'enable_js_fallback' in params
-    
+        assert 'max_fetch_retries' in params
+        assert hasattr(EnterpriseSearchEngine, 'execute_search_from_urls')
     def test_optimization_configuration(self):
         """Test optimization configuration."""
         from scout_it.browser_pool import PlaywrightBrowserPool

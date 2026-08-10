@@ -124,17 +124,17 @@ class TestCompleteWorkflow:
     
     def test_workflow_integration_points(self):
         """Test that all integration points exist."""
-        from scout_it.cli import _extract_news_content
+        from scout_it.extraction import EnterpriseSearchEngine
         import inspect
-        
-        # Check function has optimization parameters
-        sig = inspect.signature(_extract_news_content)
+
+        # The unified engine is the extraction entrypoint for both flows.
+        sig = inspect.signature(EnterpriseSearchEngine.__init__)
         params = list(sig.parameters.keys())
-        
+
         assert 'enable_js_fallback' in params
         assert 'max_workers' in params
+        assert hasattr(EnterpriseSearchEngine, 'execute_search_from_urls')
         print("✅ All integration points present")
-    
     def test_workflow_optimization_summary(self):
         """Display complete optimization summary."""
         

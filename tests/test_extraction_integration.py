@@ -221,17 +221,30 @@ class TestDomainLearning:
 
 
 class TestEndToEndExtraction:
-    """Test complete extraction flow with mocked HTTP calls."""
-    
-    @patch('scout_it.cli.fetch_resilient')
-    @patch('scout_it.cli.ExtractionEngine')
-    def test_extraction_with_quality_escalation(self, mock_engine_class, mock_fetch):
-        """Test extraction with automatic Playwright escalation."""
-        # Setup mocks
-        mock_engine = MagicMock()
-        mock_engine_class.return_value = mock_engine
-        
-        # First call (requests): returns short content
+    """Test the unified EnterpriseSearchEngine end-to-end extraction flow."""
+
+    @staticmethod
+    def _no_domain_learning():
+        learning = MagicMock()
+        learning.get_strategy.return_value = ("requests", 0.0)
+        return learning
+
+    @patch('scout_it.domain_routing.get_domain_learning')
+    @patch('scout_it.extraction.search.fetch_resilient')
+    @patch('scout_it.extraction.search.ExtractionEngine')
+    def test_extraction_with_quality_escalation(self, mock_engine_class, mock_fetch, mock_learning):
+        """Test EnterpriseSearchEngine automatic Playwright escalation."""
+        from scout_it.extraction import EnterpriseSearchEngine
+
+        mock_learning.return_value = self._no_domain_learning()
+        engine = EnterpriseSearchEngine(
+            max_workers=1,
+            enable_js_fallback=True,
+            enable_alternate_source=False,
+            enable_dns_fallback=False,
+            enable_bandit=False,
+        )
+
         mock_fetch.side_effect = [
             {
                 'status': 'success',
@@ -240,7 +253,6 @@ class TestEndToEndExtraction:
                 'tier': 'requests',
                 'errors': [],
             },
-            # Second call (Playwright escalation): returns full content
             {
                 'status': 'success',
                 'html': '<html><body>' + ('Long content word ' * 200) + '</body></html>',
@@ -249,82 +261,61 @@ class TestEndToEndExtraction:
                 'errors': [],
             },
         ]
-        
-        # Mock extraction
+        mock_engine = MagicMock()
         mock_engine.extract_content.side_effect = [
-            ("Short content", "heuristic", 0.5),  # First extraction
-            ("Long content " * 200, "heuristic", 0.9),  # Second extraction
+            ("Short content", "heuristic", 0.5),
+            ("Long content " * 200, "heuristic", 0.9),
         ]
-        
-        # Import and call extraction function
-        from scout_it.cli import _extract_news_content
-        
-        results = [
-            {
-                'url': 'https://example.com/article',
-                'title': 'Test Article',
-                'body': 'Summary',
-            }
-        ]
-        
-        enriched = _extract_news_content(
-            results,
-            max_workers=1,
-            enable_js_fallback=True,
-            max_fetch_retries=2,
-        )
-        
-        # Verify escalation occurred (fetch_resilient called twice)
+        engine.extractor = mock_engine
+
+        # Force the quality gate to escalate on the first (short) extraction.
+        with patch('scout_it.extraction_quality.should_escalate_to_playwright',
+                   side_effect=[(True, "short content"), (False, "")]):
+            out = engine.execute_search_from_urls([
+                {'url': 'https://example.com/article', 'title': 'Test Article', 'body': 'Summary'},
+            ])
+
+        assert len(out) == 1
+        # Escalation: fetch_resilient called twice (requests, then Playwright)
         assert mock_fetch.call_count == 2
-        
-        # Verify second call had force_js=True
         second_call_kwargs = mock_fetch.call_args_list[1][1]
         assert second_call_kwargs['force_js'] is True
-    
-    @patch('scout_it.cli.fetch_resilient')
-    @patch('scout_it.cli.ExtractionEngine')
-    def test_extraction_with_wrapper_resolution(self, mock_engine_class, mock_fetch):
-        """Test extraction with MSN wrapper resolution."""
-        mock_engine = MagicMock()
-        mock_engine_class.return_value = mock_engine
-        
-        # Mock fetch
+
+    @patch('scout_it.domain_routing.get_domain_learning')
+    @patch('scout_it.extraction.search.fetch_resilient')
+    @patch('scout_it.extraction.search.ExtractionEngine')
+    def test_extraction_with_wrapper_resolution(self, mock_engine_class, mock_fetch, mock_learning):
+        """Test EnterpriseSearchEngine re-resolves MSN wrapper URLs at extraction time."""
+        from scout_it.extraction import EnterpriseSearchEngine
+
+        mock_learning.return_value = self._no_domain_learning()
+        engine = EnterpriseSearchEngine(
+            max_workers=1,
+            enable_js_fallback=False,
+            enable_alternate_source=False,
+            enable_dns_fallback=False,
+            enable_bandit=False,
+        )
+
         mock_fetch.return_value = {
             'status': 'success',
             'html': '<html><body>' + ('Article content ' * 100) + '</body></html>',
-            'final_url': 'https://cbsnews.com/tech/story',
+            'final_url': 'https://cbsnews.com/tech-story',
             'tier': 'requests',
             'errors': [],
         }
-        
-        # Mock extraction
-        mock_engine.extract_content.return_value = (
-            "Article content " * 100,
-            "heuristic",
-            0.9,
-        )
-        
-        from scout_it.cli import _extract_news_content
-        
-        results = [
-            {
-                'url': 'https://www.msn.com/article?url=https://cbsnews.com/tech/story',
-                'title': 'Tech News Story',
-                'body': 'Summary',
-            }
-        ]
-        
-        enriched = _extract_news_content(
-            results,
-            max_workers=1,
-            enable_js_fallback=True,
-            max_fetch_retries=2,
-        )
-        
-        # Verify wrapper was detected and URL updated
-        assert enriched[0].get('original_wrapper_url') is not None
-        # Resolved URL should be used
-        assert 'cbsnews.com' in enriched[0]['url']
+        mock_engine = MagicMock()
+        mock_engine.extract_content.return_value = ("Article content " * 100, "heuristic", 0.9)
+        engine.extractor = mock_engine
+
+        out = engine.execute_search_from_urls([
+            {'url': 'https://www.msn.com/article?url=https://cbsnews.com/tech-story',
+             'title': 'Tech News Story', 'body': 'Summary'},
+        ])
+
+        assert len(out) == 1
+        # The engine re-resolves the MSN wrapper to the publisher URL.
+        assert 'cbsnews.com' in out[0].url
 
 
 class TestQualityScoring:

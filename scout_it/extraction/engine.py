@@ -3,6 +3,7 @@
 import hashlib
 import re
 import warnings
+from html import unescape
 from typing import Tuple
 
 import justext
@@ -12,6 +13,26 @@ from bs4 import BeautifulSoup
 from requests import Session
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+
+def extract_meta_description(html_text: str) -> str:
+    """Extract a meta/og/twitter description from an HTML document's head.
+
+    Meta descriptions are full sentences (unlike truncated search snippets),
+    so they make a useful fallback when body extraction yields little content.
+    """
+    if not html_text:
+        return ""
+    patterns = [
+        r'<meta\s+name="description"\s+content="([^"]*)"',
+        r'<meta\s+property="og:description"\s+content="([^"]*)"',
+        r'<meta\s+name="twitter:description"\s+content="([^"]*)"',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, html_text, flags=re.IGNORECASE)
+        if match and match.group(1).strip():
+            return unescape(match.group(1).strip())
+    return ""
 
 
 class ExtractionEngine:

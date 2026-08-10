@@ -351,6 +351,7 @@ class TestFetchResilientWiring:
             mock_available.assert_not_called()
 
     def test_persistent_profile_used_for_tier2_when_enabled(self):
+        pytest.importorskip("playwright")
         import scout_it.extraction as ext
 
         with mock.patch("playwright.sync_api.sync_playwright") as mock_pw_ctor, \
@@ -378,6 +379,7 @@ class TestFetchResilientWiring:
             fake_context.close.assert_called_once()
 
     def test_bandit_reordering_skips_tier1_for_playwright_favored_domain(self, tmp_strategy_db):
+        pytest.importorskip("playwright")
         import scout_it.extraction as ext
         import scout_it.strategy_cache as sc
 

@@ -23,6 +23,7 @@ WRAPPER_DOMAINS = {
     "www.yahoo.com",
     "aol.com",
     "www.aol.com",
+    "news.google.com",
 }
 
 

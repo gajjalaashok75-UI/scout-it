@@ -91,6 +91,14 @@ try:
         multi_search,
         wikipedia_search,
     )
+    # Backward-compatibility: these helpers were originally defined in cli.py
+    # before the refactor split them into commands/video.py. Re-export them so
+    # `from scout_it.cli import ...` and
+    # `mock.patch('scout_it.cli._fetch_youtube_metadata')` keep working.
+    from .commands.video import (
+        _enhance_video_descriptions,
+        _fetch_youtube_metadata,
+    )
     from .utils import (
         check_internet_connection,
         ensure_internet_connection,

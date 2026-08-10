@@ -16,39 +16,6 @@ globals().update({name: getattr(_tech_crunch_rss, name) for name in [
     'get_feed_metadata', 'get_feed_health', 'to_json', 'export_json',
     'filter_by_date', 'filter_by_domain', 'get_all_feed_entries',
 ]})
-    get_latest_entries,
-    search_feeds,
-    search_entries,
-    rank_entries,
-    
-    # New filtering functions
-    filter_by_date,
-    filter_by_author,
-    filter_by_domain,
-    filter_by_keyword,
-    filter_by_feed,
-    
-    # Analytics functions
-    get_top_authors,
-    get_top_keywords,
-    get_feed_activity,
-    get_feed_distribution,
-    
-    # Export functions
-    export_json,
-    export_yaml,
-    export_csv,
-    export_jsonl,
-    
-    # Cache management
-    clear_cache,
-    invalidate_cache,
-    
-    # Enhanced features
-    refresh_feed_registry,
-    get_feed_health,
-    get_feed_statistics,
-)
 
 def test_basic_functionality():
     """Test basic RSS functionality."""
