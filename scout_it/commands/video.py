@@ -1,10 +1,17 @@
-"""Video search and extraction command module."""
+"""Video search and extraction command module — unified discovery -> rank -> output.
+
+Mirrors the web-search/news-search unified flow: discover candidate videos
+from multiple sources (DuckDuckGo Videos + video RSS category feeds, e.g.
+YouTube channel feeds), rank them with the shared ``rank_candidates_initial``
+scorer, and return the top results.
+"""
 
 import json
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 from html import unescape
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
 import requests
@@ -14,6 +21,10 @@ from ..extraction import (
     _ddgs_list_search_with_retry,
     fetch_resilient,
 )
+from ..staged_ranker import rank_candidates_initial
+from .video_category_providers import fetch_video_category_feeds
+
+logger = logging.getLogger(__name__)
 
 # YouTube URL pattern - matches youtube.com/watch?v=VIDEO_ID or youtu.be/VIDEO_ID
 _YOUTUBE_RE = re.compile(r'(?:youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{11})')
@@ -31,9 +42,32 @@ def video_search(
     retry_on_zero_success: bool = True,
     retry_attempts: int = 2,
     retry_backoff: float = 1.0,
+    categories: Optional[Sequence[str]] = None,
+    include_rss: bool = False,
+    top_k: Optional[int] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """DuckDuckGo video search wrapper (retried on zero results)."""
-    results, stats = _ddgs_list_search_with_retry(
+    """Execute the unified video search pipeline: discover -> rank -> output.
+
+    Discovery sources (merged before ranking):
+      1. DuckDuckGo Videos (always).
+      2. Video RSS category feeds (YouTube channel feeds) when ``categories``
+         is given or ``include_rss=True``.
+
+    Ranking uses the shared ``rank_candidates_initial`` scorer (title/body
+    relevance, source quality, recency) - the same one used by
+    web-search/news-search.
+
+    Args:
+        query: Search query string.
+        max_results: Max videos to fetch from DuckDuckGo.
+        categories: Video RSS categories to include (e.g. ``["technology","science"]``).
+        include_rss: Force RSS discovery even without ``categories``.
+        top_k: Number of ranked results to return (defaults to ``max_results``).
+
+    Returns:
+        ``(video_results, stats)`` tuple with ranked video metadata.
+    """
+    ddgs_results, ddgs_stats = _ddgs_list_search_with_retry(
         'videos',
         query=query,
         max_results=max_results,
@@ -49,7 +83,85 @@ def video_search(
         max_zero_success_retries=retry_attempts,
         retry_backoff_seconds=retry_backoff,
     )
-    return results, {'search_engine': stats}
+
+    # Normalize DDGS video results into ranking candidate shape.
+    candidates: List[Dict[str, Any]] = []
+    for r in ddgs_results:
+        url = r.get("content") or r.get("url") or ""
+        candidates.append({
+            "title": r.get("title", ""),
+            "content": url,
+            "url": url,
+            "description": r.get("description", ""),
+            "body": r.get("description", "") or r.get("title", ""),
+            "snippet": r.get("description", ""),
+            "thumbnail": r.get("image") or r.get("thumbnail", ""),
+            "image": r.get("image") or r.get("thumbnail", ""),
+            "source": "DuckDuckGo",
+            "publish_date": r.get("date", "") or r.get("published", ""),
+        })
+
+    rss_count = 0
+    rss_categories = list(categories) if categories else []
+    if rss_categories:
+        rss_entries = fetch_video_category_feeds(rss_categories, query, max_results=max_results)
+        candidates.extend(rss_entries)
+        rss_count += len(rss_entries)
+    elif include_rss:
+        # No categories given: pull a small default set of popular channels.
+        from .video_category_providers import VIDEO_CATEGORY_PROVIDERS
+        default_cats = list(VIDEO_CATEGORY_PROVIDERS.keys())[:3]
+        if default_cats:
+            rss_entries = fetch_video_category_feeds(default_cats, query, max_results=max_results)
+            candidates.extend(rss_entries)
+            rss_count += len(rss_entries)
+
+    # ---- Rank (shared scorer) ----
+    limit = int(top_k) if top_k is not None else int(max_results)
+    ranked = rank_candidates_initial(candidates, query, top_k=max(limit, len(candidates)))
+
+    # Dedupe by video URL and emit ranked output.
+    seen: set = set()
+    output: List[Dict[str, Any]] = []
+    for entry in ranked:
+        url = entry.get("url") or entry.get("content") or ""
+        # Keep URL-less entries too (e.g. stub DDGS results in tests) by
+        # falling back to a title-based key so they are not silently dropped.
+        key = url or f"title:{entry.get('title', '')}"
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        output.append({
+            "position": len(output) + 1,
+            "title": entry.get("title", ""),
+            "content": url,
+            "url": url,
+            "description": entry.get("description", ""),
+            "body": entry.get("body", ""),
+            "snippet": entry.get("snippet", ""),
+            "image": entry.get("image") or entry.get("thumbnail", ""),
+            "thumbnail": entry.get("thumbnail") or entry.get("image", ""),
+            "source": entry.get("source", "DuckDuckGo"),
+            "publish_date": entry.get("publish_date", ""),
+            "initial_rank_score": entry.get("initial_rank_score", 0.0),
+            "rank_breakdown": entry.get("rank_breakdown", {}),
+        })
+        if len(output) >= limit:
+            break
+
+    stats = {
+        'search_engine': ddgs_stats,
+        'pipeline': 'unified',
+        'ddgs_candidates': len(ddgs_results),
+        'rss_candidates': rss_count,
+        'total_candidates': len(candidates),
+        'ranked_output': len(output),
+        'rss_categories': rss_categories,
+    }
+
+    print(f"🎥 Found {len(output)} ranked videos for query: {query} "
+          f"(DDGS: {len(ddgs_results)}, RSS: {rss_count})")
+    return output, stats
 
 
 def _enhance_video_descriptions(results: List[Dict[str, Any]], max_workers: int = 5) -> List[Dict[str, Any]]:

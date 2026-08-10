@@ -332,6 +332,11 @@ def main():
     img_parser.add_argument('--max-width', type=int, default=None, help='Maximum image width in pixels')
     img_parser.add_argument('--min-height', type=int, default=None, help='Minimum image height in pixels')
     img_parser.add_argument('--max-height', type=int, default=None, help='Maximum image height in pixels')
+    img_parser.add_argument('--category', nargs='+', default=None, dest='category',
+                            help='Image RSS categories to include (e.g. nature space travel). '
+                                 'Fetches Media RSS feeds (Flickr/NASA) alongside DuckDuckGo and ranks them together.')
+    img_parser.add_argument('--rss', action='store_true',
+                            help='Include image RSS discovery even without --category (uses a Flickr tag feed from the query)')
     img_parser.set_defaults(retry_on_zero=True)
     img_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries when 0 valid images are found')
     img_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts when 0 valid images are found')
@@ -406,6 +411,11 @@ def main():
     video_parser.add_argument('--resolution', default=None, help='Video resolution filter (high, standard)')
     video_parser.add_argument('--duration', default=None, help='Video duration filter (short, medium, long)')
     video_parser.add_argument('--license-videos', default=None, help='Video license filter')
+    video_parser.add_argument('--category', nargs='+', default=None, dest='category',
+                               help='Video RSS categories to include (e.g. technology science news). '
+                                    'Fetches YouTube channel RSS feeds alongside DuckDuckGo and ranks them together.')
+    video_parser.add_argument('--rss', action='store_true',
+                               help='Include video RSS discovery even without --category (pulls a default set of YouTube channels)')
     video_parser.set_defaults(retry_on_zero=True)
     video_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries when 0 results are found')
     video_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts when 0 results are found')
@@ -840,6 +850,8 @@ def main():
             max_width=args.max_width,
             min_height=args.min_height,
             max_height=args.max_height,
+            categories=args.category,
+            include_rss=args.rss,
         )
         
         output = {
@@ -862,6 +874,8 @@ def main():
                 'retry_on_zero_success': args.retry_on_zero,
                 'retry_attempts': args.retry_attempts,
                 'retry_backoff': args.retry_backoff,
+                'categories': args.category,
+                'include_rss': args.rss,
             },
             'stats': stats,
             'image_results': image_results
@@ -993,6 +1007,8 @@ def main():
             retry_on_zero_success=args.retry_on_zero,
             retry_attempts=args.retry_attempts,
             retry_backoff=args.retry_backoff,
+            categories=args.category,
+            include_rss=args.rss,
         )
 
         # Enhance truncated DDGS descriptions with full YouTube descriptions
@@ -1012,6 +1028,8 @@ def main():
                 'retry_on_zero_success': args.retry_on_zero,
                 'retry_attempts': args.retry_attempts,
                 'retry_backoff': args.retry_backoff,
+                'categories': args.category,
+                'include_rss': args.rss,
             },
             'stats': stats,
             'video_results': video_results,

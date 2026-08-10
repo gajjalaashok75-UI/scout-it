@@ -27,6 +27,36 @@ def _extract_html_title(html_text: str) -> str:
     return unescape(re.sub(r"\s+", " ", title)).strip()
 
 
+def _playwright_available() -> bool:
+    """True when the Playwright sync API is importable."""
+    try:
+        import playwright.sync_api  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+# Markers that indicate a bot-block / anti-bot interstitial rather than real
+# content, even when the HTTP status was 200.
+_ANTIBOT_MARKERS = (
+    "enable javascript", "captcha", "access denied", "are you a robot",
+    "cloudflare", "just a moment", "cf-browser-verification",
+    "verify you are human", "ddos protection", "request blocked",
+    "incapsula", "perimeterx", "datadome", "akamai",
+)
+
+
+def _looks_antibot(html_text: str) -> bool:
+    """Heuristic: does this response look like an anti-bot wall?"""
+    if not html_text:
+        return True
+    text = html_text.strip()
+    if len(text) < 200:
+        return True
+    lowered = text.lower()
+    return any(marker in lowered for marker in _ANTIBOT_MARKERS)
+
+
 def _check_max_size_warning(max_size: Optional[str], main_content: Any) -> Optional[str]:
     """Check if max_size truncation produced suspiciously short content."""
     if max_size and main_content:
@@ -42,7 +72,7 @@ def fetch_url(
     max_chars: Optional[int] = None,
     max_size: Optional[str] = None,
     raw_html: bool = False,
-    js_render: bool = False,
+    js_render: bool = True,
     no_js_fallback: bool = False,
     max_retries: int = 3,
     enable_alternate_source: bool = False,
@@ -65,9 +95,14 @@ def fetch_url(
     raw_html : bool
         If True, return raw prettified HTML instead of extracted content.
     js_render : bool
-        If True, skip straight to Playwright (headless Chromium) rendering
-        instead of trying plain ``requests`` first. Requires ``playwright``
-        (``pip install scout-it[js-render]`` + ``playwright install chromium``).
+        If True (default), render the page with Playwright (headless Chromium)
+        so JavaScript-driven content and SPAs are captured. Requires
+        ``playwright`` (``pip install scout-it[js-render]`` +
+        ``playwright install chromium``). When Playwright is unavailable the
+        fetcher gracefully falls back to plain ``requests`` + the
+        JS-fallback ladder. Anti-bot sites are detected and re-fetched
+        aggressively with the full tier ladder (TLS impersonation,
+        persistent profile, alternate-source, bandit strategy selection).
     no_js_fallback : bool
         If True, disable the automatic Playwright fallback that normally
         kicks in when plain ``requests`` fails or looks blocked. Has no
@@ -94,16 +129,49 @@ def fetch_url(
     start_time = time.time()
     try:
         extractor = ExtractionEngine()
+        pw_available = _playwright_available()
+        # JS render is the default. Only force the Playwright tier (skip
+        # plain requests) when Playwright is actually installed; otherwise
+        # let requests run first and rely on the JS-fallback ladder.
+        force_js = js_render and pw_available
+        enable_js_fallback = (not no_js_fallback) or js_render
+
         outcome = fetch_resilient(
             url,
             timeout=timeout,
             max_retries=max(1, int(max_retries)),
-            enable_js_fallback=(not no_js_fallback) or js_render,
-            force_js=js_render,
+            enable_js_fallback=enable_js_fallback,
+            force_js=force_js,
             enable_alternate_source=enable_alternate_source,
             enable_persistent_profile=enable_persistent_profile,
             browser_profile_name=browser_profile_name,
         )
+
+        # ---- Anti-bot escalation ----
+        # If the first fetch failed or returned an anti-bot interstitial,
+        # re-fetch with every aggressive strategy enabled: TLS/JA3
+        # impersonation, persistent browser profile, alternate-source
+        # (AMP/mobile/Wayback) ladder, and the bandit strategy selector.
+        needs_aggressive = (
+            outcome["status"] != "success"
+            or _looks_antibot(outcome.get("html", ""))
+        )
+        if needs_aggressive and not (enable_alternate_source and force_js and enable_persistent_profile):
+            aggressive = fetch_resilient(
+                url,
+                timeout=timeout,
+                max_retries=max(1, int(max_retries)),
+                enable_js_fallback=True,
+                force_js=pw_available,
+                enable_alternate_source=True,
+                enable_tls_impersonate=True,
+                enable_persistent_profile=True,
+                enable_bandit=True,
+                browser_profile_name=browser_profile_name,
+            )
+            if aggressive["status"] == "success" and not _looks_antibot(aggressive.get("html", "")):
+                aggressive["errors"] = (outcome.get("errors", []) or []) + ["anti-bot escalation succeeded"] + aggressive.get("errors", [])
+                outcome = aggressive
 
         if outcome["status"] != "success":
             joined = "; ".join(outcome["errors"][-3:])
