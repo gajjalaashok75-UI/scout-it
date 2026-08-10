@@ -179,8 +179,6 @@ tmp_test_*
 # Uncomment these lines if you want to exclude legacy files from git:
 quick_scrape.py
 main_content_cleaner.py
-search.py
-test_search.py
 build_and_test.py
 references/
 .gakrcli/
