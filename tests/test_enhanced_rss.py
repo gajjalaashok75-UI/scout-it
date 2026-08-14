@@ -1,8 +1,22 @@
 #!/usr/bin/env python3
-"""Test script for enhanced TechCrunch RSS module."""
+"""Test script for enhanced TechCrunch RSS module.
+
+Every test in this module fetches live TechCrunch RSS feeds, which can be
+slow or unreachable in CI/sandboxed environments. The whole module is
+therefore skipped unless ``RUN_INTEGRATION_TESTS=1`` is set, matching the
+convention used by ``test_production_hardening.py``.
+"""
 
 import json
+import os
 import importlib
+
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_INTEGRATION_TESTS", "0") != "1",
+    reason="Requires live RSS access; set RUN_INTEGRATION_TESTS=1 to enable.",
+)
 
 _tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
 

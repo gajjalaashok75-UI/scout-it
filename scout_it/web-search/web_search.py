@@ -12,6 +12,8 @@ from dataclasses import asdict
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
+from rich.console import Console
+
 # Import from parent package
 from ..extraction import (
     EnterpriseSearchEngine,
@@ -21,6 +23,10 @@ from ..cleaner import process_results
 
 # Initialize logger
 logger = logging.getLogger(__name__)
+
+# Shared Rich console so [cyan]/[green]/[yellow] markup in print() calls
+# below renders as actual colors instead of literal bracket text.
+console = Console()
 
 
 def web_search(
@@ -107,7 +113,7 @@ def web_search(
     # Phase 1: Lightweight Discovery (Snippets Only, NO Extraction)
     # ══════════════════════════════════════════════════════════════
     
-    print(f"\n[cyan]Phase 1: Lightweight Discovery[/cyan]")
+    console.print(f"\n[cyan]Phase 1: Lightweight Discovery[/cyan]")
     discovery_start = time.time()
     
     # Stream 1: DDGS Search (20 snippets only - MATCH NEWS_SEARCH)
@@ -128,15 +134,15 @@ def web_search(
     def _run_category_rss(cats: List[str]):
         """Get ALL RSS entries from web categories (NO extraction)."""
         from ..web_category_providers import fetch_web_category_feeds, get_available_web_categories
-        print(f"[blue]Web category RSS providers enabled:[/blue] {', '.join(cats)}")
-        print(f"[dim]Available categories: {', '.join(get_available_web_categories())}[/dim]")
+        console.print(f"[blue]Web category RSS providers enabled:[/blue] {', '.join(cats)}")
+        console.print(f"[dim]Available categories: {', '.join(get_available_web_categories())}[/dim]")
         return fetch_web_category_feeds(cats, query, max_results=RSS_NO_LIMIT)
     
     # Stream 3: Wikimedia (if --sources wikimedia)
     def _run_wikimedia_discovery():
         """Get Wikimedia results (NO extraction)."""
         from ..wikimedia_source import wikimedia_search
-        print(f"[blue]Wikimedia source enabled[/blue]")
+        console.print(f"[blue]Wikimedia source enabled[/blue]")
         results = wikimedia_search(query, max_results=RSS_NO_LIMIT)
         # Normalize to search format
         normalized = []
@@ -168,7 +174,7 @@ def web_search(
                 try:
                     stream_outputs[label] = fut.result()
                 except Exception as exc:
-                    print(f"[red]Stream '{label}' failed:[/red] {exc}")
+                    console.print(f"[red]Stream '{label}' failed:[/red] {exc}")
                     stream_outputs[label] = [] if label != 'ddgs' else ([], {})
     else:
         result = streams[0][1]()
@@ -186,13 +192,13 @@ def web_search(
         rss_added = _dedup_append(rss_results) if rss_results else 0
         search_stats['category_rss_providers'] = categories
         search_stats['category_rss_count'] = rss_added
-        print(f"[green]Category RSS providers returned {rss_added} unique results[/green]")
+        console.print(f"[green]Category RSS providers returned {rss_added} unique results[/green]")
     
     if 'wikimedia' in stream_outputs:
         wiki_results = stream_outputs['wikimedia']
         wiki_added = _dedup_append(wiki_results) if wiki_results else 0
         search_stats['wikimedia_count'] = wiki_added
-        print(f"[green]Wikimedia returned {wiki_added} unique results[/green]")
+        console.print(f"[green]Wikimedia returned {wiki_added} unique results[/green]")
     
     discovery_time = time.time() - discovery_start
     candidate_count = len(all_candidates)
@@ -278,12 +284,12 @@ def web_search(
                 if wrapper_stats['google_news'] > 0:
                     dropped_details.append(f"Google News: {wrapper_stats['google_news']}")
                 if dropped_details:
-                    print(f"    [dim]└─ {', '.join(dropped_details)}[/dim]")
+                    console.print(f"    [dim]└─ {', '.join(dropped_details)}[/dim]")
     else:
         print(f"  • Wrapper resolution: skipped (snippets mode keeps all sources)")
     
     if candidate_count == 0:
-        print(f"[red]✗ No candidates discovered[/red]")
+        console.print(f"[red]✗ No candidates discovered[/red]")
         return [], {
             'search_engine': {**search_stats, 'total': 0, 'success': 0},
             'cleaner': {'total_input': 0, 'successful': 0, 'failed': 0, 'processed': 0}
@@ -295,7 +301,7 @@ def web_search(
     # Phase 2: Ranking Candidates (Metadata Only)
     # ══════════════════════════════════════════════════════════════
     
-    print(f"\n[cyan]Phase 2: Ranking Candidates[/cyan]")
+    console.print(f"\n[cyan]Phase 2: Ranking Candidates[/cyan]")
     ranking_start = time.time()
     
     print(f"  • Ranking {len(all_candidates)} candidates by relevance")
@@ -330,7 +336,7 @@ def web_search(
         total_execution_time = round(time.time() - start_time, 3)
         top_snippets = ranked[:EXTRACTION_COUNT]
         
-        print(f"\n[green]✓ Snippet search complete![/green]")
+        console.print(f"\n[green]✓ Snippet search complete![/green]")
         print(f"  • Total execution time: {total_execution_time:.2f}s")
         print(f"  • Discovery: {discovery_time:.2f}s")
         print(f"  • Ranking: {ranking_time/1000:.2f}s")
@@ -389,7 +395,7 @@ def web_search(
     # Phase 4: Content Extraction (Only Top N)
     # ══════════════════════════════════════════════════════════════
     
-    print(f"\n[cyan]Phase 3: Content Extraction[/cyan]")
+    console.print(f"\n[cyan]Phase 3: Content Extraction[/cyan]")
     print(f"  • Extracting full page content for {len(top_n)} URLs")
     print(f"  • Using: requests → Playwright fallback")
     extraction_start = time.time()
@@ -419,7 +425,7 @@ def web_search(
     playwright_count = 0
     failed_count = 0
     
-    print(f"\n[cyan]Extraction Breakdown:[/cyan]")
+    console.print(f"\n[cyan]Extraction Breakdown:[/cyan]")
     for idx, result in enumerate(results_dicts, 1):
         url = result.get('url', '')
         domain = urlparse(url).netloc if url else 'unknown'
@@ -438,12 +444,12 @@ def web_search(
         tier_display = f"[green]{tier:10s}[/green]" if tier == 'requests' else f"[yellow]{tier:10s}[/yellow]"
         status_icon = "✓" if status == 'success' and word_count >= 200 else "✗"
         
-        print(f"  {status_icon} URL {idx:2d} ({domain[:25]:25s}) {tier_display} {word_count:4d} words")
+        console.print(f"  {status_icon} URL {idx:2d} ({domain[:25]:25s}) {tier_display} {word_count:4d} words")
         
         if status != 'success' or word_count < 100:
             failed_count += 1
     
-    print(f"\n[cyan]Extraction Stats:[/cyan]")
+    console.print(f"\n[cyan]Extraction Stats:[/cyan]")
     print(f"  • Requests tier: {requests_count}/{len(results_dicts)}")
     print(f"  • Playwright tier: {playwright_count}/{len(results_dicts)}")
     print(f"  • Failed/Low quality: {failed_count}/{len(results_dicts)}")
@@ -452,7 +458,7 @@ def web_search(
         print(f"  • Average per URL: {extraction_time/len(results_dicts):.2f}s")
     
     if playwright_count > 0:
-        print(f"  [yellow]⚠️  {playwright_count} URLs used Playwright (3-8s browser launch overhead each)[/yellow]")
+        console.print(f"  [yellow]⚠️  {playwright_count} URLs used Playwright (3-8s browser launch overhead each)[/yellow]")
     
     print(f"  ✓ Extracted in {extraction_time:.2f}s")
     
@@ -460,12 +466,12 @@ def web_search(
     # Phase 5: Cleaning & Structuring
     # ══════════════════════════════════════════════════════════════
     
-    print(f"\n[cyan]Phase 4: Cleaning & Structuring[/cyan]")
+    console.print(f"\n[cyan]Phase 4: Cleaning & Structuring[/cyan]")
     structured_results, cleaner_stats = process_results(results_dicts)
     
     total_time = time.time() - start_time
     
-    print(f"\n[green]✓ Web search complete![/green]")
+    console.print(f"\n[green]✓ Web search complete![/green]")
     print(f"  • Total execution time: {total_time:.2f}s")
     print(f"  • Discovery: {discovery_time:.2f}s")
     print(f"  • Ranking: {ranking_time/1000:.2f}s")

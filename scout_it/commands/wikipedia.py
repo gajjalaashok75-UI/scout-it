@@ -51,6 +51,7 @@ def _wiki_do_bundle(
                 "href": f"{base_url}wiki/{quote(title.replace(' ', '_'))}",
                 "body": clean_noise_text(snippet) if clean_text else snippet,
                 "source": f"wikimedia:{proj_key}",
+                "project": proj_key,
                 "pageid": item.get("pageid") if isinstance(item, dict) else None,
             })
     if clean_text:

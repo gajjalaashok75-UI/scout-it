@@ -1108,8 +1108,10 @@ def _parse_with_manual_fallback(xml_text: str, domain: str = "all") -> List[Dict
     feed_type = _detect_feed_type(root)
     entries: List[Dict[str, Any]] = []
     if feed_type == "rss":
-        channel = root.find("channel") or root
-        items = channel.findall("item") if channel is not None else []
+        channel = root.find("channel")
+        if channel is None:
+            channel = root
+        items = channel.findall("item")
         for item in items:
             raw = {
                 "title": _find_text(item, ["title"]),

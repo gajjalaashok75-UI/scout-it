@@ -9,6 +9,14 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import pytest
+
+_skip_without_integration = pytest.mark.skipif(
+    os.getenv("RUN_INTEGRATION_TESTS", "0") != "1",
+    reason="Requires live RSS access; set RUN_INTEGRATION_TESTS=1 to enable.",
+)
+
+
 def test_feeds_expanded():
     """Test that TECHCRUNCH_FEEDS has been expanded with new sources."""
     import importlib
@@ -31,21 +39,10 @@ def test_feeds_expanded():
     for category, expectations in test_categories.items():
         feeds = TECHCRUNCH_FEEDS.get(category, [])
         count = len(feeds)
-        old_count = expectations["old_count"]
         new_min = expectations["new_min_count"]
-        
-        status = "✅ PASS" if count >= new_min else "❌ FAIL"
-        print(f"{status} | {category:12s} | Had {old_count} feed(s), now has {count} feed(s) (expected >= {new_min})")
-        
-        if count >= new_min:
-            # Show a sample of the feeds
-            print(f"       Sample feeds for '{category}':")
-            for feed in feeds[:3]:
-                url = feed.get('url', '')[:60]
-                print(f"         - {url}...")
-    
-    print("\n" + "="*70)
-    return True
+        assert count >= new_min, (
+            f"{category}: expected >= {new_min} feeds, got {count}"
+        )
 
 
 def test_cloud_feeds_detail():
@@ -90,7 +87,7 @@ def test_cloud_feeds_detail():
         print(f"  {status} {source}")
     
     print("\n" + "="*70)
-    return len(found_sources) >= 3  # At least 3 of 4 major cloud providers
+    assert len(found_sources) >= 3, f"Expected >= 3 cloud providers, got {len(found_sources)}"
 
 
 def test_provider_integration():
@@ -121,78 +118,26 @@ def test_provider_integration():
     print(f"\n{status} - Provider returns {len(cloud_urls)} URLs for cloud category (expected >= 4)")
     
     print("\n" + "="*70)
-    return success
+    assert len(cloud_urls) >= 4, f"Expected >= 4 cloud URLs, got {len(cloud_urls)}"
 
 
+@_skip_without_integration
 def test_get_all_feed_entries():
     """Test that get_all_feed_entries works with expanded feeds."""
     import importlib
     _tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
     get_all_feed_entries = _tech_crunch_rss.get_all_feed_entries
-    
-    print("\n" + "="*70)
-    print("TEST 4: get_all_feed_entries() Function Test")
-    print("="*70)
-    
-    print("\nFetching entries from cloud category (this may take a few seconds)...")
-    print("Note: This fetches from ALL cloud-related RSS feeds")
-    
-    try:
-        # Get entries from cloud feeds
-        entries = get_all_feed_entries(domains=["cloud"], limit=50)
-        
-        print(f"\n✅ Successfully fetched {len(entries)} entries from cloud feeds")
-        
-        if entries:
-            print("\nSample entries:")
-            for i, entry in enumerate(entries[:3], 1):
-                title = entry.get("title", "")[:60]
-                feed_name = entry.get("feed_name", "unknown")
-                print(f"  {i}. {title}...")
-                print(f"     From: {feed_name}")
-        
-        print("\n" + "="*70)
-        return len(entries) > 0
-        
-    except Exception as e:
-        print(f"\n❌ FAILED: {e}")
-        print("\n" + "="*70)
-        return False
+
+    entries = get_all_feed_entries(domains=["cloud"], limit=50)
+    assert entries, "get_all_feed_entries returned no cloud entries"
 
 
 def test_category_provider_function():
     """Test that category_providers.py functions work with new feeds."""
-    try:
-        from scout_it.category_providers import techcrunch_cloud_provider
-        
-        print("\n" + "="*70)
-        print("TEST 5: Category Provider Function Test")
-        print("="*70)
-        
-        print("\nCalling techcrunch_cloud_provider() - this may take a few seconds...")
-        
-        results = techcrunch_cloud_provider(query="kubernetes", max_results=50)
-        
-        print(f"\n✅ techcrunch_cloud_provider returned {len(results)} normalized entries")
-        
-        if results:
-            print("\nSample normalized entries:")
-            for i, entry in enumerate(results[:2], 1):
-                title = entry.get("title", "")[:60]
-                source = entry.get("source", "unknown")
-                print(f"  {i}. {title}...")
-                print(f"     Source: {source}")
-        
-        print("\n" + "="*70)
-        return len(results) > 0
-        
-    except Exception as e:
-        print(f"\n❌ FAILED: {e}")
-        import traceback
-        traceback.print_exc()
-        print("\n" + "="*70)
-        return False
+    from scout_it.category_providers import techcrunch_cloud_provider
 
+    results = techcrunch_cloud_provider(query="kubernetes", max_results=50)
+    assert results, "techcrunch_cloud_provider returned no entries"
 
 def main():
     """Run all tests."""

@@ -11,6 +11,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
+from rich.console import Console
+
 # Import from parent package
 from ..extraction import _ddgs_list_search_with_retry
 from ..cleaner import process_results
@@ -20,6 +22,10 @@ from ..staged_ranker import rank_candidates_initial
 
 # Initialize logger
 logger = logging.getLogger(__name__)
+
+# Shared Rich console so [cyan]/[green]/[yellow] markup in print() calls
+# below renders as actual colors instead of literal bracket text.
+console = Console()
 
 
 def news_search(
@@ -34,6 +40,12 @@ def news_search(
     workers: int = 5,
     max_fetch_retries: int = 3,
     enable_js_fallback: bool = True,
+    enable_alternate_source: bool = False,
+    enable_dns_fallback: bool = False,
+    enable_tls_impersonate: bool = False,
+    enable_persistent_profile: bool = False,
+    browser_profile_name: Optional[str] = None,
+    enable_bandit: bool = True,
     source: Optional[str] = None,
     locations: Optional[List[str]] = None,
     max_chars: Optional[int] = None,
@@ -96,7 +108,7 @@ def news_search(
     if locations:
         location_str = " ".join(locations)
         ddgs_query = f"{query} {location_str}"
-        print(f"[blue]Augmenting query with location:[/blue] '{query}' → '{ddgs_query}'")
+        console.print(f"[blue]Augmenting query with location:[/blue] '{query}' → '{ddgs_query}'")
 
     def _dedup_append(results: List[Dict[str, Any]]) -> int:
         """Append results with URL-level dedup. Returns count added."""
@@ -125,7 +137,7 @@ def news_search(
 
         if not results and not use_gn_source:
             # Tier 3: Google News RSS (only when not a parallel source)
-            print(f"[yellow]DDGS chain returned 0 results, falling back to Google News RSS[/yellow]")
+            console.print(f"[yellow]DDGS chain returned 0 results, falling back to Google News RSS[/yellow]")
             gn = google_news_search(ddgs_query, max_results=RSS_NO_LIMIT)
             for r in gn:
                 item_url = r.get('url', '') or r.get('href', '')
@@ -180,8 +192,8 @@ def news_search(
         streams.append(('toi_rss', lambda locs=locations: _run_toi(locs)))
     if categories:
         streams.append(('category_rss', lambda cats=categories: _run_category_providers(cats)))
-        print(f"[blue]Category RSS providers enabled:[/blue] {', '.join(categories)}")
-        print(f"[dim]Available categories: {', '.join(get_available_categories())}[/dim]")
+        console.print(f"[blue]Category RSS providers enabled:[/blue] {', '.join(categories)}")
+        console.print(f"[dim]Available categories: {', '.join(get_available_categories())}[/dim]")
 
     # ── Execute all streams in parallel ──
     stream_outputs: Dict[str, Any] = {}
@@ -194,7 +206,7 @@ def news_search(
                 try:
                     stream_outputs[label] = fut.result()
                 except Exception as exc:
-                    print(f"[red]Stream '{label}' failed:[/red] {type(exc).__name__}: {exc}")
+                    console.print(f"[red]Stream '{label}' failed:[/red] {type(exc).__name__}: {exc}")
                     stream_outputs[label] = [] if label != 'ddgs_chain' else ([], {})
     else:
         result = streams[0][1]()
@@ -224,7 +236,7 @@ def news_search(
         category_added = _dedup_append(category_results) if category_results else 0
         search_stats['category_providers'] = categories
         search_stats['category_rss_count'] = category_added
-        print(f"[green]Category RSS providers returned {category_added} unique results[/green]")
+        console.print(f"[green]Category RSS providers returned {category_added} unique results[/green]")
 
     search_stats['total'] = len(all_raw_results)
     search_stats['count'] = len(all_raw_results)
@@ -242,7 +254,7 @@ def news_search(
             }
         }
 
-    print(f"\n[cyan]Phase 1: Lightweight Discovery[/cyan]")
+    console.print(f"\n[cyan]Phase 1: Lightweight Discovery[/cyan]")
     print(f"  • Total candidates: {len(all_raw_results)}")
     print(f"  • Collection time: {collection_time:.2f}s")
     print(f"  • Ready for ranking (NO content extracted yet)")
@@ -324,7 +336,7 @@ def news_search(
                 if wrapper_stats['google_news'] > 0:
                     dropped_details.append(f"Google News: {wrapper_stats['google_news']}")
                 if dropped_details:
-                    print(f"    [dim]└─ {', '.join(dropped_details)}[/dim]")
+                    console.print(f"    [dim]└─ {', '.join(dropped_details)}[/dim]")
     else:
         print(f"  • Wrapper resolution: skipped (snippets mode keeps all sources)")
     
@@ -332,7 +344,7 @@ def news_search(
     # PHASE 2: RANK CANDIDATES (Metadata-Only, Fast)
     # ══════════════════════════════════════════════════════════════════
     
-    print(f"\n[cyan]Phase 2: Ranking Candidates[/cyan]")
+    console.print(f"\n[cyan]Phase 2: Ranking Candidates[/cyan]")
     print(f"  • Ranking {len(all_raw_results)} candidates by relevance")
     print(f"  • Using: title, summary, source quality, recency")
     
@@ -363,7 +375,7 @@ def news_search(
     if snippets_only:
         total_execution_time = round(time.time() - start_time, 3)
         
-        print(f"\n[green]✓ Snippet search complete![/green]")
+        console.print(f"\n[green]✓ Snippet search complete![/green]")
         print(f"  • Total execution time: {total_execution_time:.2f}s")
         print(f"  • Discovery: {collection_time:.2f}s")
         print(f"  • Ranking: {ranking_time_ms/1000:.2f}s")
@@ -407,7 +419,7 @@ def news_search(
     # PHASE 3: CONTENT EXTRACTION (Only Top Ranked)
     # ══════════════════════════════════════════════════════════════════
     
-    print(f"\n[cyan]Phase 3: Content Extraction[/cyan]")
+    console.print(f"\n[cyan]Phase 3: Content Extraction[/cyan]")
     print(f"  • Extracting full page content for {len(ranked_candidates)} URLs")
     print(f"  • Using: requests → Playwright fallback")
     
@@ -423,6 +435,13 @@ def news_search(
         max_workers=workers,
         max_fetch_retries=max_fetch_retries,
         enable_js_fallback=enable_js_fallback,
+        enable_alternate_source=enable_alternate_source,
+        enable_dns_fallback=enable_dns_fallback,
+        enable_tls_impersonate=enable_tls_impersonate,
+        enable_persistent_profile=enable_persistent_profile,
+        browser_profile_name=browser_profile_name,
+        enable_bandit=enable_bandit,
+        source=source,
     )
     
     raw_results = engine.execute_search_from_urls(ranked_candidates)
@@ -437,7 +456,7 @@ def news_search(
     playwright_count = 0
     failed_count = 0
     
-    print(f"\n[cyan]Extraction Breakdown:[/cyan]")
+    console.print(f"\n[cyan]Extraction Breakdown:[/cyan]")
     for idx, result in enumerate(enriched_results, 1):
         url = result.get('url', '')
         domain = urlparse(url).netloc if url else 'unknown'
@@ -456,12 +475,12 @@ def news_search(
         tier_display = f"[green]{tier:10s}[/green]" if tier == 'requests' else f"[yellow]{tier:10s}[/yellow]"
         status_icon = "✓" if status == 'success' and word_count >= 200 else "✗"
         
-        print(f"  {status_icon} URL {idx:2d} ({domain[:25]:25s}) {tier_display} {word_count:4d} words")
+        console.print(f"  {status_icon} URL {idx:2d} ({domain[:25]:25s}) {tier_display} {word_count:4d} words")
         
         if status != 'success' or word_count < 100:
             failed_count += 1
     
-    print(f"\n[cyan]Extraction Stats:[/cyan]")
+    console.print(f"\n[cyan]Extraction Stats:[/cyan]")
     print(f"  • Requests tier: {requests_count}/{len(enriched_results)}")
     print(f"  • Playwright tier: {playwright_count}/{len(enriched_results)}")
     print(f"  • Failed/Low quality: {failed_count}/{len(enriched_results)}")
@@ -470,7 +489,7 @@ def news_search(
         print(f"  • Average per URL: {extraction_time_ms/len(enriched_results)/1000:.2f}s")
     
     if playwright_count > 0:
-        print(f"  [yellow]⚠️  {playwright_count} URLs used Playwright (3-8s browser launch overhead each)[/yellow]")
+        console.print(f"  [yellow]⚠️  {playwright_count} URLs used Playwright (3-8s browser launch overhead each)[/yellow]")
     
     print(f"  ✓ Extracted in {extraction_time_ms/1000:.2f}s")
     
@@ -478,7 +497,7 @@ def news_search(
     # PHASE 4: CLEAN & STRUCTURE
     # ══════════════════════════════════════════════════════════════════
     
-    print(f"\n[cyan]Phase 4: Cleaning & Structuring[/cyan]")
+    console.print(f"\n[cyan]Phase 4: Cleaning & Structuring[/cyan]")
     structured_results, cleaner_stats = process_results(enriched_results)
 
     # Phase 5: Apply max_chars / max_size truncation on each result
@@ -518,7 +537,7 @@ def news_search(
         'cleaner': cleaner_stats,
     }
     
-    print(f"\n[green]✓ News search complete![/green]")
+    console.print(f"\n[green]✓ News search complete![/green]")
     print(f"  • Total execution time: {total_execution_time:.2f}s")
     print(f"  • Discovery: {collection_time:.2f}s")
     print(f"  • Ranking: {ranking_time_ms/1000:.2f}s")

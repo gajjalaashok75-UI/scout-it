@@ -303,8 +303,17 @@ def test_wikipedia_search_unified_with_rss_merges_streams():
     assert stats["rss_candidates"] >= 1, "RSS stream should add candidates"
     assert stats["total_candidates"] == stats["api_candidates"] + stats["rss_candidates"]
     # API results (query-relevant "python" snippets) should rank above the
-    # unrelated "Quantum ..." RC entries.
-    assert results[0]["title"] == "Python (programming language)"
+    # unrelated "Quantum ..." RC entries. With BM25F, both Python pages rank
+    # above the Quantum pages; which Python page is first depends on field
+    # length normalization (shorter, more focused titles score slightly higher).
+    assert "Python" in results[0]["title"], "a Python page should rank #1 (not Quantum)"
+    python_titles = [r["title"] for r in results if "Python" in r["title"]]
+    quantum_titles = [r["title"] for r in results if "Quantum" in r["title"]]
+    if quantum_titles:
+        # All Python pages should appear before all Quantum pages.
+        first_quantum_idx = min(results.index(r) for r in results if "Quantum" in r["title"])
+        last_python_idx = max(results.index(r) for r in results if "Python" in r["title"])
+        assert last_python_idx < first_quantum_idx, "Python pages should rank above Quantum pages"
     hrefs = [r["href"] for r in results]
     assert len(hrefs) == len(set(hrefs)), "final output must be deduped by href"
 

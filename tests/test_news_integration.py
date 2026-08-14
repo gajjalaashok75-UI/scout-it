@@ -1,8 +1,22 @@
 #!/usr/bin/env python3
-"""Test script for TechCrunch RSS integration with news-search."""
+"""Test script for TechCrunch RSS integration with news-search.
+
+Most tests here fetch live RSS feeds via ``fetch_category_news`` /
+``news_search``; they are skipped unless ``RUN_INTEGRATION_TESTS=1`` is set,
+matching the convention in ``test_production_hardening.py``.
+"""
 
 import sys
 import json
+import os
+
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_INTEGRATION_TESTS", "0") != "1",
+    reason="Requires live RSS access; set RUN_INTEGRATION_TESTS=1 to enable.",
+)
+
 from scout_it.cli import news_search
 from scout_it.category_providers import (
     get_available_categories,

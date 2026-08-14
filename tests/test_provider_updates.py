@@ -8,6 +8,14 @@ were filtering by query before ranking, resulting in only 1 entry instead of 50+
 
 import sys
 import logging
+import os
+
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_INTEGRATION_TESTS", "0") != "1",
+    reason="Requires live RSS access; set RUN_INTEGRATION_TESTS=1 to enable.",
+)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')

@@ -285,6 +285,10 @@ TECHCRUNCH_FEEDS: Dict[str, List[Dict[str, Any]]] = {
     "cloud": [
         {"url": "https://techcrunch.com/category/cloud/feed/", "verified": True, "notes": "TechCrunch cloud category feed."},
         {"url": "https://www.cshub.com/rss/categories/cloud", "verified": False, "notes": "Cloud security feed; useful for cloud/security overlap."},
+        {"url": "https://aws.amazon.com/blogs/aws/feed/", "verified": False, "notes": "AWS News Blog — official Amazon Web Services blog."},
+        {"url": "https://aws.amazon.com/about-aws/whats-new/recent/feed/", "verified": False, "notes": "AWS What's New — official service announcements."},
+        {"url": "https://cloud.google.com/blog/products/ai-machine-learning/rss/", "verified": False, "notes": "Google Cloud blog — AI/ML product updates."},
+        {"url": "https://azure.microsoft.com/en-us/blog/feed/", "verified": False, "notes": "Microsoft Azure blog — official Azure updates."},
     ],
     "cryptocurrency": [
         {"url": "https://techcrunch.com/category/cryptocurrency/feed/", "verified": True, "notes": "TechCrunch crypto category feed."},
