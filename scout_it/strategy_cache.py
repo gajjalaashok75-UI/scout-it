@@ -97,7 +97,40 @@ def record_outcome(
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (domain, tier, proxy_id, fingerprint_profile, int(success), latency_ms, time.time()),
         )
+        # Opportunistic pruning: cap the table size so it doesn't grow
+        # without bound across long-running / multi-session usage. Keeps the
+        # most recent MAX_ROWS rows; older outcomes are the least useful for
+        # bandit arm selection anyway. Runs inline (cheap DELETE + index).
+        prune_strategy_cache(conn, max_rows=MAX_ROWS)
         conn.commit()
+
+
+# Soft cap on the number of outcome rows kept. ~20k rows covers a heavy
+# session's worth of fetches while keeping the SQLite file small (<5 MB)
+# and arm aggregation queries fast (<5 ms).
+MAX_ROWS = 20_000
+
+
+def prune_strategy_cache(conn: sqlite3.Connection, max_rows: int = MAX_ROWS) -> int:
+    """Delete oldest rows beyond *max_rows*.
+
+    Keeps the most recent rows (highest ``timestamp`` then highest ``id``).
+    Returns the number of rows deleted. Safe to call inside an open
+    transaction; the caller is responsible for committing.
+    """
+    cur = conn.execute("SELECT COUNT(*) FROM strategy_outcomes")
+    total = cur.fetchone()[0]
+    if total <= max_rows:
+        return 0
+    to_delete = total - max_rows
+    conn.execute(
+        "DELETE FROM strategy_outcomes WHERE id IN ("
+        "  SELECT id FROM strategy_outcomes "
+        "  ORDER BY timestamp ASC, id ASC LIMIT ?"
+        ")",
+        (to_delete,),
+    )
+    return to_delete
 
 
 def get_arms(domain: str, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:

@@ -249,9 +249,83 @@ def calculate_recency_score(publish_date: Optional[str]) -> float:
         return 0.2
 
 
-# ============================================================================
+# ===========================================================================
 # Initial Ranking (Fast, Metadata-Only)
-# ============================================================================
+# ===========================================================================
+
+def _rank_candidates_bm25f(
+    candidates: Sequence[Dict[str, Any]],
+    query: str,
+    top_k: int = 15,
+) -> List[Dict[str, Any]]:
+    """BM25F-based initial ranking over title + snippet/body fields.
+
+    Uses multi-field BM25 (same algorithm as Elasticsearch and Orama) with
+    per-field weights (title boost), typo tolerance, prefix matching, and
+    phrase boost. No content extraction needed — works on metadata only.
+
+    Source quality and recency are applied as multiplicative boosts on top
+    of the BM25F score, preserving the good tie-breaking behavior of the
+    legacy scorer.
+    """
+    from .semantic.bm25f import build_index as build_bm25f_index, tokenize_query
+
+    if not candidates:
+        return []
+
+    docs = [
+        {
+            "title": c.get("title", ""),
+            "snippet": c.get("body", "") or c.get("summary", "") or c.get("description", "") or c.get("snippet", ""),
+            "url": c.get("url", ""),
+        }
+        for c in candidates
+    ]
+
+    idx = build_bm25f_index(docs)
+    results = idx.search(query, top_k=len(candidates))
+
+    # Build a score array and apply source quality + recency boosts.
+    bm25f_scores = [0.0] * len(candidates)
+    for doc_idx, score, _ in results:
+        bm25f_scores[doc_idx] = score
+
+    scored = []
+    query_terms = tokenize_query(query)
+    for i, candidate in enumerate(candidates):
+        base = bm25f_scores[i]
+
+        # Source quality boost (0.8–1.0 → 0.8x–1.0x multiplier).
+        source = candidate.get("source", "") or candidate.get("engine", "")
+        source_quality = get_source_quality_score(source) if source else 1.0
+        source_boost = 0.8 + 0.2 * source_quality  # 0.8–1.0
+
+        # Recency boost (fresh content gets up to 1.2x, old content 1.0x).
+        publish_date = candidate.get("publish_date", "") or candidate.get("date", "") or candidate.get("timestamp", "")
+        recency = calculate_recency_score(publish_date)
+        recency_boost = 1.0 + 0.2 * recency  # 1.0–1.2
+
+        total = base * source_boost * recency_boost
+
+        # Compute matched terms (for backward compatibility with legacy scorer).
+        title = (candidate.get("title") or "").lower()
+        body = (candidate.get("body") or candidate.get("summary") or candidate.get("description") or candidate.get("snippet") or "").lower()
+        matched_terms = [t for t in query_terms if t in title or t in body]
+
+        enriched = dict(candidate)
+        enriched["initial_rank_score"] = round(total, 4)
+        enriched["rank_breakdown"] = {
+            "bm25f": round(base, 4),
+            "source": round(source_boost, 4),
+            "recency": round(recency_boost, 4),
+        }
+        enriched["matched_terms"] = list(set(matched_terms))
+        enriched["match_count"] = len(matched_terms)
+        scored.append(enriched)
+
+    scored.sort(key=lambda x: x["initial_rank_score"], reverse=True)
+    return scored[:top_k]
+
 
 def rank_candidates_initial(
     candidates: Sequence[Dict[str, Any]],
@@ -278,6 +352,18 @@ def rank_candidates_initial(
         Top K candidates with initial_rank_score added
     """
     start_time = time.perf_counter()
+
+    # Use BM25F for the initial ranking — much better relevance than
+    # naive term-counting (typo tolerance, field boosting, phrase boost).
+    try:
+        bm25f_results = _rank_candidates_bm25f(candidates, query, top_k)
+        for r in bm25f_results:
+            r["rank_method"] = "bm25f"
+        return bm25f_results
+    except Exception as e:
+        import warnings
+        warnings.warn(f"BM25F ranking failed, falling back to legacy: {e}", UserWarning)
+
     
     query_parts = tokenize_query(query)
     scored_candidates = []
