@@ -170,7 +170,7 @@ ehthumbs.db
 *.bak
 *.backup
 *~
-
+log.md
 # Temporary test files
 test_temp_*
 tmp_test_*

@@ -7,6 +7,208 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.0] - 2026-08-14
+
+### Added
+- Semantic retrieval modules under `scout_it/semantic` with BM25F, embedding,
+  facet, authority-score, and hybrid retrieval support.
+- Pluggable source framework under `scout_it/sources` with async orchestration,
+  adaptive source selection, and a broad plugin catalog.
+- New test coverage for semantic retrieval and source plugins
+  (`tests/test_semantic.py`, `tests/test_sources.py`, `tests/test_sources_refactor.py`,
+  `tests/test_phase3_ranking.py`, `tests/test_phase4_sources.py`).
+
+### Changed
+- CLI and search pipelines were extended to integrate semantic and source-layer
+  features across web/news flows.
+- Ranking and strategy cache paths were updated to support staged relevance and
+  source-quality aware processing.
+- Dependencies and runtime configuration were aligned for the expanded feature
+  surface.
+
+### Fixed
+- Multiple reliability and extraction-path regressions were addressed across
+  browser fetch, domain routing, and network utility layers.
+
+---
+
+## [1.5.4] - 2026-08-12
+
+### Fixes - Video search empty results & multi-search native crash (real-feature verification pass)
+
+#### `video-search` returned empty results for most queries
+- DuckDuckGo's `videos()` endpoint intermittently raises
+  `DDGSException: No results found.` for the majority of queries (4 of 5 in
+  testing), leaving `video-search` with zero results. This was a provider-side
+  reliability gap, not a scout-it bug, but it made the command effectively
+  unusable.
+- Added an independent **YouTube search fallback**
+  (`_youtube_search_fallback` in `scout_it/commands/video.py`). When DDG
+  returns nothing, the pipeline scrapes YouTube's public search-results page
+  (which embeds `ytInitialData` JSON) through the same `fetch_resilient` chain
+  used everywhere else, parses `videoRenderer` nodes, and yields 14-20
+  DDGS-compatible candidates per query. Public search metadata only — no
+  video downloading, no transcript text. Wired into `video_search` with
+  `youtube_candidates`/`youtube_count` added to the stats.
+- Added `_yt_text` helper for YouTube's nested run/`simpleText` shapes,
+  hardened to handle list-valued intermediate nodes (was producing
+  list-repr descriptions) and always returning a plain `str`.
+
+#### Video descriptions contained YouTube boilerplate filler
+- `_enhance_video_descriptions` (CLI) unconditionally overwrote the useful
+  fallback description ("channel · views · duration · published") with
+  YouTube's generic site-wide meta description ("Enjoy the videos and music
+  you love...") whenever `videoDetails.shortDescription` was unavailable.
+- `_fetch_youtube_metadata` now detects the boilerplate and returns `""` for
+  the description, and `_enhance_video_descriptions` only replaces the existing
+  description when the freshly fetched one is genuinely richer (longer). This
+  preserves good fallback descriptions and only enriches when YouTube gives a
+  real full description. Verified: results now show real video descriptions or
+  the synthesized metadata line, never the boilerplate.
+
+#### `multi-search` intermittently crashed with native SIGABRT/SIGSEGV
+- `multi-search` (and the full test suite, ~1 in 2 runs) intermittently
+  aborted with `double free or corruption` / SIGSEGV (exit 134/139). Root
+  cause: `trafilatura`, `justext`, and `boilerpy3` all build on `lxml` +
+  `libxml2`, whose global parser state is **not thread-safe**. Running these
+  extractors concurrently from the `ThreadPoolExecutor` in
+  `_phase_content_extraction` corrupted native memory.
+- Added a module-level `_EXTRACTION_PARSE_LOCK` in
+  `scout_it/extraction/engine.py` that serializes only the native parse step
+  inside `extract_content`. Network fetching stays parallel (that's where the
+  real time goes); only the fast in-memory parse is serialized. Verified: 4/4
+  full-suite runs and 7/7 multi-search CLI runs now complete cleanly (was
+  crashing ~50% of the time).
+
+#### Retry filter relaxation for list-type searches
+- `_build_list_attempt_options` now drops `resolution`/`duration`/
+  `license_images`/`license_videos` filters on later retry attempts (in
+  addition to the existing `timelimit`/`safesearch` relaxation) so combined-
+  filter runs don't stay stuck on zero results when one filter is too
+  restrictive.
+
+### Verification
+- Full suite: 747 passed, 40 skipped, 1 warning, ~40s, across 5 consecutive
+  runs (previously crashed ~50% of runs).
+- Real CLI smoke tests: all search commands return quality results.
+  - `video-search` "cooking"/"music"/"cats"/"machine learning"/"python
+    tutorial" — 5 ranked results each, with real descriptions (not boilerplate).
+  - `multi-search` "renewable energy"/"python programming" — clean completion,
+    no crash, across 7 runs (with and without `--no-dedupe`).
+  - `web-search`, `news-search`, `image-search`, `wikipedia-search`,
+    `fetch-url`, `video-extract` — all return correct, well-structured
+    results. `video-extract` pulls subtitles via the YouTube transcript API.
+
+---
+
+## [1.5.3] - 2026-08-12
+
+### Fixes - CLI Correctness & Test Determinism (real-feature verification pass)
+
+#### `--sources` help text pointed at a non-existent command
+- Five command help strings (`web-search`, `news-search`, `image-search`,
+  `video-search`, `multi-search`) told users to run `scout-it sources list`
+  for available sources, but that exact invocation errors with
+  `unrecognized arguments: list`. The real command is `scout-it sources`.
+  Updated all five help strings to reference `scout-it sources`.
+
+#### Image/video summary counts could disagree with the saved JSON
+- `image-search` and `video-search` printed `Total ... found:`
+  from `stats["search_engine"]["total"]`, which reflects the first DuckDuckGo
+  attempt before filtering/retry. When DDG returned 0 on the first attempt but
+  a retry (or alternate path) produced results, the summary showed `0` while
+  the JSON file held the real ranked results. The summary lines now report
+  `len(<results>)`, matching the saved file exactly.
+
+#### `wikipedia-search --bundle` results had no `project` field
+- Bundle-mode results carried `source` (e.g. `wikimedia:commons`) but left the
+  dedicated `project` key `None`, unlike the default search path. Each bundle
+  result now also sets `project` to its originating Wikimedia project key, so
+  consumers can group by `project` consistently across modes.
+
+#### `video_extract` tests leaked to the live network
+- Six `test_video_extract_*` cases mocked `scout_it.cli.requests.get`, but
+  `video_extract` actually fetches via `fetch_resilient`
+  (`scout_it.extraction.fetcher`, which uses a `requests.Session`). The mock
+  never intercepted the fetch, so the tests hit real YouTube and asserted
+  against live page content (flaky: passed only when the network/title aligned
+  with the mock fixture). Switched all six to patch
+  `scout_it.commands.video.fetch_resilient` at the module boundary, making the
+  tests fully deterministic and network-free. Full suite: 747 passed, 40
+  skipped, 1 intentional warning, ~42s, no hangs.
+
+### Notes - Observations from the real-feature pass (not changed)
+- `multi-search` with `--engines duckduckgo,wikimedia --no-dedupe` under
+  parallel content extraction can intermittently abort with a native
+  `double free or corruption` (SIGABRT, exit 134). It is non-deterministic
+  (~1 in 6 runs in testing) and does not reproduce on retry. This is a
+  thread-safety issue in a C extension in the parallel-extraction path
+  (lxml / trafilatura), not in scout-it's Python code; a targeted repro and
+  upstream report would be the next step.
+- `video-search` counts depend on DuckDuckGo's video endpoint, which can
+  return 0 results intermittently even for common queries (a provider-side
+  fluctuation). With the summary-count fix above, the reported number now
+  always matches the saved JSON regardless of provider flakiness.
+
+---
+
+## [1.5.2] - 2026-08-12
+
+### Fixes - Test Suite Reliability & Correctness
+
+#### Live-network tests no longer hang the suite
+- All tests that fetch live RSS/search results are now guarded by the
+  `RUN_INTEGRATION_TESTS` env flag (matching the existing
+  `test_production_hardening.py` convention), so the full suite runs cleanly
+  offline / in CI without hanging.
+  - `test_enhanced_rss.py`, `test_provider_updates.py`, `test_news_integration.py`
+    -> module-level skip.
+  - `test_expanded_rss_feeds.py::test_get_all_feed_entries` and
+    `::test_category_provider_function`, plus `test_error_handling` /
+    `test_export_formats` in `test_production_hardening.py` -> per-test skip.
+- Removed a risky `SIGALRM`-based per-test timeout conftest (incompatible with
+  ThreadPoolExecutor-based tests; masked genuine failures). Use `pytest-timeout`
+  in CI instead.
+
+#### PytestReturnNotNoneWarning bugs fixed
+- Converted `return True/False` test functions to real `assert`s across
+  `test_web_search_rss_integration.py`, `test_production_hardening.py`,
+  `test_expanded_rss_feeds.py`, and `test_extraction_quality.py`.
+- This surfaced silently-failing tests in `test_expanded_rss_feeds.py`
+  (`test_feeds_expanded`, `test_cloud_feeds_detail`, `test_provider_integration`)
+  that previously printed FAIL but returned True, so pytest reported them as
+  passing. They now genuinely assert.
+
+#### Incomplete cloud feed expansion completed
+- `TECHCRUNCH_FEEDS["cloud"]` was documented (and tested) to include the major
+  cloud-provider blogs but only had 2 feeds. Added the official AWS, Google Cloud,
+  and Azure blog feeds so the cloud category now has 6 feeds and the
+  expanded-feeds tests pass for real.
+
+### Fixes - Library Code
+
+#### Graceful optional-dependency degradation
+- `numpy` and `datasketch` are now lazy-imported in `semantic/retrieval.py`,
+  `semantic/embeddings.py`, `semantic/store.py`, and `semantic/dedup.py` with
+  None/fallback guards, so the package imports and the non-dense code paths
+  work without these heavy dependencies installed.
+- Added a built-in `_MinHash` fallback in `semantic/dedup.py` so near-duplicate
+  detection still works when `datasketch` is absent.
+
+#### Feed-parsing deprecation fixed
+- `tech_crunch_rss.py`: replaced `root.find("channel") or root` (Element
+  truthiness, deprecated and always-True in future stdlib versions) with an
+  explicit `is None` check.
+
+### Docs
+- README: rewrote the Testing section (suite runs end-to-end in ~41s,
+  747 passing / ~40 skipped; documents `RUN_INTEGRATION_TESTS`); corrected the
+  stale "~430 tests, 11 files" project-structure comment to ~790 / 40.
+- README/`__init__.py`/`pyproject.toml`: version bumped 1.5.0 -> 1.5.2 to match
+  the already-released 1.5.1 changelog entry plus these fixes.
+
+---
+
 ## [1.5.1] - 2026-08-09 11:38:47 UTC
 
 ### 🔨 Refactoring — Code Organization & Maintainability Improvements

@@ -18,6 +18,13 @@ youtube-transcript-api>=0.6.2
 # (pip install -r requirements.txt does NOT install this by default; see tls-impersonate extra)
 # curl_cffi>=0.7.0
 
+# Optional: Semantic search (--semantic flag, semantic-search/index subcommands)
+# Enables hybrid BM25+dense-vector retrieval, RRF fusion, cross-encoder reranking.
+# Without these, --semantic falls back to BM25-only re-ranking (still works, no vectors).
+# sentence-transformers>=2.2.0
+# torch>=2.0.0
+# lancedb>=0.10.0
+
 # Legacy fallback (only needed if `ddgs` is unavailable in your environment;
 # data_scout automatically falls back to this package name if present)
 # duckduckgo-search>=3.9.0

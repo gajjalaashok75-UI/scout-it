@@ -1,7 +1,7 @@
 """
 scout-it: Python toolkit for AI-powered web search, content extraction, and structured data output.
 
-Version: 1.5.0
+Version: 2.0.0
 Author: Ashok-gakr
 License: MIT
 
@@ -20,6 +20,13 @@ Quick Start:
     # Video search
     videos, stats = video_search("python tutorial", max_results=10)
 """
+
+# Define version FIRST so submodules (e.g. github_extract, social) can do
+# `from . import __version__` at import time without hitting a circular-import
+# AttributeError.
+__version__ = "2.0.0"
+__author__ = "Ashok-gakr"
+__license__ = "MIT"
 
 from .cleaner import advanced_clean_text, process_results
 from .extraction import (
@@ -84,10 +91,6 @@ search_feeds = _news_search_tech_crunch_rss.search_feeds
 sort_entries = _news_search_tech_crunch_rss.sort_entries
 
 from .toi_rss_source import fetch_toi_news, LOCATION_FEEDS
-
-__version__ = "1.5.0"
-__author__ = "Ashok-gakr"
-__license__ = "MIT"
 
 __all__ = [
     "EnterpriseSearchEngine",

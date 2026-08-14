@@ -4,7 +4,7 @@ This file provides guidance to GakrCLI Code (gakrcli.ai/code) when working with 
 
 ## Project
 
-**scout-it v1.5.0** — a Python package and CLI (`scout-it`) for enterprise-grade web search, content extraction, GitHub data extraction, and social platform scraping. Python >= 3.9, MIT license. Entry point is `scout_it/cli.py` (argparse, ~26 subcommands); public API is re-exported from `scout_it/__init__.py`.
+**scout-it v2.0.0** — a Python package and CLI (`scout-it`) for enterprise-grade web search, content extraction, GitHub data extraction, and social platform scraping. Python >= 3.9, MIT license. Entry point is `scout_it/cli.py` (argparse, ~26 subcommands); public API is re-exported from `scout_it/__init__.py`.
 
 This file replaces the old `AGENTS.md` (which has been deleted). It is the authoritative agent guide; it intentionally does not repeat the README.
 

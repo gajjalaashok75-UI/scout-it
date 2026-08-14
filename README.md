@@ -1,6 +1,6 @@
 # scout-it
 
-[![PyPI version](https://img.shields.io/badge/version-1.5.0-blue)](https://pypi.org/project/scout-it/)
+[![PyPI version](https://img.shields.io/badge/version-2.0.0-blue)](https://pypi.org/project/scout-it/)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.9-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -54,6 +54,8 @@ It is designed for data collection, AI training pipelines, research, and any wor
 - **🌐 Category support**: `--category` flag with 65 web RSS feeds and 50+ news sources across 13 categories
 - **🎯 Quality escalation**: Auto-retries with Playwright when low-quality extraction detected
 - **🧠 Domain learning**: Per-domain strategy memory with Thompson sampling for optimal tier selection
+- **🎥 Video search YouTube fallback**: when DuckDuckGo Videos returns nothing (its endpoint is intermittently unreliable), `video-search` automatically falls back to YouTube search so the command reliably returns ranked results
+- **🛡️ Thread-safe extraction**: the native C-extension parsers (trafilatura/justext/boilerpy3 via lxml) are now serialized in parallel-extraction paths, eliminating the intermittent `double free`/SIGSEGV crash in `multi-search`
 
 ---
 
@@ -241,7 +243,7 @@ pip install -e ".[dev]"
 ### Verify installation
 
 ```bash
-scout-it --version          # Shows scout-it 1.5.0
+scout-it --version          # Shows scout-it 2.0.0
 scout-it -v                 # Short flag
 scout-it --help             # Full command list
 ```
@@ -442,7 +444,10 @@ scout-it image-search --query "<text>" [options]
 
 #### `video-search`
 
-DuckDuckGo video search with duration and resolution filters.
+Video search with duration and resolution filters. DuckDuckGo Videos is the
+primary source; when it returns nothing (its endpoint intermittently raises
+"No results found" for most queries), the pipeline automatically falls back to
+**YouTube search**, so the command reliably returns ranked results.
 
 ```bash
 scout-it video-search --query "<text>" [options]
@@ -463,6 +468,13 @@ scout-it video-search --query "<text>" [options]
 | `--retry-backoff` `<seconds>` | Backoff seconds between retries |
 | `--markdown` | Save as Markdown instead of JSON |
 | `--out, -o` `<path>` | Output file (default: `.scout-it/video_search_results.json`) |
+
+> **Source fallback:** Results' `source` field shows `DuckDuckGo` or
+> `YouTube`. When DDG returns nothing, YouTube search provides 14-20
+> candidates that get ranked down to your `--max`. Stats include
+> `youtube_candidates`/`youtube_count` to track fallback usage. Only public
+> search metadata is used (title, channel, views, duration, published) — no
+> video downloading.
 
 #### `video-extract`
 
@@ -886,7 +898,7 @@ scout-it/
 │   ├── source_resolvers.py      # Wrapper URL resolution (MSN/Yahoo/AOL) (NEW)
 │   ├── staged_ranker.py         # Two-stage ranking pipeline (NEW)
 │   └── _utils.py                # Shared helpers
-├── tests/                       # Test suite (~430 tests, 11 files)
+├── tests/                       # Test suite (~790 tests, 40 test files)
 │   ├── test_cli.py
 │   ├── test_cleaner.py
 │   ├── test_new_sources.py
@@ -960,7 +972,10 @@ New: Collect 40 candidates → Rank → Extract top 15 → Rank → Return 10
 ## Testing
 
 ```bash
-# Run test files one at a time (the suite is not designed to run all at once)
+# Run the full suite (fast unit + mocked-integration tests; ~40s)
+pytest
+
+# Run a single file
 pytest tests/test_resilience.py -v
 
 # Run a single test
@@ -970,7 +985,26 @@ pytest tests/test_output.py::TestChunkText::test_long_text_chunked_under_limit -
 pytest tests/test_cleaner.py --cov=scout_it --cov-report=term-missing
 ```
 
-Minimum coverage target: 80%. The test suite includes unit tests, integration tests with mocked APIs, and real tests for live CLI commands. For end-to-end behavior verification, exercise the real `scout-it` CLI instead of pytest (see `real-tests.md`).
+The suite collects **~790 tests** across 40 `test_*.py` files. By default it runs in
+**~41s with 747 passing and ~40 skipped** — no hangs, no network required.
+
+### Live-network (integration) tests
+
+A subset of tests fetch live RSS feeds / search results. These are **skipped by
+default** so the suite runs reliably in CI and offline sandboxes. Enable them with:
+
+```bash
+RUN_INTEGRATION_TESTS=1 pytest tests/test_enhanced_rss.py tests/test_provider_updates.py
+```
+
+Files guarded by this flag include `test_enhanced_rss.py`, `test_provider_updates.py`,
+`test_news_integration.py`, `test_expanded_rss_feeds.py` (live fetches), and several
+tests in `test_production_hardening.py`. The heavy semantic-retrieval tests
+(`test_semantic.py`, `test_phase3_ranking.py`) additionally require
+`sentence-transformers`/`torch`; without them they degrade gracefully and skip.
+
+Minimum coverage target: 80%. For end-to-end behavior verification, exercise the real
+`scout-it` CLI directly (see `real-tests.md`).
 
 ---
 
