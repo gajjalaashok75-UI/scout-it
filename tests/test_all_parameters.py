@@ -662,12 +662,15 @@ def test_video_extract_youtube_success():
     mock_fetched.language_code = "en"
     mock_fetched.is_generated = True
 
-    with mock.patch('scout_it.cli.requests.get') as mock_get:
-        mock_response = mock.Mock()
-        mock_response.text = mock_html
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+    with mock.patch('scout_it.commands.video.fetch_resilient') as mock_fetch:
+        mock_fetch.return_value = {
+            "status": "success",
+            "html": mock_html,
+            "final_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "tier": "requests",
+            "attempts": 1,
+            "errors": [],
+        }
 
         with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api_cls:
             mock_api_instance = mock.Mock()
@@ -716,12 +719,15 @@ def test_video_extract_youtube_short_url():
     <meta name="description" content="Test">
     </html>"""
 
-    with mock.patch('scout_it.cli.requests.get') as mock_get:
-        mock_response = mock.Mock()
-        mock_response.text = mock_html
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+    with mock.patch('scout_it.commands.video.fetch_resilient') as mock_fetch:
+        mock_fetch.return_value = {
+            "status": "success",
+            "html": mock_html,
+            "final_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "tier": "requests",
+            "attempts": 1,
+            "errors": [],
+        }
 
         with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api_cls:
             mock_api_instance = mock.Mock()
@@ -764,12 +770,15 @@ def test_video_extract_no_segments_by_default():
     mock_fetched.language_code = "en"
     mock_fetched.is_generated = True
 
-    with mock.patch('scout_it.cli.requests.get') as mock_get:
-        mock_response = mock.Mock()
-        mock_response.text = mock_html
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+    with mock.patch('scout_it.commands.video.fetch_resilient') as mock_fetch:
+        mock_fetch.return_value = {
+            "status": "success",
+            "html": mock_html,
+            "final_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "tier": "requests",
+            "attempts": 1,
+            "errors": [],
+        }
 
         with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api_cls:
             mock_api_instance = mock.Mock()
@@ -835,12 +844,15 @@ def test_video_extract_subtitle_lang_fallback():
     mock_fetched.language_code = "en"
     mock_fetched.is_generated = True
 
-    with mock.patch('scout_it.cli.requests.get') as mock_get:
-        mock_response = mock.Mock()
-        mock_response.text = mock_html
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+    with mock.patch('scout_it.commands.video.fetch_resilient') as mock_fetch:
+        mock_fetch.return_value = {
+            "status": "success",
+            "html": mock_html,
+            "final_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "tier": "requests",
+            "attempts": 1,
+            "errors": [],
+        }
 
         with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api_cls:
             mock_api_instance = mock.Mock()
@@ -880,12 +892,15 @@ def test_video_extract_subtitle_lang_no_subs():
     <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"No Subs","author":"Channel","viewCount":"100","lengthSeconds":"60","shortDescription":"Test"}};</script>
     </html>"""
 
-    with mock.patch('scout_it.cli.requests.get') as mock_get:
-        mock_response = mock.Mock()
-        mock_response.text = mock_html
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+    with mock.patch('scout_it.commands.video.fetch_resilient') as mock_fetch:
+        mock_fetch.return_value = {
+            "status": "success",
+            "html": mock_html,
+            "final_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "tier": "requests",
+            "attempts": 1,
+            "errors": [],
+        }
 
         with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api_cls:
             mock_api_instance = mock.Mock()
@@ -916,12 +931,15 @@ def test_video_extract_subtitle_lang_fallback_fails():
     <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"Double Fail","author":"Channel","viewCount":"100","lengthSeconds":"60","shortDescription":"Test"}};</script>
     </html>"""
 
-    with mock.patch('scout_it.cli.requests.get') as mock_get:
-        mock_response = mock.Mock()
-        mock_response.text = mock_html
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+    with mock.patch('scout_it.commands.video.fetch_resilient') as mock_fetch:
+        mock_fetch.return_value = {
+            "status": "success",
+            "html": mock_html,
+            "final_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "tier": "requests",
+            "attempts": 1,
+            "errors": [],
+        }
 
         with mock.patch('youtube_transcript_api.YouTubeTranscriptApi') as mock_api_cls:
             mock_api_instance = mock.Mock()

@@ -1151,12 +1151,14 @@ class TestEnhanceVideoDescriptions:
 class TestExtractNewsContent:
     """Test the unified EnterpriseSearchEngine content-extraction flow.
 
-    These were previously tests for the deprecated ``_extract_news_content``
-    helper in ``news-search/helpers.py``. That helper duplicated logic that now
-    lives in ``EnterpriseSearchEngine._phase_content_extraction`` — the SAME
-    flow used by both ``web-search`` and ``news-search``. The tests are rewired
-    to exercise the real engine via ``execute_search_from_urls`` so they cover
-    the actual production path instead of dead code.
+    These were originally tests for the old ``_extract_news_content`` helper
+    in ``news-search/helpers.py`` — a 300-line duplicate of the engine's
+    extraction flow. That module has since been **removed** as dead code;
+    the same flow now lives in
+    ``EnterpriseSearchEngine._phase_content_extraction`` and is used by both
+    ``web-search`` and ``news-search``. The tests are rewired to exercise the
+    real engine via ``execute_search_from_urls`` so they cover the actual
+    production path instead of dead code.
     """
 
     def _make_engine(self, **kwargs):

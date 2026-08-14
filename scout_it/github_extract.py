@@ -28,6 +28,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from . import __version__ as _VERSION
 from .output import parse_size_string, validate_max_chars_max_size
 
 REST_BASE = "https://api.github.com"
@@ -40,7 +41,7 @@ def _headers() -> Dict[str, str]:
     headers = {
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "scout-it/1.1.0",
+        "User-Agent": f"scout-it/{_VERSION}",
     }
     token = os.environ.get("GITHUB_TOKEN")
     if token:

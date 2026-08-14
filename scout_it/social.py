@@ -43,6 +43,8 @@ from typing import Any, Dict, List, Optional
 import requests
 from bs4 import BeautifulSoup
 
+from . import __version__ as _VERSION
+
 _USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
 
@@ -332,7 +334,7 @@ def discord_channel_messages(
     if not channel_id.isdigit():
         return {"error": "invalid_channel_id", "error_message": "channel_id must be the numeric Discord channel ID."}
 
-    headers = {"Authorization": f"Bot {token}", "User-Agent": "scout-it (https://github.com, 1.1.0)"}
+    headers = {"Authorization": f"Bot {token}", "User-Agent": f"scout-it/{_VERSION} (https://github.com)"}
     params = {"limit": min(max(max_results, 1), 100)}
     if before_message_id:
         params["before"] = before_message_id

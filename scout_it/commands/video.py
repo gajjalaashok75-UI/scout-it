@@ -12,7 +12,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from html import unescape
 from typing import Any, Dict, List, Optional, Sequence, Tuple
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
 
 import requests
 
@@ -28,6 +28,174 @@ logger = logging.getLogger(__name__)
 
 # YouTube URL pattern - matches youtube.com/watch?v=VIDEO_ID or youtu.be/VIDEO_ID
 _YOUTUBE_RE = re.compile(r'(?:youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{11})')
+
+# Non-greedy match for the ytInitialData JSON blob embedded in YouTube pages.
+_YT_INITIAL_DATA_RE = re.compile(r'ytInitialData\s*=\s*(\{.*?\});\s*</script>', re.DOTALL)
+
+# YouTube serves this site-wide boilerplate as the description when the real
+# video description is unavailable (age-restricted, removed, or JS-only). It
+# carries no useful information about the specific video, so it is treated as
+# empty wherever it appears.
+_YT_BOILERPLATE_DESC = "Enjoy the videos and music you love"
+
+
+def _yt_text(node: Any, *path) -> str:
+    """Best-effort text extraction from YouTube's nested run/simpleText shapes.
+
+    Handles the common cases where an intermediate path element is a list
+    (take the first dict element) or where the terminal node is a list of
+    ``{"text": ...}`` run dicts. Always returns a plain ``str``.
+    """
+    cur = node
+    for key in path:
+        if isinstance(cur, list):
+            cur = cur[0] if cur else {}
+        if not isinstance(cur, dict):
+            return ""
+        cur = cur.get(key)
+        if cur is None:
+            return ""
+    if isinstance(cur, str):
+        return cur
+    if isinstance(cur, list):
+        out = []
+        for r in cur:
+            if isinstance(r, dict):
+                out.append(r.get("text", ""))
+            elif isinstance(r, str):
+                out.append(r)
+        return "".join(out)
+    if isinstance(cur, dict):
+        if "simpleText" in cur:
+            return cur["simpleText"]
+        if "runs" in cur:
+            return "".join(r.get("text", "") for r in cur["runs"] if isinstance(r, dict))
+    return ""
+
+
+def _youtube_search_fallback(
+    query: str, max_results: int = 20, timeout: int = 20,
+) -> List[Dict[str, Any]]:
+    """YouTube search fallback when DuckDuckGo Videos returns nothing.
+
+    DuckDuckGo's ``videos()`` endpoint intermittently raises
+    ``DDGSException: No results found.`` for the majority of queries, so
+    video-search needs an independent discovery source. This scrapes YouTube's
+    public search-results page (which embeds ``ytInitialData`` JSON) through
+    the same ``fetch_resilient`` chain used everywhere else, and returns
+    DDGS-compatible video metadata (title, url, description, thumbnail,
+    duration, channel, views, published-time). Returns public search
+    metadata only — no video downloading and no transcript text.
+
+    Returns an empty list on any failure (never raises).
+    """
+    url = f"https://www.youtube.com/results?search_query={quote_plus(query)}"
+    try:
+        outcome = fetch_resilient(url, timeout=timeout, max_retries=2)
+        if outcome.get("status") != "success":
+            logger.info("youtube search fallback: fetch failed (%s)", outcome.get("status"))
+            return []
+        html = outcome.get("html", "") or ""
+        match = _YT_INITIAL_DATA_RE.search(html) or re.search(r'ytInitialData\s*=\s*(\{.*?\});', html, re.DOTALL)
+        if not match:
+            logger.info("youtube search fallback: ytInitialData not found in page")
+            return []
+        data = json.loads(match.group(1))
+    except Exception as exc:
+        logger.warning("youtube search fallback failed: %s", exc)
+        return []
+
+    def _walk_video_renderers(obj: Any):
+        """Yield every ``videoRenderer`` dict found anywhere in the tree."""
+        stack = [obj]
+        seen_ids = set()
+        while stack:
+            cur = stack.pop()
+            if isinstance(cur, dict):
+                if "videoRenderer" in cur and isinstance(cur["videoRenderer"], dict):
+                    vr = cur["videoRenderer"]
+                    vid = vr.get("videoId")
+                    if vid and vid not in seen_ids:
+                        seen_ids.add(vid)
+                        yield vr
+                stack.extend(cur.values())
+            elif isinstance(cur, list):
+                stack.extend(cur)
+
+    results: List[Dict[str, Any]] = []
+    for vr in _walk_video_renderers(data):
+        video_id = vr.get("videoId")
+        if not video_id:
+            continue
+        title = _yt_text(vr, "title") or _yt_text(vr, "title", "accessibility", "accessibilityData")
+        if not title:
+            # Fallback: title may live in title.runs[*].text
+            title = _yt_text(vr, "title", "runs")
+        channel = _yt_text(vr, "longBylineText", "runs") or _yt_text(vr, "ownerText", "runs")
+        duration = _yt_text(vr, "lengthText")
+        views = _yt_text(vr, "viewCountText")
+        published = _yt_text(vr, "publishedTimeText")
+        thumb = ""
+        thumbs = vr.get("thumbnail", {}).get("thumbnails") if isinstance(vr.get("thumbnail"), dict) else None
+        if thumbs:
+            thumb = thumbs[-1].get("url", "")
+        # Prefer the page's own description snippet when present; otherwise
+        # synthesize one from channel/views/duration/published so the result
+        # always has useful, human-readable context.
+        desc = _yt_text(vr, "detailedMetadataSnippets", "snippetText", "runs")
+        # YouTube fills absent snippets with a generic site-wide boilerplate
+        # ("Enjoy the videos and music you love..."); skip it in favour of the
+        # synthesized metadata line, which is far more informative.
+        if not desc or _YT_BOILERPLATE_DESC in desc:
+            parts = [p for p in (channel, views, duration, published) if p]
+            desc = " · ".join(parts)
+        # Defensive: guarantee desc is a plain string (never a list repr).
+        if not isinstance(desc, str):
+            desc = str(desc)
+
+        results.append({
+            "title": title,
+            "content": f"https://www.youtube.com/watch?v={video_id}",
+            "url": f"https://www.youtube.com/watch?v={video_id}",
+            "description": desc,
+            "body": desc,
+            "snippet": desc,
+            "image": thumb,
+            "thumbnail": thumb,
+            "duration": duration,
+            "publisher": channel,
+            "view_count": views,
+            "publish_date": published,
+            "source": "YouTube",
+        })
+        if len(results) >= max_results:
+            break
+
+    logger.info("youtube search fallback: %d videos for %r", len(results), query)
+    return results
+
+
+def _to_video_candidate(r: Dict[str, Any], source: str) -> Dict[str, Any]:
+    """Normalize a raw video result (DDGS or YouTube) into a ranking candidate.
+
+    Probes the union of field names used by either source so the same helper
+    works for both: DDGS uses ``content``/``date``/``published``; the YouTube
+    fallback uses ``url``/``publish_date``.
+    """
+    url = r.get("content") or r.get("url") or ""
+    thumb = r.get("image") or r.get("thumbnail") or ""
+    return {
+        "title": r.get("title", ""),
+        "content": url,
+        "url": url,
+        "description": r.get("description", ""),
+        "body": r.get("description", "") or r.get("title", ""),
+        "snippet": r.get("description", ""),
+        "thumbnail": thumb,
+        "image": thumb,
+        "source": source,
+        "publish_date": r.get("publish_date", "") or r.get("date", "") or r.get("published", ""),
+    }
 
 
 def video_search(
@@ -87,19 +255,17 @@ def video_search(
     # Normalize DDGS video results into ranking candidate shape.
     candidates: List[Dict[str, Any]] = []
     for r in ddgs_results:
-        url = r.get("content") or r.get("url") or ""
-        candidates.append({
-            "title": r.get("title", ""),
-            "content": url,
-            "url": url,
-            "description": r.get("description", ""),
-            "body": r.get("description", "") or r.get("title", ""),
-            "snippet": r.get("description", ""),
-            "thumbnail": r.get("image") or r.get("thumbnail", ""),
-            "image": r.get("image") or r.get("thumbnail", ""),
-            "source": "DuckDuckGo",
-            "publish_date": r.get("date", "") or r.get("published", ""),
-        })
+        candidates.append(_to_video_candidate(r, "DuckDuckGo"))
+
+    # YouTube fallback: DuckDuckGo's videos() endpoint intermittently raises
+    # "No results found" for most queries, so fall back to YouTube search when
+    # DDG returned nothing. This keeps video-search reliably non-empty.
+    youtube_count = 0
+    if not ddgs_results:
+        yt_results = _youtube_search_fallback(query, max_results=max(20, max_results))
+        for r in yt_results:
+            candidates.append(_to_video_candidate(r, "YouTube"))
+        youtube_count = len(yt_results)
 
     rss_count = 0
     rss_categories = list(categories) if categories else []
@@ -153,6 +319,7 @@ def video_search(
         'search_engine': ddgs_stats,
         'pipeline': 'unified',
         'ddgs_candidates': len(ddgs_results),
+        'youtube_candidates': youtube_count,
         'rss_candidates': rss_count,
         'total_candidates': len(candidates),
         'ranked_output': len(output),
@@ -160,7 +327,7 @@ def video_search(
     }
 
     print(f"🎥 Found {len(output)} ranked videos for query: {query} "
-          f"(DDGS: {len(ddgs_results)}, RSS: {rss_count})")
+          f"(DDGS: {len(ddgs_results)}, YouTube: {youtube_count}, RSS: {rss_count})")
     return output, stats
 
 
@@ -184,7 +351,14 @@ def _enhance_video_descriptions(results: List[Dict[str, Any]], max_workers: int 
             # _fetch_youtube_metadata expects a bare video ID, not the full URL.
             meta = _fetch_youtube_metadata(match.group(1))
             if meta and "error" not in meta and meta.get("description"):
-                r["description"] = meta["description"]
+                new_desc = meta["description"]
+                cur_desc = r.get("description", "") or ""
+                # Only replace the existing description when the freshly fetched
+                # one is genuinely richer (longer). This preserves the useful
+                # metadata line produced by the YouTube search fallback instead
+                # of clobbering it with a truncated/boilerplate description.
+                if not cur_desc or len(new_desc) > len(cur_desc):
+                    r["description"] = new_desc
         except Exception:
             pass
         return r
@@ -248,6 +422,14 @@ def _fetch_youtube_metadata(video_id: str, max_fetch_retries: int = 3, enable_js
         else:
             desc_match = re.search(r'<meta\s+name="description"\s+content="([^"]+)"', html)
             metadata['description'] = unescape(desc_match.group(1)) if desc_match else ""
+
+        # YouTube serves a site-wide boilerplate description ("Enjoy the videos
+        # and music you love...") when the real video description is unavailable
+        # (e.g. age-restricted, removed, or JS-only). Treat it as empty so we
+        # don't clobber an existing good description with generic filler.
+        _desc = metadata.get('description', '')
+        if isinstance(_desc, str) and _YT_BOILERPLATE_DESC in _desc:
+            metadata['description'] = ''
 
         # Channel name
         json_channel = None

@@ -114,8 +114,8 @@ except Exception as e:
 # indicates a broken or removed page (dead link from search engine).
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# _ERROR_PAGE_PHRASES has been moved to scout_it/-ERROR-PAGE-PHRASES/
-# It is imported at the top of this file via importlib
+# ERROR_PAGE_PHRASES is defined once in scout_it/extraction/engine.py and
+# imported from there wherever needed (extraction/search.py, etc.).
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -202,9 +202,11 @@ COMMAND_OUTPUT_STUBS: Dict[str, str] = {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def main():
-    ds_config.load_stored_credentials_into_env()
+def build_parser():
+    """Build and return the argparse parser for the scout-it CLI.
 
+    Extracted from ``main()`` so tests can parse args without running the CLI.
+    """
     parser = argparse.ArgumentParser(
         description='Complete search pipeline: web, image, news, video search + URL fetch'
     )
@@ -213,7 +215,6 @@ def main():
     except Exception:
         ver = "unknown"
     parser.add_argument('-v', '--version', action='version', version=f'scout-it {ver}')
-    
     # Subcommands for different search types
     subparsers = parser.add_subparsers(dest='command', help='Search commands')
     
@@ -238,11 +239,13 @@ def main():
     web_parser.add_argument('--workers', '-w', type=int, default=5, help='Parallel workers')
     web_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/struct_format_results.json)')
     web_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
+    web_parser.add_argument('--sources', default=None, help='Also search these source plugins (comma-separated, e.g. openalex,arxiv,wikidata) and merge results with BM25F+vector re-ranking. Run `scout-it sources` for available sources.')
+    web_parser.add_argument('--auto-sources', action='store_true', help='Let the source-selection bandit pick the best sources for this query type (learned from past outcomes). Overrides --sources.')
     web_parser.add_argument('--region', default=None, help='DuckDuckGo region (example: us-en, wt-wt)')
     web_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     web_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
     web_parser.add_argument('--backend', default='auto', choices=['auto', 'html', 'lite'], help='DDGS backend')
-    web_parser.add_argument('--sources', default=None, choices=['wikimedia'],
+    web_parser.add_argument('--source', default=None, choices=['wikimedia'],
                             help='Search source override (default: DuckDuckGo). Use "wikimedia" to search Wikipedia directly. '
                                  'If the primary source returns zero results, falls back to the other source.')
     web_parser.add_argument('--category', nargs='+', default=None,
@@ -262,6 +265,7 @@ def main():
     web_parser.add_argument('--profile-name', dest='browser_profile_name', default='default', help='Persistent profile name (only with --persistent-profile)')
     web_parser.add_argument('--use-bandit', dest='enable_bandit', action='store_true', help="Once a domain has enough recorded history, skip straight to whichever fetch tier has actually worked best for it instead of always starting with plain requests (see 'scout-it stats')")
     web_parser.add_argument('--no-js-fallback', dest='enable_js_fallback', action='store_false', help='Disable automatic Playwright fallback when a page fetch fails or looks blocked')
+    web_parser.add_argument('--semantic', dest='enable_semantic', action='store_true', help='Re-rank results by semantic relevance (hybrid BM25+dense-vector + cross-encoder). Needs: pip install sentence-transformers torch')
     web_parser.set_defaults(enable_js_fallback=True)
 
     # Wikimedia search subcommand
@@ -324,6 +328,8 @@ def main():
     img_parser.add_argument('--max', '-m', type=int, default=5, help='Max images (1-50)')
     img_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/image_search_results.json)')
     img_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
+    img_parser.add_argument('--sources', default=None, help='Also search source plugins (comma-separated, e.g. internet_archive,openstreetmap) and merge with BM25F+vector re-ranking. Run `scout-it sources` for available sources.')
+    img_parser.add_argument('--auto-sources', action='store_true', help='Let the source-selection bandit pick the best sources for this query type (learned from past outcomes). Overrides --sources.')
     img_parser.add_argument('--download', '-d', action='store_true', help='Download images')
     img_parser.add_argument('--download-dir', default='.scout-it/downloaded_images', help='Download directory (default: .scout-it/downloaded_images)')
     img_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
@@ -368,11 +374,13 @@ def main():
                                   'Perfect for quickly browsing large numbers of candidates. Default limit: 30 snippets.')
     news_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/news_search_results.json)')
     news_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
+    news_parser.add_argument('--sources', default=None, help='Also search source plugins (comma-separated, e.g. gdelt,openalex,crossref) and merge with BM25F+vector re-ranking. Run `scout-it sources` for available sources.')
+    news_parser.add_argument('--auto-sources', action='store_true', help='Let the source-selection bandit pick the best sources for this query type (learned from past outcomes). Overrides --sources.')
     news_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
     news_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     news_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
     news_parser.add_argument('--workers', type=int, default=5, help='Parallel workers for content extraction')
-    news_parser.add_argument('--sources', default=None, choices=['google-news'],
+    news_parser.add_argument('--source', default=None, choices=['google-news'],
                              help='Search source override (default: DuckDuckGo News). Use "google-news" to search Google News RSS directly. '
                                   'If the primary source returns zero results, falls back to the other source.')
     news_parser.add_argument('--category', nargs='+', default=None,
@@ -397,6 +405,7 @@ def main():
     news_parser.add_argument('--max-size', type=str, default=None,
                              help='Maximum response size per article (e.g. 5mb). '
                                   'Truncates the raw HTML before extraction.')
+    news_parser.add_argument('--semantic', dest='enable_semantic', action='store_true', help='Re-rank results by semantic relevance (hybrid BM25+dense-vector + cross-encoder). Needs: pip install sentence-transformers torch')
 
     # Video search subcommand
     video_parser = subparsers.add_parser(
@@ -411,6 +420,8 @@ def main():
     video_parser.add_argument('--max', '-m', type=int, default=5, help='Max videos (1-50)')
     video_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/video_search_results.json)')
     video_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
+    video_parser.add_argument('--sources', default=None, help='Also search source plugins (comma-separated, e.g. internet_archive,listennotes) and merge with BM25F+vector re-ranking. Run `scout-it sources` for available sources.')
+    video_parser.add_argument('--auto-sources', action='store_true', help='Let the source-selection bandit pick the best sources for this query type (learned from past outcomes). Overrides --sources.')
     video_parser.add_argument('--region', default='us-en', help='DuckDuckGo region (example: us-en, wt-wt)')
     video_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     video_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
@@ -502,7 +513,7 @@ def main():
     )
     multi_parser.add_argument('--query', '-q', required=True, help='Search query')
     multi_parser.add_argument('--engines', default='duckduckgo', help='Comma-separated engine names (duckduckgo,brave,bing,google,serpapi,wikimedia)')
-    multi_parser.add_argument('--sources', default=None, choices=['wikimedia'],
+    multi_parser.add_argument('--source', default=None, choices=['wikimedia'],
                               help='Include Wikimedia as a search source. Shorthand for --engines wikimedia.')
     multi_parser.add_argument('--max', '-m', type=int, default=10, help='Max merged results')
     multi_parser.add_argument('--workers', '-w', type=int, default=5, help='Parallel content-extraction workers')
@@ -514,6 +525,8 @@ def main():
     multi_parser.set_defaults(enable_js_fallback=True)
     multi_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/multi_search_results.json)')
     multi_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
+    multi_parser.add_argument('--sources', default=None, help='Also search source plugins (comma-separated, e.g. openalex,arxiv,wikidata,huggingface) in parallel and merge with BM25F+vector re-ranking. Run `scout-it sources` for available sources.')
+    multi_parser.add_argument('--auto-sources', action='store_true', help='Let the source-selection bandit pick the best sources for this query type (learned from past outcomes). Overrides --sources.')
     multi_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     # list-engines subcommand — show configuration status of every engine
@@ -549,6 +562,7 @@ def main():
     stats_parser.add_argument('--export', default=None, metavar='PATH', help='Write the full stats dump to a JSON file instead of printing a summary')
     stats_parser.add_argument('--reset', default=None, metavar='DOMAIN', help='Forget all recorded strategy history for one domain')
     stats_parser.add_argument('--reset-all', action='store_true', help='Forget all recorded strategy history for every domain')
+    stats_parser.add_argument('--sources', action='store_true', help='Show source-selection bandit stats (which sources work best per query type)')
 
     # doctor -- environment/connectivity self-check
     subparsers.add_parser(
@@ -749,6 +763,62 @@ def main():
     reddit_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
     reddit_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
+    # Semantic search subcommand (Phase 1 — Mode B: indexed corpus search)
+    sem_parser = subparsers.add_parser(
+        'semantic-search',
+        help='Search the persistent semantic index (hybrid BM25+vector)',
+        description=(
+            'Search a persistent corpus of previously-indexed documents using hybrid '
+            'BM25 + dense-vector retrieval. Use `scout-it index` to build the corpus first.\n\n'
+            'Storage: ~/.scout-it/semantic/lancedb/\n'
+            'Model: configurable via SCOUT_SEMANTIC_MODEL env var (default: BAAI/bge-m3)'
+        ),
+    )
+    sem_parser.add_argument('--query', '-q', required=True, help='Search query')
+    sem_parser.add_argument('--max', '-m', type=int, default=10, help='Max results')
+    sem_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/semantic_results.json)')
+    sem_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
+    sem_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+
+    # Index subcommand (Phase 1 — Mode B: build persistent corpus)
+    index_parser = subparsers.add_parser(
+        'index',
+        help='Index search results into the persistent semantic store',
+        description=(
+            'Fetch, extract, chunk, and embed web-search results into the persistent '
+            'LanceDB store at ~/.scout-it/semantic/lancedb/. The corpus then powers '
+            '`scout-it semantic-search` and survives across runs.\n\n'
+            'Needs: pip install sentence-transformers torch lancedb'
+        ),
+    )
+    index_parser.add_argument('--query', '-q', required=True, help='Query to fetch and index')
+    index_parser.add_argument('--max', '-m', type=int, default=20, help='Max results to fetch and index')
+    index_parser.add_argument('--source', default='web', choices=['web', 'news'], help='Source to fetch from')
+
+    # Source search subcommand removed — --sources flag added to web-search,
+    # news-search, image-search, video-search, multi-search instead.
+
+    # Sources subcommand — list available source plugins
+    sources_parser = subparsers.add_parser(
+        'sources',
+        help='List available academic/dataset/knowledge source plugins',
+        description=(
+            'List all source plugins available via the --sources flag on '
+            'web-search, news-search, image-search, video-search, and multi-search. '
+            'All sources are free or have free tiers.'
+        ),
+    )
+    sources_parser.add_argument('--json', action='store_true', help='Output as JSON')
+
+
+    return parser
+
+
+def main():
+    ds_config.load_stored_credentials_into_env()
+
+    parser = build_parser()
+
     args = parser.parse_args()
     
     if not args.command:
@@ -801,7 +871,7 @@ def main():
             enable_persistent_profile=args.enable_persistent_profile,
             browser_profile_name=args.browser_profile_name,
             enable_bandit=args.enable_bandit,
-            source=args.sources,
+            source=args.source,
             categories=args.category,
             snippets_only=args.snippets,
         )
@@ -827,6 +897,41 @@ def main():
             'stats': stats,
             'structured_results': structured_results
         }
+
+        if getattr(args, 'enable_semantic', False):
+            from .semantic import semantic_rerank, is_available as _sem_ok
+            print('   🧠 Semantic re-ranking: enabled' + ('' if _sem_ok() else ' (BM25-only — install sentence-transformers torch for full vector+cross-encoder reranking)'))
+            structured_results = semantic_rerank(structured_results, args.query)
+            output['structured_results'] = structured_results
+            output['semantic_reranked'] = True
+        # --sources / --auto-sources: augment with source plugin results
+        if getattr(args, 'sources', None) or getattr(args, 'auto_sources', False):
+            from .sources import augment_search_with_sources
+            from .sources.source_bandit import classify_query as _classify
+            use_bandit = getattr(args, 'auto_sources', False) and not getattr(args, 'sources', None)
+            if use_bandit:
+                _qt = _classify(args.query)
+                print(f'   🎰 Source-selection bandit: picking best sources for query type "{_qt}"...')
+            else:
+                source_names = [s.strip() for s in args.sources.split(',') if s.strip()]
+                print(f'   📡 Augmenting with source plugins: "{", ".join(source_names)}"')
+            structured_results = augment_search_with_sources(
+                args.query,
+                structured_results,
+                getattr(args, 'sources', None),
+                max_final=max_results,
+                max_per_source=max(5, max_results // 2),
+                default_source='web',
+                semantic_rerank=True,
+                composite_rerank=True,
+                use_source_bandit=use_bandit,
+            )
+            output['structured_results'] = structured_results
+            if not use_bandit:
+                output['source_plugins'] = source_names
+            print(f'   📊 Merged → {len(structured_results)} ranked results')
+
+
         
         out_path = Path(args.out)
         _write_output(out_path, output)
@@ -887,12 +992,39 @@ def main():
             'image_results': image_results
         }
         
+        # --sources / --auto-sources: augment with source plugin results
+        if getattr(args, 'sources', None) or getattr(args, 'auto_sources', False):
+            from .sources import augment_search_with_sources
+            from .sources.source_bandit import classify_query as _classify
+            use_bandit = getattr(args, 'auto_sources', False) and not getattr(args, 'sources', None)
+            if use_bandit:
+                _qt = _classify(args.query)
+                print(f'   🎰 Source-selection bandit: picking best sources for query type "{_qt}"...')
+            else:
+                source_names = [s.strip() for s in args.sources.split(',') if s.strip()]
+                print(f'   📡 Augmenting with source plugins: "{", ".join(source_names)}"')
+            image_results = augment_search_with_sources(
+                args.query,
+                image_results,
+                getattr(args, 'sources', None),
+                max_final=args.max or 10,
+                max_per_source=max(5, (args.max or 10) // 2),
+                default_source='web',
+                semantic_rerank=True,
+                composite_rerank=True,
+                use_source_bandit=use_bandit,
+            )
+            output['structured_results'] = image_results
+            if not use_bandit:
+                output['source_plugins'] = source_names
+            print(f'   📊 Merged → {len(image_results)} ranked results')
+
         out_path = Path(args.out)
         _write_output(out_path, output)
 
         print(f'\n✅ IMAGE SEARCH COMPLETE!')
         print(f'   🖼️  Query: {args.query}')
-        print(f'   📊 Total images found: {stats["search_engine"]["total"]}')
+        print(f'   📊 Total images found: {len(image_results)}')
         print(f'   ✅ Valid URLs: {stats["search_engine"]["success"]}')
         print(f'   📄 Results JSON: {out_path}')
         print(f'   📂 Results saved to: {out_path.resolve()}')
@@ -944,7 +1076,13 @@ def main():
             workers=getattr(args, 'workers', 3),
             max_fetch_retries=args.max_fetch_retries,
             enable_js_fallback=args.enable_js_fallback,
-            source=args.sources,
+            enable_alternate_source=getattr(args, 'enable_alternate_source', False),
+            enable_dns_fallback=getattr(args, 'enable_dns_fallback', False),
+            enable_tls_impersonate=getattr(args, 'enable_tls_impersonate', False),
+            enable_persistent_profile=getattr(args, 'enable_persistent_profile', False),
+            browser_profile_name=getattr(args, 'browser_profile_name', None),
+            enable_bandit=getattr(args, 'enable_bandit', True),
+            source=args.source,
             locations=args.location,
             max_chars=args.max_chars,
             max_size=args.max_size,
@@ -972,6 +1110,33 @@ def main():
             'stats': stats,
             'structured_results': news_results,
         }
+        # --sources / --auto-sources: augment with source plugin results
+        if getattr(args, 'sources', None) or getattr(args, 'auto_sources', False):
+            from .sources import augment_search_with_sources
+            from .sources.source_bandit import classify_query as _classify
+            use_bandit = getattr(args, 'auto_sources', False) and not getattr(args, 'sources', None)
+            if use_bandit:
+                _qt = _classify(args.query)
+                print(f'   🎰 Source-selection bandit: picking best sources for query type "{_qt}"...')
+            else:
+                source_names = [s.strip() for s in args.sources.split(',') if s.strip()]
+                print(f'   📡 Augmenting with source plugins: "{", ".join(source_names)}"')
+            news_results = augment_search_with_sources(
+                args.query,
+                news_results,
+                getattr(args, 'sources', None),
+                max_final=max_results,
+                max_per_source=max(5, max_results // 2),
+                default_source='web',
+                semantic_rerank=True,
+                composite_rerank=True,
+                use_source_bandit=use_bandit,
+            )
+            output['structured_results'] = news_results
+            if not use_bandit:
+                output['source_plugins'] = source_names
+            print(f'   📊 Merged → {len(news_results)} ranked results')
+
 
         out_path = Path(args.out)
         _write_output(out_path, output)
@@ -1040,13 +1205,40 @@ def main():
             'stats': stats,
             'video_results': video_results,
         }
+        # --sources / --auto-sources: augment with source plugin results
+        if getattr(args, 'sources', None) or getattr(args, 'auto_sources', False):
+            from .sources import augment_search_with_sources
+            from .sources.source_bandit import classify_query as _classify
+            use_bandit = getattr(args, 'auto_sources', False) and not getattr(args, 'sources', None)
+            if use_bandit:
+                _qt = _classify(args.query)
+                print(f'   🎰 Source-selection bandit: picking best sources for query type "{_qt}"...')
+            else:
+                source_names = [s.strip() for s in args.sources.split(',') if s.strip()]
+                print(f'   📡 Augmenting with source plugins: "{", ".join(source_names)}"')
+            video_results = augment_search_with_sources(
+                args.query,
+                video_results,
+                getattr(args, 'sources', None),
+                max_final=args.max or 10,
+                max_per_source=max(5, (args.max or 10) // 2),
+                default_source='web',
+                semantic_rerank=True,
+                composite_rerank=True,
+                use_source_bandit=use_bandit,
+            )
+            output['structured_results'] = video_results
+            if not use_bandit:
+                output['source_plugins'] = source_names
+            print(f'   📊 Merged → {len(video_results)} ranked results')
+
 
         out_path = Path(args.out)
         _write_output(out_path, output)
 
         print(f'\n✅ VIDEO SEARCH COMPLETE!')
         print(f'   🎬 Query: {args.query}')
-        print(f'   📊 Total videos found: {stats["search_engine"].get("total", 0)}')
+        print(f'   📊 Total videos found: {len(video_results)}')
         print(f'   📄 Results JSON: {out_path}')
         print(f'   📂 Results saved to: {out_path.resolve()}')
         print(f'   ⏱️  Execution time: {stats["search_engine"].get("execution_time", 0.0):.2f}s\n')
@@ -1260,9 +1452,9 @@ def main():
     # ==========================================================================
     elif args.command == 'multi-search':
         engine_list = [e.strip() for e in args.engines.split(',') if e.strip()]
-        # If --sources is provided, append it to the engine list
-        if args.sources:
-            if args.sources == 'wikimedia' and 'wikimedia' not in engine_list:
+        # If --source is provided, append it to the engine list
+        if args.source:
+            if args.source == 'wikimedia' and 'wikimedia' not in engine_list:
                 engine_list.append('wikimedia')
         _cmd_timer = _PhaseTimer(f"multi-search '{args.query}'", engines=engine_list)
         with _cmd_timer:
@@ -1283,6 +1475,41 @@ def main():
             'stats': stats,
             'structured_results': structured_results,
         }
+
+        if getattr(args, 'enable_semantic', False):
+            from .semantic import semantic_rerank, is_available as _sem_ok
+            print('   🧠 Semantic re-ranking: enabled' + ('' if _sem_ok() else ' (BM25-only — install sentence-transformers torch for full vector+cross-encoder reranking)'))
+            structured_results = semantic_rerank(structured_results, args.query)
+            output['structured_results'] = structured_results
+            output['semantic_reranked'] = True
+
+        # --sources / --auto-sources: augment with source plugin results
+        if getattr(args, 'sources', None) or getattr(args, 'auto_sources', False):
+            from .sources import augment_search_with_sources
+            from .sources.source_bandit import classify_query as _classify
+            use_bandit = getattr(args, 'auto_sources', False) and not getattr(args, 'sources', None)
+            if use_bandit:
+                _qt = _classify(args.query)
+                print(f'   🎰 Source-selection bandit: picking best sources for query type "{_qt}"...')
+            else:
+                source_names = [s.strip() for s in args.sources.split(',') if s.strip()]
+                print(f'   📡 Augmenting with source plugins: "{", ".join(source_names)}"')
+            structured_results = augment_search_with_sources(
+                args.query,
+                structured_results,
+                getattr(args, 'sources', None),
+                max_final=args.max,
+                max_per_source=max(5, args.max // 2),
+                default_source='web',
+                semantic_rerank=True,
+                composite_rerank=True,
+                use_source_bandit=use_bandit,
+            )
+            output['structured_results'] = structured_results
+            if not use_bandit:
+                output['source_plugins'] = source_names
+            print(f'   📊 Merged → {len(structured_results)} ranked results')
+
         out_path = Path(args.out)
         _write_output(out_path, output)
         if args.json:
@@ -1333,7 +1560,22 @@ def main():
     # stats -- strategy cache introspection
     # ==========================================================================
     elif args.command == 'stats':
-        if args.reset_all:
+        if getattr(args, 'sources', False):
+            from .sources.source_bandit import get_source_stats, reset_bandit
+            stats = get_source_stats()
+            if not stats:
+                print("⚪ No source-selection history yet -- run searches with --auto-sources to start learning.\n")
+            else:
+                print(f"\n🎰 Source-selection bandit: {len(stats)} query type(s) learned\n")
+                for qt, sources in sorted(stats.items()):
+                    # Sort by success rate descending
+                    ranked = sorted(sources.items(), key=lambda x: (x[1]['total'], x[1]['successes']/max(x[1]['total'],1)), reverse=True)
+                    print(f"  📂 {qt} ({len(sources)} sources tried):")
+                    for src, s in ranked[:8]:
+                        rate = s['successes']/s['total'] if s['total'] else 0
+                        print(f"     {src:<25} {s['successes']:>2}/{s['total']:<2} ({rate:.0%}) avg_rel={s['avg_relevance']:.2f}")
+                    print()
+        elif args.reset_all:
             domains = strategy_cache.all_known_domains()
             for d in domains:
                 strategy_cache.reset_domain(d)
@@ -1675,6 +1917,75 @@ def main():
         else:
             _cmd_timer.done(posts=result['result_count'])
             print(f"   📂 Results saved to: {out_path.resolve()}\n")
+
+    elif args.command == 'index':
+        _cmd_timer = _PhaseTimer(f"index '{args.query}'")
+        with _cmd_timer:
+            from .semantic import SemanticIndex, is_available as _sem_ok
+            if not _sem_ok():
+                print('❌ Semantic indexing requires: pip install sentence-transformers torch lancedb')
+                return
+            if args.source == 'news':
+                structured_results, stats = news_search(args.query, max_results=args.max, snippets_only=True)
+            else:
+                structured_results, stats = web_search(args.query, max_results=args.max)
+            idx = SemanticIndex()
+            chunks = idx.add_documents(structured_results, source=args.source)
+        print(f"   ✅ Indexed {chunks} chunks from {len(structured_results)} documents into ~/.scout-it/semantic/lancedb/")
+        print(f"   🔍 Search them with: scout-it semantic-search -q '<your query>'\n")
+
+    elif args.command == 'semantic-search':
+        _cmd_timer = _PhaseTimer(f"semantic-search '{args.query}'")
+        with _cmd_timer:
+            from .semantic import SemanticIndex, is_available as _sem_ok
+            if not _sem_ok():
+                print('❌ Semantic search requires: pip install sentence-transformers torch lancedb')
+                return
+            idx = SemanticIndex()
+            count = idx.count()
+            if count == 0:
+                print('📭 No indexed documents found. Build a corpus first with: scout-it index -q "<query>"')
+                return
+            results = idx.search(args.query, top_k=args.max)
+        output = {
+            'query': args.query,
+            'search_type': 'semantic',
+            'indexed_chunks': count,
+            'structured_results': results,
+        }
+        out_path = Path(args.out)
+        _write_output(out_path, output)
+        if args.json:
+            print(json.dumps(output, indent=2, ensure_ascii=False))
+        else:
+            _cmd_timer.done(results=len(results))
+            print(f"   🧠 Searched {count} indexed chunks → {len(results)} results")
+            print(f"   📂 Results saved to: {out_path.resolve()}\n")
+
+    # ==========================================================================
+    # sources — list available source plugins
+    # ==========================================================================
+    elif args.command == 'sources':
+        from .sources.source_config import source_status
+
+        statuses = source_status()
+        if getattr(args, 'json', False):
+            print(json.dumps(statuses, indent=2, ensure_ascii=False))
+        else:
+            print(f"\n📡 Source Plugins ({len(statuses)} sources)\n")
+            print(f"  Use the --sources flag on web-search, news-search, image-search,")
+            print(f"  video-search, or multi-search to search these in parallel.\n")
+            print(f"  {'Source':<20} {'Type':<12} {'Status':<12} {'Key':<10} Description")
+            print(f"  {'─'*20} {'─'*12} {'─'*12} {'─'*10} {'─'*45}")
+            for s in statuses:
+                if s['configured']:
+                    key_status = "✅" if s['requires_key'] else "—"
+                else:
+                    key_status = "❌" if s['requires_key'] else "—"
+                status = "✅" if (s['enabled'] and s['configured']) else "⚪"
+                desc = s['description'][:50]
+                print(f"  {s['name']:<20} {s['content_type']:<12} {status:<12} {key_status:<10} {desc}")
+            print(f"\n  Run `scout-it config` to set API keys for sources that need them.\n")
 
 
 if __name__ == '__main__':
