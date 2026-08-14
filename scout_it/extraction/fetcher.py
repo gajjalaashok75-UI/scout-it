@@ -71,6 +71,57 @@ def fetch_resilient(
 
     proxy_info = _pp.get_default_pool().get()
 
+    def _record(tier: str, success: bool, latency_ms: Optional[int] = None) -> None:
+        if not enable_strategy_cache:
+            return
+        try:
+            from .. import strategy_cache as _sc
+            _sc.record_outcome(url, tier, success, proxy_id=proxy_info["proxy_id"], latency_ms=latency_ms)
+        except Exception:
+            pass
+
+    # ── Disk response cache: short-circuit a re-fetch of a page we already
+    # successfully fetched recently. Skipped for force_js (JS-rendered pages
+    # are non-deterministic) and when explicitly disabled by the caller.
+    # This is the single biggest fetch-path optimization: every search
+    # command goes through fetch_resilient, so caching here eliminates
+    # redundant network round-trips for repeated URLs across a session.
+    _use_response_cache = (
+        enable_strategy_cache
+        and not force_js
+        and not browser_pool
+    )
+    if _use_response_cache:
+        try:
+            from .. import response_cache as _resp_cache
+            cached = _resp_cache.get(url)
+            if cached and cached.get("content"):
+                # A cache hit means the *original* fetch succeeded with the
+                # "requests" tier — record that outcome so the strategy cache
+                # keeps learning even when serving from cache.
+                _record("requests", True)
+                return {
+                    "html": cached["content"],
+                    "final_url": url,
+                    "status": "success",
+                    "tier": "cache",
+                    "attempts": 0,
+                    "errors": [],
+                    "cached": True,
+                    "age_seconds": cached.get("age_seconds"),
+                }
+        except Exception:
+            _use_response_cache = False
+
+    def _cache_set(html: str, tier: str) -> None:
+        """Persist a successful fetch to the response cache."""
+        if not _use_response_cache or not html:
+            return
+        try:
+            _resp_cache.set(url, html, content_type="web")
+        except Exception:
+            pass
+
     if enable_bandit and not force_js:
         try:
             from .. import strategy_bandit as _bandit
@@ -78,15 +129,6 @@ def fetch_resilient(
             if choice["source"] == "bandit" and choice["tier"] == "playwright" and choice["confidence"] >= 0.7:
                 force_js = True
                 errs.append(f"bandit: skipping tier 1 -- playwright has a {choice['confidence']:.0%} recorded success rate for this domain")
-        except Exception:
-            pass
-
-    def _record(tier: str, success: bool, latency_ms: Optional[int] = None) -> None:
-        if not enable_strategy_cache:
-            return
-        try:
-            from .. import strategy_cache as _sc
-            _sc.record_outcome(url, tier, success, proxy_id=proxy_info["proxy_id"], latency_ms=latency_ms)
         except Exception:
             pass
 
@@ -120,6 +162,7 @@ def fetch_resilient(
                 if status < 400 and not _looks_blocked(text, status):
                     _pp.get_default_pool().mark_success(proxy_info["proxy_id"])
                     _record("requests", True, latency_ms)
+                    _cache_set(text, "requests")
                     return {
                         "html": text,
                         "final_url": str(resp.url),
@@ -329,6 +372,7 @@ def fetch_resilient(
         resp = sess.get(url, headers=basic_headers, timeout=timeout, allow_redirects=True)
         if resp.status_code < 400 and resp.text:
             _record("basic-fallback", True, int((time.time() - attempt_start) * 1000))
+            _cache_set(resp.text, "basic-fallback")
             return {
                 "html": resp.text,
                 "final_url": str(resp.url),

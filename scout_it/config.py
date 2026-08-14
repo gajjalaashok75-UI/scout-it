@@ -43,6 +43,12 @@ KNOWN_CREDENTIALS: List[Dict[str, str]] = [
     {"key": "SERPAPI_KEY", "desc": "SerpAPI key — used by multi-search --engines serpapi (proxies real Google/Bing/Yahoo/Baidu/Yandex results)", "get_it": "https://serpapi.com (free tier: 100 searches/month)"},
     {"key": "DISCORD_BOT_TOKEN", "desc": "Discord bot token — required for discord-channel (the bot must already be a member of the target server)", "get_it": "https://discord.com/developers/applications"},
     {"key": "REDDIT_COOKIE", "desc": "A logged-in Reddit session's Cookie header — improves (does not guarantee) reddit-search success", "get_it": "copy the 'Cookie' request header from a logged-in browser session (DevTools → Network tab)"},
+    # ── Phase 2 source plugin keys ───────────────────────────────────────
+    {"key": "SEMANTIC_SCHOLAR_API_KEY", "desc": "Semantic Scholar API key — used by source-search --sources semantic_scholar (raises rate limit from 1/sec to 100/sec)", "get_it": "https://www.semanticscholar.org/product/api (free, request form)"},
+    {"key": "UNPAYWALL_EMAIL", "desc": "Your email address — used as the Unpaywall API key for open-access full-text PDF lookups", "get_it": "Just provide your email — no registration needed (https://unpaywall.org/products/api)"},
+    {"key": "CORE_API_KEY", "desc": "CORE API key — used by source-search --sources core (200M+ open-access papers with full text)", "get_it": "https://core.ac.uk/services/api (free registration)"},
+    {"key": "HF_TOKEN", "desc": "Hugging Face token — optional, used by source-search --sources huggingface (increases rate limits; not required)", "get_it": "https://huggingface.co/settings/tokens (free, optional)"},
+    {"key": "LISTENNOTES_API_KEY", "desc": "ListenNotes API key — used by source-search --sources listennotes (2.5M+ podcasts with transcripts)", "get_it": "https://listennotes.com/api/ (free tier: 1000 requests/month)"},
 ]
 KNOWN_KEYS = {c["key"] for c in KNOWN_CREDENTIALS}
 

@@ -32,7 +32,7 @@ from rich.progress import (
 from rich.table import Table
 
 from .types import EnterpriseResult, ImageSearchResult
-from .engine import ExtractionEngine
+from .engine import ExtractionEngine, ERROR_PAGE_PHRASES as _ENGINE_ERROR_PAGE_PHRASES
 from .fetcher import fetch_resilient
 
 # Prefer the newer package name `ddgs` when available, fall back to `duckduckgo_search`
@@ -169,6 +169,13 @@ def _build_list_attempt_options(base_options: Dict[str, Any], attempt: int, meth
         options['timelimit'] = None
     if attempt > 1 and options.get('safesearch', 'moderate') != 'off':
         options['safesearch'] = 'off'
+    # For list-type searches (images/news/videos) also relax the structured
+    # filters on later attempts so combined-filter runs don't stay stuck on
+    # zero results when one filter is too restrictive.
+    if method_name in ('images', 'news', 'videos') and attempt > 0:
+        for key in ('resolution', 'duration', 'license_images', 'license_videos'):
+            if key in options:
+                options[key] = None
     return options
 
 
@@ -666,12 +673,8 @@ class EnterpriseSearchEngine:
                 # ═══════════════════════════════════════════════════════════
                 # Short content matching error phrases indicates a broken URL
                 # (dead link from search engine showing "page not found" page)
-                _ERROR_PAGE_PHRASES = [
-                    "whoops", "page doesn't exist", "can't be found",
-                    "page not found", "this page could not be found",
-                    "sorry, this page",
-                ]
-                
+                _ERROR_PAGE_PHRASES = _ENGINE_ERROR_PAGE_PHRASES
+
                 error_page_detected = False
                 if main_content and any(p in main_content.lower() for p in _ERROR_PAGE_PHRASES) and len(main_content.strip()) < 500:
                     logger.info(f"Error page detected, clearing content: {url[:80]}")

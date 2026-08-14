@@ -8,6 +8,7 @@ and routes accordingly. Persists learned strategies to disk.
 
 import json
 import logging
+import threading
 from pathlib import Path
 from typing import Dict, Tuple, Optional
 from urllib.parse import urlparse
@@ -49,6 +50,12 @@ class DomainLearningSystem:
         
         self.stats_file = stats_file
         self.domains: Dict[str, Dict] = {}
+        # Guards all mutations of self.domains and the periodic disk save.
+        # record_extraction() is called from concurrent ThreadPoolExecutor
+        # workers in EnterpriseSearchEngine._phase_content_extraction(), so
+        # without this lock concurrent dict mutations + interleaved JSON
+        # writes can corrupt ~/.scout-it/domain_learning.json.
+        self._lock = threading.Lock()
         self._load_stats()
     
     def _load_stats(self):
@@ -96,11 +103,33 @@ class DomainLearningSystem:
             self.domains = {}
     
     def _save_stats(self):
-        """Save domain statistics to disk."""
+        """Save domain statistics to disk (acquires the lock)."""
+        with self._lock:
+            self._save_stats_locked()
+
+    def _save_stats_locked(self):
+        """Save domain statistics to disk. Caller must hold ``self._lock``.
+
+        Writes atomically by dumping to a temp file then replacing, so a
+        crash mid-write can't leave a half-truncated JSON file.
+        """
         try:
+            import tempfile, os
             self.stats_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.stats_file, 'w') as f:
-                json.dump(self.domains, f, indent=2)
+            # Atomic write: temp file in same dir, then os.replace
+            fd, tmp_path = tempfile.mkstemp(
+                dir=str(self.stats_file.parent), suffix=".tmp"
+            )
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    json.dump(self.domains, f, indent=2)
+                os.replace(tmp_path, str(self.stats_file))
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
             logger.debug(f"Saved domain learning data for {len(self.domains)} domains")
         except Exception as e:
             logger.warning(f"Failed to save domain learning data: {e}")
@@ -193,47 +222,49 @@ class DomainLearningSystem:
         if not domain or domain in BANNED_DOMAINS:
             return
         
-        # Initialize domain stats if not exists
-        if domain not in self.domains:
-            self.domains[domain] = {
-                'requests_attempts': 0,
-                'requests_successes': 0,
-                'playwright_attempts': 0,
-                'playwright_successes': 0,
-                'total_extractions': 0,
-                'total_words_requests': 0,
-                'total_words_playwright': 0,
-                'last_updated': None,
-                'strategy': 'unknown',
-                'confidence': 0.0,
-            }
-        
-        stats = self.domains[domain]
-        
-        # Update attempts and successes
-        if tier == 'requests':
-            stats['requests_attempts'] += 1
-            if success:
-                stats['requests_successes'] += 1
-            stats['total_words_requests'] += word_count
-        elif tier == 'playwright':
-            stats['playwright_attempts'] += 1
-            if success:
-                stats['playwright_successes'] += 1
-            stats['total_words_playwright'] += word_count
-        
-        # Update totals
-        stats['total_extractions'] += 1
-        stats['last_updated'] = datetime.now().isoformat()
-        
-        # Recalculate strategy
-        strategy, confidence = self._calculate_strategy(stats)
-        stats['strategy'] = strategy
-        stats['confidence'] = confidence
-        
-        # Save periodically
-        if stats['total_extractions'] % 5 == 0:
-            self._save_stats()
+        with self._lock:
+            # Initialize domain stats if not exists
+            if domain not in self.domains:
+                self.domains[domain] = {
+                    'requests_attempts': 0,
+                    'requests_successes': 0,
+                    'playwright_attempts': 0,
+                    'playwright_successes': 0,
+                    'total_extractions': 0,
+                    'total_words_requests': 0,
+                    'total_words_playwright': 0,
+                    'last_updated': None,
+                    'strategy': 'unknown',
+                    'confidence': 0.0,
+                }
+            
+            stats = self.domains[domain]
+            
+            # Update attempts and successes
+            if tier == 'requests':
+                stats['requests_attempts'] += 1
+                if success:
+                    stats['requests_successes'] += 1
+                stats['total_words_requests'] += word_count
+            elif tier == 'playwright':
+                stats['playwright_attempts'] += 1
+                if success:
+                    stats['playwright_successes'] += 1
+                stats['total_words_playwright'] += word_count
+            
+            # Update totals
+            stats['total_extractions'] += 1
+            stats['last_updated'] = datetime.now().isoformat()
+            
+            # Recalculate strategy
+            strategy, confidence = self._calculate_strategy(stats)
+            stats['strategy'] = strategy
+            stats['confidence'] = confidence
+            
+            # Save periodically (under the lock so concurrent saves don't
+            # interleave partial writes)
+            if stats['total_extractions'] % 5 == 0:
+                self._save_stats_locked()
     
     def force_save(self):
         """Force save current statistics to disk."""

@@ -131,7 +131,6 @@ def test_quality_assessment():
     assert quality.quality_score > 0.6, "Should have high quality score"
     print("   ✅ PASS: Correctly accepts high-quality content")
     
-    return True
 
 
 def test_domain_learning():
@@ -215,7 +214,6 @@ def test_domain_learning():
     assert not skip, "Should NOT skip to Playwright (requests works fine)"
     print("   ✅ PASS: Correctly continues using requests")
     
-    return True
 
 
 def test_escalation_decision():
@@ -292,7 +290,6 @@ def test_escalation_decision():
     assert not should_escalate, f"Should NOT escalate for good quality (got: {reason})"
     print("   ✅ PASS")
     
-    return True
 
 
 def main():

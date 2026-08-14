@@ -49,7 +49,15 @@ class PlaywrightBrowserPool:
     def __init__(self):
         self.thread_local = threading.local()
         self.enabled = False
-        self.active_threads = set()
+        # Track {thread_id: browser} for cleanup. The browser is created in
+        # the owning thread (Playwright sync API is thread-local via greenlets),
+        # so stop() closes each one from the thread that owns it would be
+        # unsafe. Instead we close through the stored objects directly —
+        # browser.close()/playwright.stop() are safe to call cross-thread for
+        # the purpose of releasing the OS process.
+        self._browsers: Dict[int, Any] = {}
+        self._playwrights: Dict[int, Any] = {}
+        self._registry_lock = threading.Lock()
         self.user_agents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
@@ -72,21 +80,34 @@ class PlaywrightBrowserPool:
         logger.info("Browser pool: Enabled (thread-local browsers will be created on-demand)")
     
     def stop(self):
-        """Close all thread-local browsers and stop Playwright instances."""
+        """Close all thread-local browsers and stop Playwright instances.
+
+        Browsers launched by worker threads are tracked in ``self._browsers``
+        and closed here so Chromium/Playwright OS processes are released —
+        previously this was a no-op (``pass``) that leaked a headless
+        Chromium process per worker thread on every ``web-search``/``news-search``
+        with JS rendering enabled.
+        """
         self.enabled = False
-        
-        # We can't iterate over all threads directly, but we can track which
-        # threads have been used and clean them up if they're still alive
-        with self._lock:
-            threads_to_clean = list(self.active_threads)
-        
-        for thread_id in threads_to_clean:
-            # We can't directly access other threads' thread_local storage,
-            # so we just mark the pool as disabled. Each thread will clean
-            # up its own browser when it exits or tries to use the pool next.
-            pass
-        
-        logger.info("Browser pool: Disabled (thread-local browsers will clean up)")
+        with self._registry_lock:
+            browsers = list(self._browsers.values())
+            playwrights = list(self._playwrights.values())
+            self._browsers.clear()
+            self._playwrights.clear()
+
+        for browser in browsers:
+            try:
+                browser.close()
+            except Exception as e:
+                logger.warning(f"Error closing browser during pool stop: {e}")
+
+        for pw in playwrights:
+            try:
+                pw.stop()
+            except Exception as e:
+                logger.warning(f"Error stopping Playwright during pool stop: {e}")
+
+        logger.info(f"Browser pool: Disabled (closed {len(browsers)} browser(s), {len(playwrights)} playwright instance(s))")
     
     def _get_thread_browser(self):
         """Get or create browser for current thread."""
@@ -99,8 +120,9 @@ class PlaywrightBrowserPool:
                 self.thread_local.browser = self.thread_local.pw.chromium.launch(headless=True)
                 
                 thread_id = threading.get_ident()
-                with self._lock:
-                    self.active_threads.add(thread_id)
+                with self._registry_lock:
+                    self._browsers[thread_id] = self.thread_local.browser
+                    self._playwrights[thread_id] = self.thread_local.pw
                 
                 logger.info(f"Browser pool: Chromium launched for thread {thread_id}")
             except ImportError:
@@ -114,15 +136,17 @@ class PlaywrightBrowserPool:
     
     def _close_thread_browser(self):
         """Close browser for current thread (called automatically on thread exit)."""
+        tid = threading.get_ident()
         if hasattr(self.thread_local, 'browser'):
             try:
                 self.thread_local.browser.close()
-                thread_id = threading.get_ident()
-                logger.info(f"Browser pool: Chromium closed for thread {thread_id}")
+                logger.info(f"Browser pool: Chromium closed for thread {tid}")
             except Exception as e:
                 logger.warning(f"Error closing browser: {e}")
             finally:
                 self.thread_local.browser = None
+                with self._registry_lock:
+                    self._browsers.pop(tid, None)
         
         if hasattr(self.thread_local, 'pw'):
             try:
@@ -131,6 +155,8 @@ class PlaywrightBrowserPool:
                 logger.warning(f"Error stopping Playwright: {e}")
             finally:
                 self.thread_local.pw = None
+                with self._registry_lock:
+                    self._playwrights.pop(tid, None)
     
     @contextmanager
     def get_page(self, user_agent: Optional[str] = None):
