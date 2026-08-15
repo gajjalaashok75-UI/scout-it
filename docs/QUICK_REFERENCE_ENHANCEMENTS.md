@@ -54,7 +54,7 @@ scout-it news-search -q "AI updates" --category ai -m 10
 scout-it news-search -q "tech news" --location india -m 15
 
 # Get articles from Google News RSS
-scout-it news-search -q "cloud updates" --sources google-news -m 20
+scout-it news-search -q "cloud updates" --source google-news -m 20
 ```
 
 ---

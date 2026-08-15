@@ -1,537 +1,84 @@
-# Video Search Documentation
+# video-search & video-extract
 
-## Overview
+## video-search
 
-Video search retrieves videos from DuckDuckGo matching your query. Results include video titles, URLs, descriptions, thumbnails, and metadata.
-
-## Command Syntax
+DuckDuckGo video search with duration, resolution, and license filters. When DuckDuckGo Videos returns nothing (its endpoint intermittently raises "No results found" for most queries), the pipeline automatically falls back to **YouTube search**, so the command reliably returns ranked results.
 
 ```bash
-scout-it video-search [OPTIONS]
+scout-it video-search --query "<text>" [options]
 ```
 
-## Required Options
+| Flag | Description |
+|------|-------------|
+| `--query, -q` `<text>` | Search query (required) |
+| `--max, -m` `<n>` | Max videos (1-50, default: 5) |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/video_search_results.json`) |
+| `--markdown` | Save results as Markdown (.md) instead of JSON |
+| `--sources` `<list>` | Also search source plugins (comma-separated, e.g. `internet_archive,listennotes`) and merge with BM25F+vector re-ranking. Run `scout-it sources` for the list |
+| `--auto-sources` | Let the source-selection bandit pick the best sources for this query type. Overrides `--sources` |
+| `--region` `<region>` | DuckDuckGo region (default: `us-en`; example: `us-en`, `wt-wt`) |
+| `--safesearch` `<level>` | Safe search mode: `on`, `moderate`, `off` (default: `moderate`) |
+| `--timelimit` `<range>` | DuckDuckGo time limit: `d`, `w`, `m`, `y` |
+| `--resolution` `<res>` | Video resolution filter: `high`, `standard` |
+| `--duration` `<duration>` | Video duration filter: `short`, `medium`, `long` |
+| `--license-videos` `<license>` | Video license filter |
+| `--category` `<categories...>` | Video RSS categories to include (e.g. `technology science news`). Fetches YouTube channel RSS feeds alongside DuckDuckGo and ranks them together |
+| `--rss` | Include video RSS discovery even without `--category` (pulls a default set of YouTube channels) |
+| `--no-retry-on-zero` | Disable retries when 0 results are found (retries on by default) |
+| `--retry-attempts` `<n>` | Retry attempts when 0 results are found (default: 2) |
+| `--retry-backoff` `<seconds>` | Backoff seconds between retries (default: 1.0) |
 
-| Option | Alias | Description | Type |
-|--------|-------|-------------|------|
-| `--query` | `-q` | Video search query string | `STRING` |
-
-## Optional Options
-
-### Results & Output
-| Option | Alias | Default | Type | Description |
-|--------|-------|---------|------|-------------|
-| `--max` | `-m` | `50` | `INT` | Maximum videos to return |
-| `--out` | `-o` | `.scout-it/video_search_results.json` | `PATH` | Output file path |
-| `--json` | - | `false` | `BOOL` | Output to stdout as JSON |
-| `--markdown` | - | `false` | `BOOL` | Format output as Markdown |
-
-### Search Parameters
-| Option | Alias | Default | Type | Description |
-|--------|-------|---------|------|-------------|
-| `--region` | - | `us-en` | `STRING` | Region/locale |
-| `--safesearch` | - | `moderate` | `ENUM` | Safe search: `on`, `moderate`, `off` |
-| `--timelimit` | - | - | `ENUM` | Time filter: `d` (day), `w` (week), `m` (month), `y` (year) |
-| `--duration` | - | - | `ENUM` | Video duration: `short` (< 5 min), `medium` (5-30 min), `long` (> 30 min) |
-| `--resolution` | - | - | `ENUM` | Resolution: `high`, `standard`, `any` |
-| `--license-videos` | - | `false` | `BOOL` | Filter by Creative Commons licensed videos |
-
-### Retry Options
-| Option | Alias | Default | Type | Description |
-|--------|-------|---------|------|-------------|
-| `--no-retry-on-zero` | - | `false` | `BOOL` | Disable retry on zero results |
-| `--retry-attempts` | - | `2` | `INT` | Number of retry attempts |
-| `--retry-backoff` | - | `1.0` | `FLOAT` | Backoff multiplier |
-
-## Output File
-
-By default, results are saved to:
-
-```
-.scout-it/video_search_results.json
-```
-
-Location: Full path is displayed in console with 📂 emoji
-
-### Output Format
-
-```json
-{
-  "query": "python tutorial",
-  "search_type": "video",
-  "timestamp": "2026-06-12T10:30:00Z",
-  "total_results": 5,
-  "results": [
-    {
-      "position": 1,
-      "title": "Python For Beginners - Full Tutorial",
-      "url": "https://www.youtube.com/watch?v=video123",
-      "description": "Learn Python from scratch with this comprehensive tutorial...",
-      "thumbnail": "https://img.youtube.com/vi/video123/default.jpg",
-      "duration": "3:45:20",
-      "views": "1.2M views",
-      "source": "YouTube"
-    }
-  ],
-  "metadata": {
-    "search_datetime": "2026-06-12T10:30:00Z",
-    "total_found": 5
-  }
-}
-```
-
-## Field Descriptions
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `position` | INT | Result position (1-indexed) |
-| `title` | STRING | Video title |
-| `url` | STRING | Direct URL to the video |
-| `description` | STRING | Video description/summary |
-| `thumbnail` | STRING | Thumbnail image URL |
-| `duration` | STRING | Video length (HH:MM:SS format) |
-| `views` | STRING | View count (if available) |
-| `source` | STRING | Video platform (YouTube, Vimeo, etc.) |
-
-## Usage Examples
-
-### Basic Video Search
-
-Search for Python tutorials:
+### Examples
 
 ```bash
-scout-it video-search --query "Python tutorial"
+scout-it video-search --query "python tutorial" --max 5
+scout-it video-search --query "tech talks" --category technology --duration long
+scout-it video-search --query "breaking news" --timelimit d --resolution high
 ```
 
-### Short Videos Only
+> `video-search` only lists videos (title, channel, views, duration, published) — it does not extract per-video content or download anything. Use `video-extract` for a single video's full metadata/subtitles.
 
-Find short-form content (< 5 minutes):
+## video-extract
+
+Extract full metadata (title, channel, view/like counts, description, upload date) and, where available, subtitles/transcript from a single video URL. **YouTube only** today; other platforms return a clear `unsupported_platform` error.
 
 ```bash
-scout-it video-search --query "motivation" --duration short --max 20
+scout-it video-extract --url "<youtube-url>" [options]
 ```
 
-### Long-form Content (Courses)
+| Flag | Description |
+|------|-------------|
+| `--url` `<url>` | Video URL to extract, e.g. `https://www.youtube.com/watch?v=VIDEO_ID` or `https://youtu.be/VIDEO_ID` (required) |
+| `--subtitle-lang` `<code>` | Preferred subtitle language code (default: `en`) |
+| `--segments` | Include subtitle segments with timestamps (default: off) |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/video_extract_results.json`) |
+| `--markdown` | Save results as Markdown (.md) instead of JSON |
+| `--json` | Output raw JSON to stdout |
+| `--max-fetch-retries` `<n>` | Retry attempts per fetch tier (requests → Playwright) when fetching the video page (default: 3) |
+| `--no-js-fallback` | Disable automatic Playwright fallback when the page fetch fails or looks blocked |
 
-Find full courses and lectures:
-
-```bash
-scout-it video-search --query "web development" --duration long --max 10
-```
-
-### High Resolution Videos
-
-Find HD videos:
-
-```bash
-scout-it video-search --query "music" --resolution high --max 15
-```
-
-### Recent Videos
-
-Get videos from the past day:
+### Examples
 
 ```bash
-scout-it video-search --query "breaking news" --timelimit d --max 10
-```
-
-### Weekly Videos
-
-Get trending videos:
-
-```bash
-scout-it video-search --query "trending" --timelimit w --max 30
-```
-
-### Custom Output
-
-Save to specific file:
-
-```bash
-scout-it video-search --query "Python" --out ./results/python_videos.json
-```
-
-### JSON Output
-
-Output to stdout:
-
-```bash
-scout-it video-search --query "tutorial" --json
-```
-
-### Comprehensive Video Research
-
-Get detailed video results:
-
-```bash
-scout-it video-search \
-  --query "machine learning course" \
-  --duration "long" \
-  --resolution "high" \
-  --max 30 \
-  --safesearch on \
-  --json > ml_courses.json
-```
-
-## Video Duration Options
-
-| Duration | Description |
-|----------|-------------|
-| `short` | Less than 5 minutes |
-| `medium` | 5 to 30 minutes |
-| `long` | More than 30 minutes |
-
-## Video Resolution Options
-
-| Resolution | Description |
-|-----------|-------------|
-| `high` | 720p or higher |
-| `standard` | 480p to 720p |
-| `any` | Any resolution |
-
-Get 30 videos:
-
-```bash
-scout-it video-search --query "yoga exercises" --max 30
-```
-
-### JSON Output
-
-Get raw JSON for processing:
-
-```bash
-scout-it video-search --query "photography tips" --json > video_results.json
-```
-
-### Different Topics
-
-```bash
-# Educational
-scout-it video-search --query "quantum physics explained"
-
-# Entertainment
-scout-it video-search --query "funny cat videos"
-
-# Gaming
-scout-it video-search --query "Minecraft building tutorial"
-
-# Music
-scout-it video-search --query "guitar lesson for beginners"
-
-# Fitness
-scout-it video-search --query "30 minute workout"
+scout-it video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+scout-it video-extract --url "https://youtu.be/dQw4w9WgXcQ" --subtitle-lang fr --segments
+scout-it video-extract --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json
 ```
 
 ## Programmatic API
 
-### Python Example - Basic Search
-
 ```python
-from scout_it.extraction import DDGS
+from scout_it import video_search, video_extract
 
-ddgs = DDGS()
-results = ddgs.videos(query="python programming", max_results=10)
+videos, stats = video_search("python tutorial", max_results=5)
+for v in videos:
+    print(v.get("title"), v.get("duration"))
 
-for result in results:
-    print(f"Title: {result['title']}")
-    print(f"Source: {result['source']}")
-    print(f"Duration: {result['duration']}")
-    print(f"Views: {result['views']}")
-    print(f"URL: {result['url']}")
-    print()
+result = video_extract("https://www.youtube.com/watch?v=dQw4w9WgXcQ", subtitle_lang="en")
 ```
 
-### Python Example - Filter by Duration
-
-```python
-from scout_it.extraction import DDGS
-
-ddgs = DDGS()
-results = ddgs.videos(query="tutorial", max_results=20)
-
-def parse_duration(duration_str):
-    """Convert HH:MM:SS to seconds"""
-    parts = duration_str.split(':')
-    hours = int(parts[0]) if len(parts) > 2 else 0
-    minutes = int(parts[1]) if len(parts) > 1 else 0
-    seconds = int(parts[2] if len(parts) > 2 else parts[0])
-    return hours * 3600 + minutes * 60 + seconds
-
-# Find videos between 10-30 minutes
-for video in results:
-    duration_sec = parse_duration(video['duration'])
-    if 600 <= duration_sec <= 1800:  # 10-30 minutes
-        print(f"{video['title']} - {video['duration']}")
-```
-
-### Python Example - Download Playlist
-
-```python
-import subprocess
-from scout_it.extraction import DDGS
-
-ddgs = DDGS()
-results = ddgs.videos(query="web development crash course", max_results=5)
-
-# Create playlist file for youtube-dl
-with open('playlist.txt', 'w') as f:
-    for result in results:
-        f.write(result['url'] + '\n')
-        print(f"Added: {result['title']}")
-
-# Uncomment to download (requires youtube-dl)
-# subprocess.run(['youtube-dl', '-a', 'playlist.txt'])
-```
-
-### Python Example - Analyze Video Results
-
-```python
-from scout_it.extraction import DDGS
-import re
-
-ddgs = DDGS()
-results = ddgs.videos(query="productivity", max_results=20)
-
-sources = {}
-for video in results:
-    source = video['source']
-    if source not in sources:
-        sources[source] = []
-    sources[source].append(video)
-
-print("Videos by Platform:")
-for platform, videos in sorted(sources.items(), key=lambda x: -len(x[1])):
-    print(f"\n{platform}: {len(videos)} videos")
-    for v in videos[:3]:
-        print(f"  - {v['title']}")
-```
-
-## Common Use Cases
-
-### Learning New Skills
-
-Search for tutorial series:
-
-```bash
-scout-it video-search \
-  --query "web development bootcamp" \
-  --max 15
-```
-
-### Research
-
-Find educational videos:
-
-```bash
-scout-it video-search \
-  --query "climate change science" \
-  --max 10
-```
-
-### Entertainment
-
-Find music or movies:
-
-```bash
-scout-it video-search \
-  --query "trailer science fiction movie 2026" \
-  --max 5
-```
-
-### Software Development
-
-Find code walkthroughs:
-
-```bash
-scout-it video-search \
-  --query "React hooks tutorial" \
-  --max 20 \
-  --json > react_videos.json
-```
-
-### Entertainment Collection
-
-Create a list of videos for later:
-
-```bash
-scout-it video-search \
-  --query "stand-up comedy special" \
-  --max 30 \
-  --json > comedy_videos.json
-```
-
-## Duration Classification
-
-Videos often fall into these categories:
-
-| Duration | Category | Use Case |
-|----------|----------|----------|
-| < 5 min | Clips/Shorts | Quick demos, highlights |
-| 5-15 min | Short Videos | Quick tutorials, news |
-| 15-60 min | Medium Videos | Tutorials, talks, episodes |
-| 1-3 hours | Long Videos | Full courses, complete tutorials |
-| 3+ hours | Full Courses | Complete training programs |
-
-## Performance Considerations
-
-| Factor | Impact | Notes |
-|--------|--------|-------|
-| `--max` | Low | Video search is fast (no extraction) |
-| Query specificity | High | More specific = better results |
-| Network Speed | Low | Lightweight requests |
-
-**Typical Execution Times:**
-- Any number of results: 2-5 seconds (very fast)
-
-## Troubleshooting
-
-### No Videos Found
-
-**Problem:** Search returns empty results
-
-**Solutions:**
-- Try simpler, different keywords
-- Topic may have limited video coverage
-- Check if DuckDuckGo video search is available in your region
-- Try more generic terms
-
-### Too Few Results
-
-**Problem:** Getting fewer videos than requested
-
-**Solutions:**
-- Increase `--max` to allow for more results
-- Try different search terms
-- Some queries have limited video coverage
-- Use broader search terms
-
-### Duplicate Results
-
-**Problem:** Same video appears multiple times
-
-**Solutions:**
-- This is expected behavior (video from multiple sources/links)
-- De-duplicate on client side if needed
-- Use JSON output and filter by URL
-
-### Video Not Accessible
-
-**Problem:** Video link doesn't work
-
-**Causes:**
-- Video removed or made private
-- Geographic restrictions
-- Regional blocking
-
-**Solutions:**
-- Try downloading with appropriate tools (youtube-dl, etc.)
-- Check if video available in your region
-- Use proxy if geographic restrictions apply
-
-## Advanced Usage
-
-### Batch Video Search
-
-Search multiple topics:
-
-```bash
-topics=("Python" "JavaScript" "Go" "Rust" "Kotlin")
-
-for lang in "${topics[@]}"; do
-  scout-it video-search \
-    --query "${lang} tutorial" \
-    --max 10 \
-    --json > "videos_${lang}.json"
-done
-```
-
-### Extract Video URLs
-
-Get just the URLs for batch downloading:
-
-```bash
-scout-it video-search --query "course" --json | \
-  jq -r '.results[] | .url' > urls.txt
-
-# Download with youtube-dl
-youtube-dl -a urls.txt
-```
-
-### Create Playlist File
-
-Extract video URLs in playlist format:
-
-```bash
-scout-it video-search --query "music" --json | \
-  jq -r '.results[] | .url' > my_playlist.m3u
-```
-
-### Analyze Video Sources
-
-Find which platforms have most content:
-
-```bash
-scout-it video-search --query "tutorial" --max 50 --json | \
-  jq '.results[] | .source' | sort | uniq -c | sort -rn
-```
-
-### Search Multiple Related Topics
-
-```bash
-# Create a research collection
-for query in "machine learning" "deep learning" "neural networks"; do
-  scout-it video-search \
-    --query "$query" \
-    --max 20 \
-    --json > "research_${query// /_}.json"
-done
-```
-
-## ⚠️ Rate Limiting & Troubleshooting
-
-### DuckDuckGo Rate Limiting
-
-Video search is **rate-limited** by DuckDuckGo. If you encounter zero results:
-
-**Solutions:**
-1. **Simplify query** - Use basic keywords without special characters
-2. **Remove filters** - Try without `--duration` or `--resolution`
-3. **Reduce results** - Lower `--max` parameter (start with 5-10)
-4. **Change region** - Try different `--region` setting
-5. **Broader terms** - Use more general search words
-6. **Wait and retry** - Wait several minutes before trying again
-
-### Zero Results Recovery Steps
-
-```bash
-# Wait before retrying
-sleep 300
-
-# Try basic search without filters
-scout-it video-search --query "simple keywords" --max 5
-
-# Try without duration filter
-scout-it video-search --query "original query" --max 10
-
-# Try different region
-scout-it video-search --query "original query" --region "us-en" --max 10
-
-# Try with broader query
-scout-it video-search --query "broad search term" --max 20
-```
-
-### Best Practices
-
-- **General terms** - Use common video search keywords
-- **No filters initially** - Start without `--duration` or `--resolution`
-- **Small batches** - Begin with `--max 5-10` results
-- **Avoid rapid requests** - Space out repeated searches
-- **Monitor for limits** - Watch for persistent zero results
-
-## Related Documentation
-
-- [Web Search](./websearch.md)
-- [Image Search](./imagesearch.md)
-- [News Search](./newssearch.md)
-- [README.md](../../README.md)
-- [AGENTS.md](../../AGENTS.md)
+## Related documentation
+
+- [web-search & news-search](./websearch.md)
+- [image-search](./imagesearch.md)
+- [README.md](../README.md)

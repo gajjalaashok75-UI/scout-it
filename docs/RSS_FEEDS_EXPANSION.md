@@ -145,13 +145,13 @@ scout-it news-search -q "tech news" --category ai cloud security startups
 
 ```bash
 # Category RSS + Google News
-scout-it news-search -q "kubernetes" --category cloud --sources google-news
+scout-it news-search -q "kubernetes" --category cloud --source google-news
 
 # Category RSS + Location filter
 scout-it news-search -q "AI" --category ai --location US
 
 # Full stack: DDGS + Category RSS + Google News
-scout-it news-search -q "tech" --category ai --sources google-news --max 20
+scout-it news-search -q "tech" --category ai --source google-news --max 20
 ```
 
 ## New RSS Sources Added

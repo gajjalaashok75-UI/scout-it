@@ -1,420 +1,112 @@
-# Web Search Documentation
+# web-search & news-search
 
 ## Overview
 
-Web search combines DuckDuckGo search functionality with multi-strategy content extraction and cleaning. It retrieves search results and extracts the main article content from each result using a 5-layer fallback strategy.
+`web-search` and `news-search` both use the unified `EnterpriseSearchEngine` to run DuckDuckGo queries and extract full article content from every result through the multi-tier resilient fetch chain. The pipeline is discovery-first: collect snippets from all sources → rank by relevance → extract full content for the top N (or return snippets only with `--snippets`).
 
-## Command Syntax
+Both commands can also pull in category RSS feeds, dedicated source plugins, and a search-source override, all merged and re-ranked together.
 
-```bash
-scout-it web-search [OPTIONS]
-```
-
-## Required Options
-
-| Option | Alias | Description | Type |
-|--------|-------|-------------|------|
-| `--query` | `-q` | Search query string | `STRING` |
-
-## Optional Options
-
-### Extraction & Performance
-| Option | Alias | Default | Type | Description |
-|--------|-------|---------|------|-------------|
-| `--max` | `-m` | `100` | `INT` | Maximum results to fetch and extract (1-100) |
-| `--workers` | `-w` | `4` | `INT` | Parallel extraction workers (1-16) |
-| `--max-fetch-retries` | - | `2` | `INT` | Max retries per URL on fetch failure |
-
-### Output
-| Option | Alias | Default | Type | Description |
-|--------|-------|---------|------|-------------|
-| `--out` | `-o` | `.scout-it/struct_format_results.json` | `PATH` | Output file path |
-| `--json` | - | `false` | `BOOL` | Output raw JSON to stdout instead of saving to file |
-| `--markdown` | - | `false` | `BOOL` | Format output as Markdown |
-
-### Retry & Fallback (Optional)
-| Option | Alias | Default | Type | Description |
-|--------|-------|---------|------|-------------|
-| `--no-retry-on-zero` | - | `false` | `BOOL` | Disable retry on zero successful extractions |
-| `--retry-attempts` | - | `2` | `INT` | Number of retry attempts (1-5) |
-| `--retry-backoff` | - | `1.0` | `FLOAT` | Backoff multiplier between retries |
-
-### Search Parameters (DuckDuckGo)
-| Option | Alias | Default | Type | Description |
-|--------|-------|---------|------|-------------|
-| `--region` | - | `us-en` | `STRING` | Region/locale (e.g., `us-en`, `uk-en`, `wt-wt` for worldwide) |
-| `--safesearch` | - | `moderate` | `ENUM` | Safe search level: `on`, `moderate`, `off` |
-| `--timelimit` | - | - | `ENUM` | Time filter: `d` (day), `w` (week), `m` (month), `y` (year) |
-| `--backend` | - | `auto` | `ENUM` | Search backend: `auto`, `html`, `lite` |
-
-### Advanced Networking & Resilience
-| Option | Alias | Default | Type | Description |
-|--------|-------|---------|------|-------------|
-| `--enable-alternate-source` | - | `false` | `BOOL` | Fall back to alternate search source on failure |
-| `--no-dns-fallback` | - | `false` | `BOOL` | Disable DNS fallback resolution |
-| `--tls-impersonate` | - | `false` | `BOOL` | Impersonate browser TLS fingerprint |
-| `--persistent-profile` | - | `false` | `BOOL` | Use persistent browser profile for requests |
-| `--profile-name` | - | `default` | `STRING` | Name of persistent profile to use |
-| `--use-bandit` | - | `false` | `BOOL` | Enable strategy bandit for adaptive fallback |
-| `--no-js-fallback` | - | `false` | `BOOL` | Disable JavaScript rendering fallback |
-
-## Output File
-
-By default, results are saved to:
-
-```
-.scout-it/struct_format_results.json
-```
-
-Location: Full path is displayed in console with 📂 emoji
-
-### Output Format
-
-```json
-{
-  "query": "machine learning",
-  "search_type": "web",
-  "timestamp": "2026-06-12T10:30:00Z",
-  "total_results": 3,
-  "results": [
-    {
-      "position": 1,
-      "title": "Article Title",
-      "url": "https://example.com/article",
-      "snippet": "Brief description...",
-      "main_content": "Full extracted article content...",
-      "extraction_method": "trafilatura",
-      "confidence_score": 0.95,
-      "metrics": {
-        "word_count": 1250,
-        "sentence_count": 42,
-        "paragraph_count": 8
-      }
-    }
-  ],
-  "metadata": {
-    "successful_extractions": 3,
-    "failed_extractions": 0
-  }
-}
-```
-
-## Field Descriptions
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `position` | INT | Result position (1-indexed) |
-| `title` | STRING | Page title |
-| `url` | STRING | Full URL |
-| `snippet` | STRING | Search result snippet |
-| `main_content` | STRING | Extracted article body |
-| `extraction_method` | STRING | Which extractor succeeded (trafilatura, justext, boilerpy3, readability, beautifulsoup) |
-| `confidence_score` | FLOAT | 0.0-1.0 confidence in extraction quality |
-| `metrics` | OBJECT | Text metrics (word_count, sentence_count, paragraph_count) |
-
-## Content Extraction Strategy
-
-Web search uses a 5-layer fallback approach:
-
-1. **Trafilatura** (confidence: 1.0) - Best for news/articles
-2. **Justext** (confidence: 0.95) - Good for general content
-3. **BoilerPy3** (confidence: 0.90) - Robust fallback
-4. **Readability** (confidence: 0.85) - Alternative extractor
-5. **BeautifulSoup** (confidence: 0.70) - Ultimate HTML parser fallback
-
-If layer 1 succeeds, layers 2-5 are skipped. This ensures fast extraction with best quality.
-
-## Usage Examples
-
-### Basic Web Search
-
-Search for articles about Python:
+## web-search
 
 ```bash
-scout-it web-search --query "Python programming"
+scout-it web-search --query "<text>" [options]
 ```
 
-### With Custom Workers & Timeout
-
-Increase extraction parallelism:
-
-```bash
-scout-it web-search --query "Python" --max 20 --workers 8
-```
-
-### UK Region, Safe Search Off
-
-Search in UK region without filtering:
-
-```bash
-scout-it web-search --query "technology" --region uk-en --safesearch off
-```
-
-### Last Week's Articles
-
-Get recent articles:
-
-```bash
-scout-it web-search --query "news" --timelimit w --max 20
-```
-
-### With Retry Configuration
-
-Retry on failures:
-
-```bash
-scout-it web-search --query "research" --retry-attempts 3 --retry-backoff 1.5
-```
-
-### Custom Output Location
-
-Save to specific file:
-
-```bash
-scout-it web-search --query "data" --out ./results/my_results.json
-```
-
-### JSON Output to Console
-
-Output raw JSON to stdout for piping:
-
-```bash
-scout-it web-search --query "machine learning" --json > results.json
-```
-
-### Combined Options
-
-Comprehensive search with multiple parameters:
-
-```bash
-scout-it web-search \
-  --query "renewable energy" \
-  --max 20 \
-  --workers 8 \
-  --max-fetch-retries 3 \
-  --region "us-en" \
-  --safesearch "on" \
-  --json
-```
-
-## Programmatic API
-
-### Python Example
-
-```python
-from scout_it.extraction import EnterpriseSearchEngine
-from scout_it.cleaner import process_results
-
-# Create search engine
-engine = EnterpriseSearchEngine()
-
-# Perform search
-results = engine.search(
-    query="machine learning applications",
-    max_results=10
-)
-
-# Clean and process results
-cleaned_results = process_results(results)
-
-# Access results
-for result in cleaned_results:
-    print(f"Title: {result['title']}")
-    print(f"URL: {result['url']}")
-    print(f"Quality: {result['quality_score']:.0%}")
-    print(f"Sentiment: {result['sentiment']}")
-    print()
-```
-
-### Custom Extraction from Results
-
-```python
-from scout_it.extraction import EnterpriseSearchEngine
-
-engine = EnterpriseSearchEngine()
-results = engine.search(query="Python", max_results=3)
-
-for result in results:
-    print(f"{result.title}")
-    print(f"  URL: {result.url}")
-    print(f"  Confidence: {result.confidence_score:.0%}")
-    print(f"  Method: {result.extraction_method}")
-    if result.main_content:
-        print(f"  Content (first 200 chars): {result.main_content[:200]}...")
-    print()
-```
-
-## Region Codes
-
-Common region codes for `--region` parameter:
-
-| Code | Region |
-|------|--------|
-| `us-en` | United States (English) |
-| `uk-en` | United Kingdom (English) |
-| `ca-en` | Canada (English) |
-| `au-en` | Australia (English) |
-| `de-de` | Germany (German) |
-| `fr-fr` | France (French) |
-| `it-it` | Italy (Italian) |
-| `es-es` | Spain (Spanish) |
-| `jp-ja` | Japan (Japanese) |
-| `cn-zh` | China (Chinese) |
-| `br-pt` | Brazil (Portuguese) |
-| `in-en` | India (English) |
-| `wt-wt` | Worldwide |
-
-## Safe Search Levels
-
-| Level | Description |
-|-------|-------------|
-| `on` | Strict filtering - excludes adult content |
-| `moderate` | Balanced filtering - default |
-| `off` | No filtering - all results shown |
-
-## Time Filters
-
-| Code | Description |
+| Flag | Description |
 |------|-------------|
-| `d` | Last 24 hours (Day) |
-| `w` | Last 7 days (Week) |
-| `m` | Last 30 days (Month) |
-| `y` | Last 365 days (Year) |
+| `--query, -q` `<text>` | Search query (required) |
+| `--max, -m` `<n>` | Number of results to return. Default: 10 (full extraction), 30 (`--snippets` mode) |
+| `--snippets` | Return ranked snippets only. Skips content extraction for ~10x faster results (~2-4s vs 20-70s). Default limit: 30 snippets |
+| `--workers, -w` `<n>` | Parallel workers (default: 5) |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/struct_format_results.json`) |
+| `--markdown` | Save results as Markdown (.md) instead of JSON |
+| `--sources` `<list>` | Also search source plugins (comma-separated, e.g. `openalex,arxiv,wikidata`) and merge with BM25F+vector re-ranking. Run `scout-it sources` for the list |
+| `--auto-sources` | Let the source-selection bandit pick the best sources for this query type (learned from past outcomes). Overrides `--sources` |
+| `--region` `<region>` | DuckDuckGo region (example: `us-en`, `wt-wt`) |
+| `--safesearch` `<level>` | Safe search mode: `on`, `moderate`, `off` (default: `moderate`) |
+| `--timelimit` `<range>` | DuckDuckGo time limit: `d`, `w`, `m`, `y` |
+| `--backend` `<backend>` | DDGS backend: `auto`, `html`, `lite` (default: `auto`) |
+| `--source` `<wikimedia>` | Search source override (default: DuckDuckGo). Use `wikimedia` to search Wikipedia directly. Falls back to the other source on zero results |
+| `--category` `<categories...>` | Category RSS feeds to include (`ai`, `engineering`, `cloud`, `devops`, `research`, `security`, `startups`, etc.). Multiple allowed, e.g. `--category ai cloud`. Merged with DuckDuckGo results |
+| `--no-retry-on-zero` | Disable retries when 0 successful extractions (retries on by default) |
+| `--retry-attempts` `<n>` | Retry attempts when 0 successful extractions (default: 2) |
+| `--retry-backoff` `<seconds>` | Backoff seconds between retries (default: 1.0) |
+| `--max-fetch-retries` `<n>` | Retry attempts per fetch tier (requests → Playwright) when fetching each result page (default: 3) |
+| `--enable-alternate-source` | If every fetch tier fails, try AMP/mobile/print URL variants + a Wayback Machine snapshot before giving up (opt-in) |
+| `--no-dns-fallback` | Disable the DNS-over-HTTPS retry on DNS-looking errors (on by default) |
+| `--tls-impersonate` | Browser-accurate TLS/JA3 fingerprint tier between requests and Playwright (needs: `pip install scout-it[tls-impersonate]`) |
+| `--persistent-profile` | Persistent Playwright profile (cookies/session survive across runs) |
+| `--profile-name` `<name>` | Persistent profile name (only with `--persistent-profile`, default: `default`) |
+| `--use-bandit` | Once a domain has enough recorded history, skip straight to the best-performing fetch tier for it (see `scout-it stats`) |
+| `--no-js-fallback` | Disable the automatic Playwright fallback |
+| `--semantic` | Re-rank results by semantic relevance (hybrid BM25+dense-vector + cross-encoder). Needs: `pip install sentence-transformers torch` |
 
-## Performance Considerations
-
-| Factor | Impact | Notes |
-|--------|--------|-------|
-| `--max` | High | More results = longer execution time. Start with 5-10. |
-| `--max-fetch-retries` | Low | More retries improve reliability but may delay failure detection |
-| Network Speed | High | Slow internet significantly increases total time |
-| Target Websites | High | Some sites extract faster than others |
-
-**Typical Execution Times:**
-- 5 results: 5-15 seconds
-- 10 results: 10-30 seconds
-- 20 results: 20-60 seconds
-
-## Troubleshooting
-
-### No Results Returned
-
-**Problem:** Search returns empty results
-
-**Solutions:**
-- Verify internet connection
-- Try a different, simpler query
-- Increase `--max` to 20
-- Check if DuckDuckGo is accessible in your region
-
-### Low Confidence Scores
-
-**Problem:** All results show confidence < 0.5
-
-**Causes:**
-- Website uses heavy JavaScript rendering
-- Poor HTML structure
-- Content behind login or paywall
-
-**Solutions:**
-- Try `--enable-alternate-source` for better extraction coverage
-- Try different search query
-- Check if URL is accessible in browser manually
-
-### Slow Extraction
-
-**Problem:** Search takes too long
-
-**Solutions:**
-- Reduce `--max` to 5
-- Reduce `--workers` to 2
-- Check your internet speed
-- Try during off-peak hours
-
-### Extraction Failures
-
-**Problem:** Most results show `confidence_score` = 0.0
-
-**Causes:**
-- All layers failed to extract content
-- Website may require JavaScript
-- Content may be dynamically loaded
-
-**Solutions:**
-- These sites may not be suitable for automated extraction
-- Try with `--enable-alternate-source` or `--no-js-fallback` for better results
-- Manual extraction may be necessary for such sites
-
-## Advanced Usage
-
-### Batch Processing Multiple Queries
-
+**Examples:**
 ```bash
-for query in "Python" "JavaScript" "Go programming"; do
-  scout-it web-search --query "$query" --max 5
-done
+scout-it web-search --query "machine learning transformers" --max 5
+scout-it web-search --query "kubernetes" --category devops --snippets
+scout-it web-search --query "quantum computing" --source wikimedia -m 5
+scout-it web-search --query "site behind cloudflare" --max-fetch-retries 4 --tls-impersonate
+scout-it web-search --query "news" --enable-alternate-source --use-bandit
+scout-it web-search --query "AI regulation" --max 15 --markdown --out ai-report.md
 ```
 
-### Processing Results with JQ
+## news-search
 
 ```bash
-scout-it web-search --query "AI" --json | jq '.results[] | {title, confidence_score}'
+scout-it news-search --query "<text>" [options]
 ```
 
-### Extracting Only High-Confidence Results
+Same core flags and resilient fetch chain as `web-search`, plus news-specific options:
 
+| Flag | Description |
+|------|-------------|
+| `--query, -q` `<text>` | Search query (required) |
+| `--max, -m` `<n>` | Number of results to return. Default: 10 (full extraction), 30 (`--snippets` mode) |
+| `--snippets` | Return ranked news snippets only (~10x faster). Default limit: 30 snippets |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/news_search_results.json`) |
+| `--markdown` | Save results as Markdown (.md) instead of JSON |
+| `--sources` `<list>` | Also search source plugins (comma-separated, e.g. `gdelt,openalex,crossref`) and merge with BM25F+vector re-ranking |
+| `--auto-sources` | Bandit-picked sources for this query type. Overrides `--sources` |
+| `--region` `<region>` | DuckDuckGo region (default: `us-en`) |
+| `--safesearch` `<level>` | `on`, `moderate`, `off` (default: `moderate`) |
+| `--timelimit` `<range>` | `d`, `w`, `m`, `y` |
+| `--workers` `<n>` | Parallel workers for content extraction (default: 5) |
+| `--source` `<google-news>` | Search source override (default: DuckDuckGo News). Use `google-news` for Google News RSS. Falls back to the other source on zero results |
+| `--category` `<categories...>` | News RSS categories (`ai`, `startups`, `security`, `cloud`, `all`). Multiple allowed, e.g. `--category ai startups` |
+| `--location` `<places...>` | Location(s) for localized news from Times of India RSS (e.g. `india`, `US`, `UK`, `europe`, `china`, `india-delhi`, `india-bangalore`). Multiple allowed |
+| `--max-chars` `<n>` | Maximum characters to keep in extracted article content |
+| `--max-size` `<size>` | Maximum response size per article (e.g. `5mb`). Truncates raw HTML before extraction |
+| `--no-retry-on-zero` | Disable retries on zero results (retries on by default) |
+| `--retry-attempts` `<n>` | Retry attempts on zero results (default: 2) |
+| `--retry-backoff` `<seconds>` | Backoff seconds between retries (default: 1.0) |
+| `--max-fetch-retries` `<n>` | Retry attempts per fetch tier (default: 3) |
+| `--no-js-fallback` | Disable Playwright fallback |
+| `--enable-alternate-source` | Try AMP/mobile/print/Wayback variants on failure (opt-in) |
+| `--no-dns-fallback` | Disable DNS-over-HTTPS retry (on by default) |
+| `--tls-impersonate` | Browser-accurate TLS/JA3 fingerprint tier (needs: `pip install scout-it[tls-impersonate]`) |
+| `--persistent-profile` | Persistent Playwright profile |
+| `--profile-name` `<name>` | Persistent profile name (default: `default`) |
+| `--use-bandit` | Skip to best-performing tier per domain from history |
+| `--semantic` | Re-rank by semantic relevance (needs: `pip install sentence-transformers torch`) |
+
+**Examples:**
 ```bash
-scout-it web-search --query "news" --json | \
-  jq '.results[] | select(.confidence_score > 0.8)'
+scout-it news-search --query "artificial intelligence" --max 5
+scout-it news-search --query "AI updates" --category ai --snippets
+scout-it news-search --query "India economy" --source google-news --location india
+scout-it news-search --query "zero-day vulnerabilities" --category security --timelimit d
 ```
 
-## ⚠️ Rate Limiting & Troubleshooting
+## Pipeline
 
-### DuckDuckGo Rate Limiting
+1. `EnterpriseSearchEngine` queries DuckDuckGo (text or news), plus any `--sources` plugins, `--category` RSS feeds, and the `--source` override, in parallel.
+2. Candidates are ranked by relevance (metadata-only scoring first).
+3. Top N result URLs are fetched in parallel (`--workers` controls concurrency) through the resilient fetch chain.
+4. `ExtractionEngine` extracts main content (trafilatura → justext → boilerpy3 → readability → heuristic).
+5. `process_results()` filters failed extractions and structures the surviving text.
+6. Output is written as JSON (or Markdown with `--markdown`).
 
-DuckDuckGo search is **rate-limited**. If you encounter zero results after multiple retry attempts:
+Every individual page fetch goes through the shared resilient fetch chain — see [fetch.md](fetch.md) for the tier breakdown.
 
-**Solutions:**
-1. **Try different query** - Use more specific or different keywords
-2. **Adjust retry parameters:**
-   - Increase `--retry-attempts` (default: 2)
-   - Increase `--retry-backoff` (default: 1.0 seconds)
-3. **Reduce results** - Lower `--max` parameter to reduce load
-4. **Change parameters** - Try different `--region`, `--timelimit`, or `--backend`
-5. **Wait and retry** - Wait several minutes before trying again
-6. **Check connection** - Verify internet connectivity
-
-### Zero Results After Retries
-
-If the search still returns zero results:
-
-```bash
-# Before retrying - wait a few minutes
-sleep 300
-
-# Try with simplified query
-scout-it web-search --query "simplified query" --max 5
-
-# Try different region
-scout-it web-search --query "original query" --region "wt-wt" --max 5
-
-# Try with fewer retries but more backoff
-scout-it web-search --query "original query" \
-  --retry-attempts 3 \
-  --retry-backoff 2.0
-```
-
-### Best Practices for Reliability
-
-- **Small batches** - Search for 5-10 results at a time
-- **Specific queries** - More specific = faster, fewer retries
-- **Reasonable timeouts** - Default 5s extraction timeout is good
-- **Rate yourself** - Don't hammer with repeated requests
-- **Monitor output** - Watch for consistent zero results (rate limit signal)
-
-## Related Documentation
-
-- [Image Search](./imagesearch.md)
-- [URL Fetch](./fetch.md)
-- [README.md](../../README.md)
-- [AGENTS.md](../../AGENTS.md)
+> Note: `web-search` and `news-search` write to a file by default and have **no `--json` flag** — use `--out` / `--markdown` to control output. (`--json` exists on the GitHub, social, video-extract, fetch-url, multi-search, and semantic-search commands.)

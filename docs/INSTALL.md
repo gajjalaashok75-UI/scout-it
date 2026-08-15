@@ -94,6 +94,10 @@ scout-it image-search --query "your query" --max 20
 scout-it news-search --query "your query" --max 10
 scout-it video-search --query "your query" --max 10
 scout-it fetch-url --url "https://example.com"
+scout-it wikipedia-search --query "machine learning"
+scout-it sources                       # list 30+ source plugins
+scout-it index --query "topic" --max 20   # build semantic corpus
+scout-it semantic-search --query "topic"  # query the corpus
 
 # Utility commands
 scout-it list-engines       # List available search engines and their status

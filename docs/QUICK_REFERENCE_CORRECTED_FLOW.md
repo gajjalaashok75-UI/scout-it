@@ -45,10 +45,10 @@ scout-it news-search -q "openai updates" -m 20
 scout-it news-search -q "AI news" --category ai
 
 # Multiple sources (DDGS + Google News + TechCrunch → rank → extract top 15)
-scout-it news-search -q "tech" --category ai --sources google-news -m 15
+scout-it news-search -q "tech" --category ai --source google-news -m 15
 
 # All sources (DDGS + Google + TechCrunch + ToI → rank → extract top 20)
-scout-it news-search -q "startup" --category startups --sources google-news --location india -m 20
+scout-it news-search -q "startup" --category startups --source google-news --location india -m 20
 ```
 
 ---

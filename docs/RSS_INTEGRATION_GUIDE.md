@@ -17,7 +17,7 @@ scout-it news-search --query "openai" --category ai
     ↓
 news-search Pipeline
     ├─→ DuckDuckGo News (always)
-    ├─→ Google News RSS (if --sources google-news)
+    ├─→ Google News RSS (if --source google-news)
     ├─→ Times of India RSS (if --location)
     └─→ Category RSS Providers (if --category) ← NEW
          └─→ TechCrunch RSS Provider
@@ -77,7 +77,7 @@ scout-it news-search -q "openai" --category ai
 scout-it news-search -q "funding" --category ai startups
 
 # Combined with other sources
-scout-it news-search -q "kubernetes" --category cloud --sources google-news
+scout-it news-search -q "kubernetes" --category cloud --source google-news
 ```
 
 ### Complete news-search Syntax
@@ -87,7 +87,7 @@ scout-it news-search \
   --query "search terms" \
   --max 20 \
   --category ai startups \
-  --sources google-news \
+  --source google-news \
   --location india US \
   --region us-en \
   --timelimit w \
@@ -194,13 +194,13 @@ scout-it news-search -q "tech news" --category ai startups security cloud
 
 ```bash
 # Category + Google News
-scout-it news-search -q "openai" --category ai --sources google-news
+scout-it news-search -q "openai" --category ai --source google-news
 
 # Category + Location
 scout-it news-search -q "startup" --category startups --location india
 
 # Category + Google News + Location
-scout-it news-search -q "AI" --category ai --sources google-news --location US
+scout-it news-search -q "AI" --category ai --source google-news --location US
 ```
 
 ### Advanced Options

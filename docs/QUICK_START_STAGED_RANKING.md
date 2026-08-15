@@ -34,7 +34,7 @@ scout-it news-search -q "openai agents" --category ai
 scout-it news-search -q "tech news" --category ai startups --max 20
 
 # Multiple sources
-scout-it news-search -q "AI" --category ai --sources google-news
+scout-it news-search -q "AI" --category ai --source google-news
 ```
 
 ---
@@ -154,7 +154,7 @@ Articles from higher-quality sources rank better:
 2. **Use categories:** `--category ai` for focused results
 3. **Use operators:** `+required -excluded "exact phrase"`
 4. **Adjust --max:** Default 10 is optimized, but 5-20 all work great
-5. **Combine sources:** `--category ai --sources google-news` for diversity
+5. **Combine sources:** `--category ai --source google-news` for diversity
 
 ---
 
@@ -177,7 +177,7 @@ scout-it news-search -q "data breach" --category security --timelimit w --max 10
 
 ### Cloud Computing
 ```bash
-scout-it news-search -q "kubernetes" --category cloud --sources google-news --max 10
+scout-it news-search -q "kubernetes" --category cloud --source google-news --max 10
 ```
 
 ### Research (Comprehensive)
@@ -210,7 +210,7 @@ scout-it news-search -q "artificial intelligence" --category ai --max 20 --markd
 
 ### "Too few results"
 - Increase `--max`: `--max 20`
-- Add more sources: `--sources google-news`
+- Add more sources: `--source google-news`
 - Add more categories: `--category ai startups`
 
 ### "Slow performance"

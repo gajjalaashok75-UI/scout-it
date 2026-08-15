@@ -368,7 +368,7 @@ scout-it news-search -q "startup funding" --category startups --max 20
 scout-it news-search -q "tech news" --category ai startups security --max 15
 
 # With other sources
-scout-it news-search -q "AI" --category ai --sources google-news --max 10
+scout-it news-search -q "AI" --category ai --source google-news --max 10
 ```
 
 ### Understanding --max
@@ -583,7 +583,7 @@ scout-it news-search -q "tech" --category ai startups security --max 15
 
 ```bash
 # With Google News
-scout-it news-search -q "AI" --category ai --sources google-news --max 10
+scout-it news-search -q "AI" --category ai --source google-news --max 10
 
 # With location
 scout-it news-search -q "startup" --category startups --location india --max 15
