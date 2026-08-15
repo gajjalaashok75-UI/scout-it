@@ -402,11 +402,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enhanced web-search with parallel stream architecture (matches news-search)**
   - Stream 1: DDGS text search (20 snippets, always runs)
   - Stream 2: Category RSS feeds (ALL entries, no limit - if `--category` specified)
-  - Stream 3: Wikimedia (if `--sources wikimedia`)
+  - Stream 3: Wikimedia (if `--source wikimedia`)
   - All streams run in parallel and merge results before ranking
   
 - **Fixed 3 critical bugs:**
-  1. ✅ `--sources wikimedia` now properly fetches Wikimedia results (was falling back to DDGS)
+  1. ✅ `--source wikimedia` now properly fetches Wikimedia results (was falling back to DDGS)
   2. ✅ RSS feed limit increased from 1000 to 10000 entries (no artificial caps)
   3. ✅ "Unknown TechCrunch domain: 'research'" error fixed (now validates against WEB_SEARCH_FEEDS)
   
@@ -419,7 +419,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Real-world verification:**
   - `scout-it web-search -q "transformers" --category ai` → **520 candidates** (20 DDGS + 500 RSS)
   - `scout-it web-search -q "cloud computing" --category ai cloud devops` → **1100 candidates** (multi-category merge)
-  - `scout-it web-search -q "python" --category engineering --sources wikimedia` → **202 candidates** (all 3 streams)
+  - `scout-it web-search -q "python" --category engineering --source wikimedia` → **202 candidates** (all 3 streams)
   
 - **Files modified:**
   - `scout_it/cli.py` - Added wikimedia stream, wrapper resolution, rich extraction output to web_search()
@@ -531,7 +531,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **news-search now runs sources in parallel via `ThreadPoolExecutor`**: When `--sources` and/or `--location` are specified, independent source streams execute concurrently rather than sequentially:
   - *No args*: DDGS → Playwright HTML fallback → Google News RSS (sequential fallback chain)
-  - `--sources google-news`: DDGS chain + Google News run in parallel (2 streams)
+  - `--source google-news`: DDGS chain + Google News run in parallel (2 streams)
   - `--location india US`: DDGS chain + ToI RSS run in parallel (2+ streams)
   - Both: DDGS chain + Google News + ToI RSS all run in parallel (3 streams)
 - **URL-level deduplication** across all parallel streams prevents duplicate results when multiple sources return the same article.
@@ -546,8 +546,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`wikipedia-search` command**: new dedicated CLI command (`scout-it wikipedia-search --query "..." -m 5`) that searches Wikipedia via the MediaWiki Action API and extracts full article content through the `fetch_resilient` + `ExtractionEngine` pipeline (readability), matching `fetch-url` content quality.
 - **`google_news_source.py`**: new module with locale-aware URL builder, rich RSS parsing (publisher, description_link, guid, rank, image_url), publisher-aware title cleanup, and `Deduplicator` class for content/item deduplication.
-- **`--sources google-news`** for `news-search`: Google News RSS-based search integrated into the existing news-search pipeline, with parallel content extraction.
-- **`--sources wikimedia`** for `web-search`: Wikimedia project search (Wikipedia, Wiktionary, etc.) via `SITE_MAP`.
+- **`--source google-news`** for `news-search`: Google News RSS-based search integrated into the existing news-search pipeline, with parallel content extraction.
+- **`--source wikimedia`** for `web-search`: Wikimedia project search (Wikipedia, Wiktionary, etc.) via `SITE_MAP`.
 
 ### 🔧 Fixed — Google News `/articles/` URL extraction via Playwright JS rendering
 

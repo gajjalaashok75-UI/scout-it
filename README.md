@@ -65,7 +65,7 @@ It is designed for data collection, AI training pipelines, research, and any wor
 graph TB
     subgraph CLI["CLI Layer"]
         CLI_Entry["scout-it &lt;command&gt; [options]"]
-        Parser["Argparse<br/>26 subcommands"]
+        Parser["Argparse<br/>30 subcommands"]
     end
 
     subgraph SEARCH["Search Engines"]
@@ -162,9 +162,10 @@ The entire pipeline supports **parallel extraction** via `ThreadPoolExecutor` (c
 
 ### Core Capabilities
 
-- **Search modes**: web, news, images, videos, YouTube, single-URL fetch, multi-engine search, Wikimedia search, engine listing
+- **Search modes**: web, news, images, videos, YouTube, single-URL fetch, multi-engine search, Wikimedia search, semantic index/search, source plugins — 30 subcommands total
 - **12 GitHub extractors**: repos, commits, PRs, issues, discussions, code search, repo search, files, folders
 - **3 social platform extractors**: Telegram channels (public), Discord channels (bot), Reddit search
+- **30+ source plugins**: openalex, arxiv, crossref, semantic_scholar, huggingface, zenodo, wikidata, gdelt, internet_archive, and more (all free or free-tier)
 - **5-tier content extraction**: Trafilatura → justext → BoilerPy3 → Readability → BeautifulSoup, with confidence scoring
 
 ### Search Enhancements (NEW)
@@ -203,8 +204,8 @@ The entire pipeline supports **parallel extraction** via `ThreadPoolExecutor` (c
   - **security** category: 6 feeds (BleepingComputer, Krebs on Security, etc.)
   - **all** category: 9 feeds (The Verge, Ars Technica, WIRED, etc.)
   
-- **Dedicated news sources**: Google News RSS (`news-search --sources google-news`) and Times of India RSS (`news-search --location <country/city>`), merged additively with DuckDuckGo News
-- **Wikimedia search**: `wikipedia-search` and `--sources wikimedia` query any of the 12 Wikimedia projects via the MediaWiki Action API
+- **Dedicated news sources**: Google News RSS (`news-search --source google-news`) and Times of India RSS (`news-search --location <country/city>`), merged additively with DuckDuckGo News
+- **Wikimedia search**: `wikipedia-search` and `--source wikimedia` query any of the 12 Wikimedia projects via the MediaWiki Action API
 
 ### Resilience & Performance
 
@@ -326,19 +327,23 @@ scout-it web-search --query "<text>" [options]
 | Flag | Description |
 |------|-------------|
 | `--query, -q` `<text>` | Search query (required) |
-| `--max, -m` `<n>` | Max results (1-100) |
-| `--category` `<categories>` | RSS feed categories: ai, engineering, cloud, devops, research, security, startups, all, etc. (NEW) |
-| `--snippets` | Return ranked snippets only without extraction (~10x faster; default 30 snippets) (NEW) |
-| `--workers, -w` `<n>` | Parallel workers for content extraction |
-| `--region` `<region>` | DuckDuckGo region (e.g. us-en, wt-wt) |
-| `--safesearch` `<level>` | Safe search: on, moderate, off |
-| `--timelimit` `<range>` | Time limit: d, w, m, y |
-| `--backend` `<backend>` | DDGS backend: auto, html, lite |
-| `--sources` `<source>` | Search source override: `wikimedia` (falls back to DuckDuckGo on zero results) |
+| `--max, -m` `<n>` | Number of results to return. Default: 10 (full extraction), 30 (`--snippets` mode) |
+| `--snippets` | Return ranked snippets only (~10x faster; default 30 snippets) |
+| `--workers, -w` `<n>` | Parallel workers (default: 5) |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/struct_format_results.json`) |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--sources` `<list>` | Also search source plugins (comma-separated, e.g. `openalex,arxiv,wikidata`) and merge with BM25F+vector re-ranking. Run `scout-it sources` for the list |
+| `--auto-sources` | Let the source-selection bandit pick the best sources for this query type. Overrides `--sources` |
+| `--region` `<region>` | DuckDuckGo region (example: `us-en`, `wt-wt`) |
+| `--safesearch` `<level>` | Safe search: `on`, `moderate`, `off` (default: `moderate`) |
+| `--timelimit` `<range>` | Time limit: `d`, `w`, `m`, `y` |
+| `--backend` `<backend>` | DDGS backend: `auto`, `html`, `lite` (default: `auto`) |
+| `--source` `<wikimedia>` | Search source override (default: DuckDuckGo). Use `wikimedia` to search Wikipedia directly. Falls back to the other source on zero results |
+| `--category` `<categories...>` | RSS feed categories (ai, engineering, cloud, devops, research, security, startups, etc.). Multiple allowed, e.g. `--category ai cloud`. Merged with DuckDuckGo results |
 | `--no-retry-on-zero` | Disable retries on 0 results (retries on by default) |
-| `--retry-attempts` `<n>` | Retry attempts when 0 successful extractions |
-| `--retry-backoff` `<seconds>` | Backoff seconds between retries |
-| `--max-fetch-retries` `<n>` | Retry attempts per fetch tier |
+| `--retry-attempts` `<n>` | Retry attempts when 0 successful extractions (default: 2) |
+| `--retry-backoff` `<seconds>` | Backoff seconds between retries (default: 1.0) |
+| `--max-fetch-retries` `<n>` | Retry attempts per fetch tier (default: 3) |
 | `--no-js-fallback` | Disable Playwright fallback |
 | `--enable-alternate-source` | Try AMP/mobile/print/Wayback variants on failure |
 | `--no-dns-fallback` | Disable DNS-over-HTTPS retry (on by default) |
@@ -346,8 +351,9 @@ scout-it web-search --query "<text>" [options]
 | `--persistent-profile` | Persistent Playwright profile (cookies survive runs) |
 | `--profile-name` `<name>` | Persistent profile name (with `--persistent-profile`) |
 | `--use-bandit` | Skip to best-performing tier per domain from history |
-| `--markdown` | Save as Markdown instead of JSON |
-| `--out, -o` `<path>` | Output file (default: `.scout-it/struct_format_results.json`) |
+| `--semantic` | Re-rank results by semantic relevance (needs `pip install sentence-transformers torch`) |
+
+> `web-search` writes to a file by default and has **no `--json` flag** — use `--out` / `--markdown`.
 
 #### `wikipedia-search`
 
@@ -360,26 +366,28 @@ scout-it wikipedia-search --query "<text>" [options]
 | Flag | Description |
 |------|-------------|
 | `--query, -q` `<text>` | Search query or page title (required) |
-| `--max, -m` `<n>` | Max results (1-50) |
+| `--max, -m` `<n>` | Max results (1-50, default: 10) |
 | `--project` `<project>` | Wikimedia project (default: `wikipedia`; any of the 12 entries in `wikimedia_source.SITE_MAP`) |
 | `--language, -l` `<code>` | Project language for language-scoped wikis (default: `en`) |
 | `--timeout` `<seconds>` | HTTP timeout (default: 25) |
-| `--workers, -w` `<n>` | Parallel workers for page fetching |
+| `--workers, -w` `<n>` | Parallel workers (default: 5) |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/wikimedia_results.json`) |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--json` | Output raw JSON to stdout |
 | `--summary` | Fetch the Wikipedia REST summary for the title |
 | `--extract` | Fetch the cleaned full-page extract via the Action API |
 | `--sections` | Export section-by-section cleaned text |
-| `--crawl` | Recursive crawl from search results (with `--crawl-depth <n>`, default 2) |
+| `--crawl` | Recursive crawl from search results (with `--crawl-depth`, default 2) |
+| `--crawl-depth` `<n>` | Crawl depth for `--crawl` mode (default: 2) |
 | `--bundle` | Broad multi-project topic bundle across all 12 projects |
 | `--robots` | Check robots.txt allowance before searching |
 | `--no-clean` | Disable text cleaning |
-| `--markdown` | Save as Markdown instead of JSON |
-| `--out, -o` `<path>` | Output file (default: `.scout-it/wikimedia_results.json`) |
+| `--rss` | Include MediaWiki RecentChanges RSS feeds in discovery (uses `--project` as default category) |
+| `--category, -c` `<project>` | Wikimedia project RSS category to include (repeatable): wikipedia, commons, wiktionary, wikivoyage, etc. Adds recently-changed pages to the candidate pool before ranking |
 
 #### `news-search`
 
-DuckDuckGo news search with article text extraction.
-
-**NEW**: Unified extraction engine with staged ranking (70-85% faster), snippets mode, and expanded RSS sources (50+ feeds across all categories).
+DuckDuckGo news search with regional/temporal filtering and full article content extraction. Same unified extraction engine, staged ranking, snippets mode, and resilient fetch chain as `web-search`.
 
 ```bash
 scout-it news-search --query "<text>" [options]
@@ -388,27 +396,35 @@ scout-it news-search --query "<text>" [options]
 | Flag | Description |
 |------|-------------|
 | `--query, -q` `<text>` | Search query (required) |
-| `--max, -m` `<n>` | Max news items (default: 10 for full extraction, 30 for snippets mode) (NEW) |
-| `--category` `<categories>` | News categories: ai (8 feeds), cloud (6 feeds), startups (6 feeds), security (6 feeds), all (9 feeds), etc. (NEW) |
-| `--snippets` | Return ranked snippets only without extraction (~10x faster; 2-4s vs 20-70s) (NEW) |
-| `--workers` `<n>` | Parallel workers for content extraction |
-| `--region` `<region>` | DuckDuckGo region |
-| `--safesearch` `<level>` | Safe search: on, moderate, off |
-| `--timelimit` `<range>` | Time limit: d, w, m, y |
-| `--sources` `<source>` | Search source override: `google-news` (Google News RSS; falls back to DuckDuckGo News on zero results) |
-| `--location` `<places...>` | Localized news from Times of India RSS feeds, additive with the other sources — e.g. `india`, `US`, `india-delhi` (case-insensitive, newest-first) |
-| `--no-retry-on-zero` | Disable retries on 0 results |
-| `--retry-attempts` `<n>` | Retry attempts on zero results |
-| `--retry-backoff` `<seconds>` | Backoff seconds between retries |
-| `--max-fetch-retries` `<n>` | Retry attempts per fetch tier |
-| `--no-js-fallback` | Disable Playwright fallback |
-| `--enable-alternate-source` | Try AMP/mobile/print/Wayback variants on failure (NEW) |
-| `--no-dns-fallback` | Disable DNS-over-HTTPS retry (on by default) (NEW) |
-| `--tls-impersonate` | Browser-accurate TLS/JA3 fingerprint tier (NEW) |
-| `--persistent-profile` | Persistent Playwright profile (NEW) |
-| `--use-bandit` | Skip to best-performing tier per domain from history (NEW) |
-| `--markdown` | Save as Markdown instead of JSON |
+| `--max, -m` `<n>` | Number of results. Default: 10 (full extraction), 30 (`--snippets` mode) |
+| `--snippets` | Return ranked snippets only (~10x faster; 2-4s vs 20-70s) |
 | `--out, -o` `<path>` | Output file (default: `.scout-it/news_search_results.json`) |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--sources` `<list>` | Also search source plugins (comma-separated, e.g. `gdelt,openalex,crossref`) and merge with BM25F+vector re-ranking |
+| `--auto-sources` | Bandit-picked sources for this query type. Overrides `--sources` |
+| `--region` `<region>` | DuckDuckGo region (default: `us-en`) |
+| `--safesearch` `<level>` | Safe search: `on`, `moderate`, `off` (default: `moderate`) |
+| `--timelimit` `<range>` | Time limit: `d`, `w`, `m`, `y` |
+| `--workers` `<n>` | Parallel workers for content extraction (default: 5) |
+| `--source` `<google-news>` | Search source override (default: DuckDuckGo News). Use `google-news` for Google News RSS. Falls back to the other source on zero results |
+| `--category` `<categories...>` | News RSS categories (ai, startups, security, cloud, all). Multiple allowed, e.g. `--category ai startups` |
+| `--location` `<places...>` | Localized news from Times of India RSS (e.g. `india`, `US`, `UK`, `europe`, `china`, `india-delhi`). Multiple allowed |
+| `--max-chars` `<n>` | Maximum characters to keep in extracted article content |
+| `--max-size` `<size>` | Maximum response size per article (e.g. `5mb`) |
+| `--no-retry-on-zero` | Disable retries on 0 results |
+| `--retry-attempts` `<n>` | Retry attempts on zero results (default: 2) |
+| `--retry-backoff` `<seconds>` | Backoff seconds between retries (default: 1.0) |
+| `--max-fetch-retries` `<n>` | Retry attempts per fetch tier (default: 3) |
+| `--no-js-fallback` | Disable Playwright fallback |
+| `--enable-alternate-source` | Try AMP/mobile/print/Wayback variants on failure |
+| `--no-dns-fallback` | Disable DNS-over-HTTPS retry (on by default) |
+| `--tls-impersonate` | Browser-accurate TLS/JA3 fingerprint tier (needs `scout-it[tls-impersonate]`) |
+| `--persistent-profile` | Persistent Playwright profile |
+| `--profile-name` `<name>` | Persistent profile name (default: `default`) |
+| `--use-bandit` | Skip to best-performing tier per domain from history |
+| `--semantic` | Re-rank by semantic relevance (needs `pip install sentence-transformers torch`) |
+
+> `news-search` writes to a file by default and has **no `--json` flag** — use `--out` / `--markdown`.
 
 #### `image-search`
 
@@ -421,10 +437,16 @@ scout-it image-search --query "<text>" [options]
 | Flag | Description |
 |------|-------------|
 | `--query, -q` `<text>` | Search query (required) |
-| `--max, -m` `<n>` | Max images (1-50) |
-| `--region` `<region>` | DuckDuckGo region |
-| `--safesearch` `<level>` | Safe search: on, moderate, off |
-| `--timelimit` `<range>` | Time limit: d, w, m, y |
+| `--max, -m` `<n>` | Max images (1-50, default: 5) |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/image_search_results.json`) |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--sources` `<list>` | Also search source plugins (comma-separated, e.g. `internet_archive,openstreetmap`) and merge with BM25F+vector re-ranking |
+| `--auto-sources` | Bandit-picked sources for this query type. Overrides `--sources` |
+| `--download, -d` | Download images to disk |
+| `--download-dir` `<path>` | Download directory (default: `.scout-it/downloaded_images`) |
+| `--region` `<region>` | DuckDuckGo region (default: `us-en`) |
+| `--safesearch` `<level>` | Safe search: `on`, `moderate`, `off` (default: `moderate`) |
+| `--timelimit` `<range>` | Time limit: `d`, `w`, `m`, `y` |
 | `--size` `<size>` | Image size: Small, Medium, Large, Wallpaper |
 | `--color` `<color>` | Color filter |
 | `--type-image` `<type>` | Image type: photo, clipart, gif, transparent, line |
@@ -434,13 +456,11 @@ scout-it image-search --query "<text>" [options]
 | `--max-width` `<px>` | Maximum width |
 | `--min-height` `<px>` | Minimum height |
 | `--max-height` `<px>` | Maximum height |
-| `--download, -d` | Download images to disk |
-| `--download-dir` `<path>` | Download directory (default: `.scout-it/downloaded_images`) |
+| `--category` `<categories...>` | Image RSS categories (e.g. `nature space travel`). Fetches Media RSS feeds (Flickr/NASA) alongside DuckDuckGo and ranks them together |
+| `--rss` | Include image RSS discovery even without `--category` (uses a Flickr tag feed from the query) |
 | `--no-retry-on-zero` | Disable retries on 0 results |
-| `--retry-attempts` `<n>` | Retry attempts when 0 valid images found |
-| `--retry-backoff` `<seconds>` | Backoff seconds between retries |
-| `--markdown` | Save as Markdown instead of JSON |
-| `--out, -o` `<path>` | Output file (default: `.scout-it/image_search_results.json`) |
+| `--retry-attempts` `<n>` | Retry attempts when 0 valid images found (default: 2) |
+| `--retry-backoff` `<seconds>` | Backoff seconds between retries (default: 1.0) |
 
 #### `video-search`
 
@@ -456,18 +476,22 @@ scout-it video-search --query "<text>" [options]
 | Flag | Description |
 |------|-------------|
 | `--query, -q` `<text>` | Search query (required) |
-| `--max, -m` `<n>` | Max videos (1-50) |
-| `--region` `<region>` | DuckDuckGo region |
-| `--safesearch` `<level>` | Safe search: on, moderate, off |
-| `--timelimit` `<range>` | Time limit: d, w, m, y |
+| `--max, -m` `<n>` | Max videos (1-50, default: 5) |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/video_search_results.json`) |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--sources` `<list>` | Also search source plugins (comma-separated, e.g. `internet_archive,listennotes`) and merge with BM25F+vector re-ranking |
+| `--auto-sources` | Bandit-picked sources for this query type. Overrides `--sources` |
+| `--region` `<region>` | DuckDuckGo region (default: `us-en`) |
+| `--safesearch` `<level>` | Safe search: `on`, `moderate`, `off` (default: `moderate`) |
+| `--timelimit` `<range>` | Time limit: `d`, `w`, `m`, `y` |
 | `--resolution` `<res>` | Resolution: high, standard |
 | `--duration` `<duration>` | Duration: short, medium, long |
 | `--license-videos` `<license>` | License filter |
+| `--category` `<categories...>` | Video RSS categories (e.g. `technology science news`). Fetches YouTube channel RSS feeds alongside DuckDuckGo and ranks them together |
+| `--rss` | Include video RSS discovery even without `--category` (pulls a default set of YouTube channels) |
 | `--no-retry-on-zero` | Disable retries on 0 results |
-| `--retry-attempts` `<n>` | Retry attempts when 0 results found |
-| `--retry-backoff` `<seconds>` | Backoff seconds between retries |
-| `--markdown` | Save as Markdown instead of JSON |
-| `--out, -o` `<path>` | Output file (default: `.scout-it/video_search_results.json`) |
+| `--retry-attempts` `<n>` | Retry attempts when 0 results found (default: 2) |
+| `--retry-backoff` `<seconds>` | Backoff seconds between retries (default: 1.0) |
 
 > **Source fallback:** Results' `source` field shows `DuckDuckGo` or
 > `YouTube`. When DDG returns nothing, YouTube search provides 14-20
@@ -506,21 +530,23 @@ scout-it fetch-url --url "https://example.com" [options]
 | Flag | Description |
 |------|-------------|
 | `--url, -u` `<url>` | URL to fetch |
-| `--timeout` `<seconds>` | Extraction timeout (increase for JS-rendered SPAs) |
-| `--max-chars` `<n>` | Max characters to extract (e.g. 10000) |
-| `--max-size` `<size>` | Max response size (e.g. 100kb, 1mb, 500mb) |
+| `--timeout` `<seconds>` | Extraction timeout (increase for JS-rendered SPAs, default: 25) |
+| `--max-chars` `<n>` | Max characters to extract (e.g. 10000). Mutually exclusive with `--max-size` |
+| `--max-size` `<size>` | Max response size (e.g. 100kb, 1mb, 500mb). Mutually exclusive with `--max-chars` |
 | `--raw-html` | Return raw HTML instead of extracted content |
 | `--js-render` | Skip straight to Playwright rendering |
 | `--no-js-fallback` | Disable Playwright fallback |
 | `--enable-alternate-source` | Try AMP/mobile/print/Wayback variants on failure |
-| `--max-retries` `<n>` | Retry attempts per fetch tier |
+| `--max-retries` `<n>` | Retry attempts per fetch tier (default: 3) |
+| `--persistent-profile` | Persistent Playwright profile (cookies survive runs) |
+| `--profile-name` `<name>` | Persistent profile name (default: `default`) |
 | `--markdown` | Save as Markdown instead of JSON |
 | `--out, -o` `<path>` | Output file (default: `.scout-it/url_fetch_result.json`) |
 | `--json` | Output raw JSON to stdout |
 
 #### `multi-search`
 
-Queries several search engines in parallel, merges and dedupes by URL, then runs content extraction.
+Queries several search engines in parallel, merges and dedupes by URL, then runs content extraction. DuckDuckGo works with no setup; Brave/Bing/Google/SerpAPI need an API key (run `scout-it list-engines`). Unconfigured engines are skipped, not errors.
 
 ```bash
 scout-it multi-search --query "<text>" --engines duckduckgo,brave [options]
@@ -529,15 +555,18 @@ scout-it multi-search --query "<text>" --engines duckduckgo,brave [options]
 | Flag | Description |
 |------|-------------|
 | `--query, -q` `<text>` | Search query (required) |
-| `--engines` `<list>` | Comma-separated engines: duckduckgo, brave, bing, google, serpapi |
-| `--max, -m` `<n>` | Max merged results |
-| `--workers, -w` `<n>` | Parallel content-extraction workers |
-| `--serpapi-engine` `<engine>` | Underlying engine for SerpAPI (google/bing/yahoo/baidu/yandex) |
-| `--no-dedupe` | Keep duplicate URLs across engines |
-| `--max-fetch-retries` `<n>` | Retry attempts per fetch tier |
+| `--engines` `<list>` | Comma-separated engines: `duckduckgo, brave, bing, google, serpapi, wikimedia` (default: `duckduckgo`) |
+| `--source` `<wikimedia>` | Include Wikimedia as a search source. Shorthand for `--engines wikimedia` |
+| `--max, -m` `<n>` | Max merged results (default: 10) |
+| `--workers, -w` `<n>` | Parallel content-extraction workers (default: 5) |
+| `--serpapi-engine` `<engine>` | Underlying engine for SerpAPI (google/bing/yahoo/baidu/yandex, default: google) |
+| `--no-dedupe` | Keep duplicate URLs across engines (dedupe on by default) |
+| `--max-fetch-retries` `<n>` | Retry attempts per fetch tier (default: 3) |
 | `--no-js-fallback` | Disable Playwright fallback |
-| `--markdown` | Save as Markdown instead of JSON |
 | `--out, -o` `<path>` | Output file (default: `.scout-it/multi_search_results.json`) |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--sources` `<list>` | Also search source plugins (comma-separated, e.g. `openalex,arxiv,wikidata,huggingface`) in parallel and merge with BM25F+vector re-ranking |
+| `--auto-sources` | Bandit-picked sources for this query type. Overrides `--sources` |
 | `--json` | Output raw JSON to stdout |
 
 #### `list-engines`
@@ -549,6 +578,55 @@ scout-it list-engines
 ```
 
 No flags.
+
+#### `sources`
+
+List all source plugins available via the `--sources` flag on `web-search`, `news-search`, `image-search`, `video-search`, and `multi-search`. All sources are free or have free tiers — 30+ plugins including `openalex`, `arxiv`, `crossref`, `semantic_scholar`, `huggingface`, `zenodo`, `wikidata`, `gdelt`, `internet_archive`, `openstreetmap`, `hackernews`, `stackexchange`, and more.
+
+```bash
+scout-it sources          # formatted table
+scout-it sources --json   # JSON
+```
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output as JSON instead of a formatted table |
+
+#### `index`
+
+Fetch, extract, chunk, and embed `web-search` or `news-search` results into the persistent LanceDB store at `~/.scout-it/semantic/lancedb/`. The corpus then powers `semantic-search` and survives across runs. Needs: `pip install sentence-transformers torch lancedb`.
+
+```bash
+scout-it index --query "<text>" [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--query, -q` `<text>` | Query to fetch and index (required) |
+| `--max, -m` `<n>` | Max results to fetch and index (default: 20) |
+| `--source` `<web\|news>` | Source to fetch from: `web` or `news` (default: `web`) |
+
+#### `semantic-search`
+
+Search a persistent corpus of previously-indexed documents using hybrid BM25 + dense-vector retrieval. Use `scout-it index` to build the corpus first. Storage: `~/.scout-it/semantic/lancedb/`. Model configurable via the `SCOUT_SEMANTIC_MODEL` env var (default: `BAAI/bge-m3`). Needs: `pip install sentence-transformers torch lancedb`.
+
+```bash
+scout-it semantic-search --query "<text>" [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--query, -q` `<text>` | Search query (required) |
+| `--max, -m` `<n>` | Max results (default: 10) |
+| `--out, -o` `<path>` | Output file (default: `.scout-it/semantic_results.json`) |
+| `--markdown` | Save as Markdown instead of JSON |
+| `--json` | Output raw JSON to stdout |
+
+Typical workflow:
+```bash
+scout-it index --query "transformer architecture" --max 20   # build corpus
+scout-it semantic-search --query "attention mechanisms" --max 5  # query it
+```
 
 ---
 
@@ -631,6 +709,7 @@ scout-it stats --domain DOMAIN   # Stats for one domain
 scout-it stats --export PATH     # Full stats dump as JSON
 scout-it stats --reset DOMAIN    # Forget history for one domain
 scout-it stats --reset-all       # Forget all history
+scout-it stats --sources         # Source-selection bandit stats (which sources work best per query type)
 ```
 
 #### `doctor`
@@ -753,16 +832,19 @@ wiki_results, _ = wikimedia_search("machine learning", project="wikipedia")
 | Function | Purpose |
 |----------|---------|
 | `web_search()` | DuckDuckGo web search + parallel content extraction |
-| `news_search()` | DuckDuckGo news search (Google News / ToI via `--sources` / `--location`) |
+| `news_search()` | DuckDuckGo news search (Google News via `--source`, ToI via `--location`) |
 | `image_search()` | Image search with dimension/color/license filters |
+| `video_search()` | Video search with duration/resolution filters (YouTube fallback) |
+| `video_extract()` | Full metadata + subtitles from a YouTube URL |
 | `fetch_url()` | Single-URL fetch through the full resilience chain |
-| `multi_engine_search()` | Parallel Brave/Bing/Google/SerpAPI search with dedupe |
-| `wikimedia_search()` | Search any Wikimedia project via the Action API |
+| `multi_search()` | Multi-engine search (parallel merge + dedupe) |
+| `multi_engine_search()` | Lower-level parallel Brave/Bing/Google/SerpAPI search with dedupe |
+| `wikipedia_search()` | Search any Wikimedia project via the Action API |
 | `fetch_resilient()` | Low-level tiered fetch (requests → Playwright → bandit → alternate) |
 | `process_results()` | Structure + clean a raw result list into scored records |
 | `advanced_clean_text()` | Noise-only text cleaning that preserves content |
 
-> Note: `ExtractionEngine.extract_content(url, html_content, timeout)` expects the HTML to already be fetched — pass the page HTML you obtained yourself. The end-to-end fetch+extract path is `fetch_url()` / `web_search()`. `ContentCleaner` and `EnterpriseSearchEngine.search_and_extract()` no longer exist.
+> Note: `ExtractionEngine.extract_content(url, html_content, timeout)` expects the HTML to already be fetched — pass the page HTML you obtained yourself. The end-to-end fetch+extract path is `fetch_url()` / `web_search()`. The semantic index/store (`SemanticIndex` in `scout_it.semantic`) is CLI-only (`scout-it index` / `scout-it semantic-search`).
 
 ---
 
@@ -830,10 +912,10 @@ scout-it fetch-url --url "https://members-only.com" --persistent-profile
 
 ```bash
 # Combine DuckDuckGo + Google News + Location RSS
-scout-it news-search -q "India economy" --sources google-news --location india
+scout-it news-search -q "India economy" --source google-news --location india
 
 # Web search with Wikimedia
-scout-it web-search -q "quantum computing" --sources wikimedia -m 5
+scout-it web-search -q "quantum computing" --source wikimedia -m 5
 
 # Multi-engine search (requires API keys)
 scout-it multi-search -q "rust vs go performance" --engines duckduckgo,brave,bing
@@ -863,7 +945,7 @@ scout-it reddit-search -q "python best practices" --subreddit learnpython
 scout-it/
 ├── scout_it/                    # Main package
 │   ├── __init__.py              # Public API + exports
-│   ├── cli.py                   # Argparse CLI (26 subcommands)
+│   ├── cli.py                   # Argparse CLI (30 subcommands)
 │   ├── extraction.py            # Search engines, ExtractionEngine, fetch_resilient
 │   ├── cleaner.py               # process_results / advanced_clean_text / scoring
 │   ├── engines.py               # Brave, Bing, Google, SerpAPI engine wrappers
@@ -871,9 +953,9 @@ scout-it/
 │   ├── output.py                # Output path routing + markdown rendering
 │   ├── github_extract.py        # All 12 GitHub extractors
 │   ├── social.py                # Telegram, Discord, Reddit extraction
-│   ├── google_news_source.py    # Google News RSS (news-search --sources google-news)
+│   ├── google_news_source.py    # Google News RSS (news-search --source google-news)
 │   ├── toi_rss_source.py        # Times of India RSS (news-search --location)
-│   ├── wikimedia_source.py      # Wikimedia search (wikipedia-search / --sources wikimedia)
+│   ├── wikimedia_source.py      # Wikimedia search (wikipedia-search / --source wikimedia)
 │   ├── tech_crunch_rss.py       # TechCrunch RSS aggregation (NEW: 50+ sources across categories)
 │   ├── web_search_rss.py        # Web search RSS provider (NEW: 65 feeds, 13 categories)
 │   ├── category_providers.py    # Category-aware RSS provider registry (NEW)

@@ -4,7 +4,7 @@ This file provides guidance to GakrCLI Code (gakrcli.ai/code) when working with 
 
 ## Project
 
-**scout-it v2.0.0** — a Python package and CLI (`scout-it`) for enterprise-grade web search, content extraction, GitHub data extraction, and social platform scraping. Python >= 3.9, MIT license. Entry point is `scout_it/cli.py` (argparse, ~26 subcommands); public API is re-exported from `scout_it/__init__.py`.
+**scout-it v2.0.0** — a Python package and CLI (`scout-it`) for enterprise-grade web search, content extraction, GitHub data extraction, and social platform scraping. Python >= 3.9, MIT license. Entry point is `scout_it/cli.py` (argparse, 30 subcommands); public API is re-exported from `scout_it/__init__.py`.
 
 This file replaces the old `AGENTS.md` (which has been deleted). It is the authoritative agent guide; it intentionally does not repeat the README.
 
@@ -108,8 +108,10 @@ Tiered fallback: plain requests → TLS impersonation (`tls_fingerprint.py`, opt
 
 ### News / dedicated sources
 
-- `news-search` supports `--sources google-news` (`google_news_source.py`, runs in parallel with the DDGS chain) and `--location <city>` which adds Times of India RSS (`toi_rss_source.py`, `LOCATION_FEEDS`). Behavior is simply additive — DDG + Google News + ToI all present; no priority rules. Location lookup is case-insensitive; feeds are newest-first and `publish_date` is preserved through the whole pipeline.
-- `web-search` and `multi-search` support `--sources wikimedia`; there is also a dedicated `wikipedia-search` command (`wikimedia_source.py`, `SITE_MAP` has per-project site entries).
+- `news-search` supports `--source google-news` (`google_news_source.py`, runs in parallel with the DDGS chain) and `--location <city>` which adds Times of India RSS (`toi_rss_source.py`, `LOCATION_FEEDS`). Behavior is simply additive — DDG + Google News + ToI all present; no priority rules. Location lookup is case-insensitive; feeds are newest-first and `publish_date` is preserved through the whole pipeline.
+- `web-search` supports `--source wikimedia` (singular override) and `multi-search` supports `--source wikimedia` (shorthand for `--engines wikimedia`); there is also a dedicated `wikipedia-search` command (`wikimedia_source.py`, `SITE_MAP` has per-project site entries for all 12 Wikimedia projects).
+- **Source plugins**: `--sources openalex,arxiv,...` (plural) on `web-search`, `news-search`, `image-search`, `video-search`, and `multi-search` merges 30+ free academic/dataset/knowledge source plugins (`scout_it/sources/`) with BM25F+vector re-ranking. `--auto-sources` lets the source-selection bandit pick. Run `scout-it sources` to list them; `scout-it stats --sources` shows bandit stats.
+- **Semantic retrieval**: `scout-it index` builds a persistent LanceDB corpus at `~/.scout-it/semantic/lancedb/` (`scout_it.semantic.SemanticIndex`); `scout-it semantic-search` queries it with hybrid BM25+dense-vector retrieval. Needs `sentence-transformers torch lancedb`. `--semantic` on `web-search`/`news-search` re-ranks in-place.
 - **Category support (NEW)**: Both `web-search` and `news-search` now support `--category` flag for RSS feed integration:
   - **Web search**: 65 RSS feeds across 13 categories (ai, engineering, cloud, devops, research, security, startups, all, etc.)
   - **News search**: 50+ RSS sources across categories (cloud: 6 feeds, ai: 8 feeds, startups: 6 feeds, security: 6 feeds, all: 9 feeds)
@@ -128,7 +130,7 @@ Tiered fallback: plain requests → TLS impersonation (`tls_fingerprint.py`, opt
 
 ## Testing
 
-- ~430 tests across 11 files. **Run test files one at a time** (`pytest tests/test_resilience.py -v`), not the whole suite at once — the suite has cross-file state assumptions.
+- ~790 tests across 40 files. **Run test files one at a time** (`pytest tests/test_resilience.py -v`), not the whole suite at once — the suite has cross-file state assumptions.
 - **Prefer real CLI runs over pytest for verifying behavior.** `real-tests.md` documents a large matrix of real `scout-it ... --out ...` invocations (with logging to `terminal-logs.md`). For parallel CLI runs use unique `--out` filenames to avoid output collisions.
 - CI (`.github/workflows/ci.yml`) runs **build-only** (matrix 3.9–3.12) plus the website build; it does not run tests. Tests run locally. Release workflow tags `v*.*.*` build Python distributions and create a GitHub Release — no PyPI publishing.
 - After porting reference code or touching a shared function, verify the full end-to-end CLI pipeline and audit every call site (not just the function in isolation).
