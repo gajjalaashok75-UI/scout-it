@@ -15,16 +15,20 @@ const searchCommands = [
   { usage: 'web-search --query <text>', href: '/docs/web-search/', description: 'DuckDuckGo text search plus content extraction.' },
   { usage: 'news-search --query <text>', href: '/docs/web-search/', description: 'DuckDuckGo news search with article extraction.' },
   { usage: 'image-search --query <text>', href: '/docs/image-video/', description: 'DuckDuckGo image search with dimension/license filters.' },
-  { usage: 'video-search --query <text>', href: '/docs/image-video/', description: 'DuckDuckGo video search.' },
+  { usage: 'video-search --query <text>', href: '/docs/image-video/', description: 'DuckDuckGo video search (YouTube fallback).' },
   { usage: 'video-extract --url <youtube-url>', href: '/docs/image-video/', description: 'Full YouTube metadata and transcripts.' },
   { usage: 'fetch-url --url <url>', href: '/docs/fetch-url/', description: 'Direct extraction from a single URL.' },
   { usage: 'multi-search --query <text> --engines ...', href: '/docs/multi-engine/', description: 'Search across several engines in parallel.' },
+  { usage: 'wikipedia-search --query <text>', href: '/docs/wikipedia/', description: 'Search any Wikimedia project (12 projects) via the MediaWiki Action API.' },
   { usage: 'list-engines', href: '/docs/multi-engine/', description: 'Show which search engines are configured.' },
+  { usage: 'sources [--json]', href: '/docs/wikipedia/', description: 'List available academic/dataset/knowledge source plugins.' },
+  { usage: 'index --query <text>', href: '/docs/wikipedia/', description: 'Index results into the persistent semantic store (LanceDB).' },
+  { usage: 'semantic-search --query <text>', href: '/docs/wikipedia/', description: 'Hybrid BM25+vector search over an indexed corpus.' },
 ]
 
 const utilityCommands = [
   ...configCommands,
-  { usage: 'scout-it stats [--domain] [--export] [--reset <domain>] [--reset-all]', description: 'Show per-domain fetch-strategy statistics from the local bandit cache.' },
+  { usage: 'scout-it stats [--domain] [--export] [--reset <domain>] [--reset-all] [--sources]', description: 'Show per-domain fetch-strategy statistics from the local bandit cache. --sources shows source-selection bandit stats.' },
   { usage: 'scout-it doctor', description: 'Run a self-check: Playwright availability, proxy config, cache health, credentials, DNS/connectivity.' },
 ]
 

@@ -24,6 +24,7 @@ export const docsNav: DocsNavGroup[] = [
       { title: 'Image & video search', href: '/docs/image-video/' },
       { title: 'Fetch URL & retry chain', href: '/docs/fetch-url/' },
       { title: 'Multi-engine search', href: '/docs/multi-engine/' },
+      { title: 'Wikimedia & semantic search', href: '/docs/wikipedia/' },
     ],
   },
   {

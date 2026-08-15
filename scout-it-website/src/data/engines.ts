@@ -1,4 +1,4 @@
-// Seeded from scout_it/engines.py and the README's multi-search / list-engines section.
+// Seeded from scout_it/engines.py ENGINE_REGISTRY and the actual env var checks in each engine class.
 
 export interface Engine {
   id: string
@@ -18,36 +18,30 @@ export const engines: Engine[] = [
     id: 'brave',
     name: 'Brave Search',
     setup: 'BRAVE_API_KEY',
-    notes: 'Free tier available. Add to multi-search with --engines brave.',
-  },
-  {
-    id: 'google',
-    name: 'Google (via SerpApi)',
-    setup: 'SERPAPI_API_KEY',
-    notes: 'Routed through SerpApi. Use --serpapi-engine google with --engines serpapi.',
+    notes: 'Free tier (2k queries/mo). Add to multi-search with --engines brave.',
   },
   {
     id: 'bing',
-    name: 'Bing (via SerpApi)',
-    setup: 'SERPAPI_API_KEY',
-    notes: '--serpapi-engine bing with --engines serpapi.',
+    name: 'Bing Web Search (Azure)',
+    setup: 'BING_API_KEY',
+    notes: 'Azure Cognitive Services "Bing Search v7" resource. Add to multi-search with --engines bing.',
   },
   {
-    id: 'yahoo',
-    name: 'Yahoo (via SerpApi)',
-    setup: 'SERPAPI_API_KEY',
-    notes: '--serpapi-engine yahoo with --engines serpapi.',
+    id: 'google',
+    name: 'Google Custom Search',
+    setup: 'GOOGLE_API_KEY + GOOGLE_CSE_ID',
+    notes: 'Google Programmable Search Engine (free tier: 100 queries/day). Add to multi-search with --engines google.',
   },
   {
-    id: 'baidu',
-    name: 'Baidu (via SerpApi)',
-    setup: 'SERPAPI_API_KEY',
-    notes: '--serpapi-engine baidu with --engines serpapi.',
+    id: 'serpapi',
+    name: 'SerpAPI',
+    setup: 'SERPAPI_KEY',
+    notes: 'Proxies real Google/Bing/Yahoo/Baidu/Yandex results. Free tier: 100 searches/month. Use --serpapi-engine to pick the underlying engine (default: google).',
   },
   {
-    id: 'yandex',
-    name: 'Yandex (via SerpApi)',
-    setup: 'SERPAPI_API_KEY',
-    notes: '--serpapi-engine yandex with --engines serpapi.',
+    id: 'wikimedia',
+    name: 'Wikimedia',
+    setup: 'works out of the box',
+    notes: 'Searches Wikipedia and the other 11 Wikimedia projects via the MediaWiki Action API. Add to multi-search with --engines wikimedia, or use the dedicated wikipedia-search command.',
   },
 ]

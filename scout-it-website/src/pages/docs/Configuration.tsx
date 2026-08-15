@@ -12,7 +12,7 @@ export default function Configuration() {
   return (
     <DocsLayout
       title="scout-it configuration — credentials & environment variables"
-      description="Store scout-it credentials once with the interactive config wizard, or use environment variables for CI. Full reference for GITHUB_TOKEN, BRAVE_API_KEY, SERPAPI_API_KEY, and more."
+      description="Store scout-it credentials once with the interactive config wizard, or use environment variables for CI. Full reference for GITHUB_TOKEN, BRAVE_API_KEY, SERPAPI_KEY, and more."
       heading="configuration & credentials"
       lede="Several commands need an API key or token. Store them once with the config wizard, or export environment variables for CI and scripting."
       toc={toc}
