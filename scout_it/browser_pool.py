@@ -80,8 +80,35 @@ class PlaywrightBrowserPool:
         logger.info("Browser pool: Enabled (thread-local browsers will be created on-demand)")
     
     def stop(self):
-        """Close all thread-local browsers and stop Playwright instances.
-
+        """Stop the browser pool and close all browsers."""
+        if not hasattr(self, '_playwrights'):
+            return
+        self.enabled = False
+        
+        with self._registry_lock:
+            browsers = list(self._browsers.values())
+            playwrights = list(self._playwrights.values())
+            self._browsers.clear()
+            self._playwrights.clear()
+        
+        for browser in browsers:
+            try:
+                browser.close()
+            except Exception as e:
+                # Suppressed harmless greenlet thread-local errors.
+                if "cannot switch to a different thread" not in str(e):
+                    logger.warning(f"Error closing browser during pool stop: {e}")
+        
+        for pw in playwrights:
+            try:
+                pw.stop()
+            except Exception as e:
+                # Suppressed harmless greenlet thread-local errors.
+                if "cannot switch to a different thread" not in str(e):
+                    logger.warning(f"Error stopping Playwright during pool stop: {e}")
+        
+        logger.info(f"Browser pool: Disabled (closed {len(browsers)} browser(s), {len(playwrights)} playwright instance(s))")
+        """
         Browsers launched by worker threads are tracked in ``self._browsers``
         and closed here so Chromium/Playwright OS processes are released —
         previously this was a no-op (``pass``) that leaked a headless
