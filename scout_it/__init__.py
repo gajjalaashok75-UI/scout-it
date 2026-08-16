@@ -65,7 +65,7 @@ from .github_extract import (
     github_search_code,
     github_search_repos,
 )
-from .social import discord_channel_messages, reddit_search, telegram_channel, telegram_search
+from .social import discord_channel_messages, reddit_search, social_search, telegram_channel, telegram_search
 from .config import (
     clear_all_credentials,
     clear_credential,
@@ -129,6 +129,7 @@ __all__ = [
     "telegram_search",
     "discord_channel_messages",
     "reddit_search",
+    "social_search",
     "credential_status",
     "run_config_wizard",
     "clear_credential",
