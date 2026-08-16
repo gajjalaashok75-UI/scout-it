@@ -7,6 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added — Instagram provider (DDGS + profile scraping + Playwright)
+
+New `--platform instagram` provider with two capabilities:
+
+- **`--query` (no login)**: DDGS web search for public Instagram content (`site:instagram.com <query>` + `instagram <query>`), deduplicated by URL and ranked by query relevance. DuckDuckGo indexes public Instagram profiles, posts, and hashtag pages, so this yields related snippets/titles/links even without credentials. This is the primary, reliable no-auth path.
+- **`--profile` (public page scraping)**: fetches a specific user's public profile page (`https://www.instagram.com/{username}/`) and extracts embedded JSON-LD / shared data. Three tiers:
+  1. **requests** with browser-like headers + optional session cookie (extract JSON-LD `<script>` blocks).
+  2. **Playwright** headless render (when requests hits the login wall / 302 redirect).
+  3. **DDGS fallback** (`site:instagram.com {username}`) if both fail.
+- **Optional `INSTAGRAM_SESSION_ID`**: when set (via `scout-it config`), the session cookie is used for more reliable profile access (like `REDDIT_COOKIE`). The provider surfaces a clear note when results are token-limited.
+- **Proxy support**: reads `INSTAGRAM_PROXY` / `HTTPS_PROXY` / `HTTP_PROXY` env vars (HTTP and SOCKS5), mirroring the reference repos' proxy rotation patterns.
+- **`--extract-full` support**: best-effort full-page extraction of DDGS-discovered Instagram URLs.
+- Instagram now falls back to query search when an unsupported source arg is requested, so `--platform telegram,reddit,discord,instagram --channel durov --query "AI"` runs all four providers.
+
+References (approach, not code): drawrowfly/instagram-scraper (session-based scraping, proxy rotation), instaloader/instaloader (Profile/Post structure, GraphQL), data-scrape/instagram-account-scraper (no-login public profile/post scraping, rate-limit support).
+
+### Changed — Discord provider enhancements (DDGS + bot guild search)
+
+Discord has no anonymous/public read API by design — every reference repo (southbridge-fur, dfrnoch, theAbdoSabbagh, ArvinJA, KanekiWeb) requires either a bot token (legitimate) or a self-bot/user token (TOS violation). The provider now uses a **tiered strategy** to maximize results across both the authenticated and anonymous cases, mirroring the web/news-search workflow (snippet extraction → rank → extract top → clean):
+
+- **New `--query` capability (no token needed)**: when no `DISCORD_BOT_TOKEN` is set, the provider runs a DDGS web search for public Discord content (`site:discord.com <query>` + `discord <query>`), deduplicates by URL, and ranks by query relevance. DuckDuckGo indexes public Discord message pages, server invites, and channel pages, so this yields related snippets/titles/links even without credentials. The result note clearly tells the user: *"DISCORD_BOT_TOKEN is not set — results are from public web search only. Set it for full message search across your servers."*
+- **New `--query` capability (with token)**: lists every guild the bot is a member of (`/users/@me/guilds`), enumerates text channels (`/guilds/{id}/channels`), fetches recent messages (`/channels/{id}/messages`), and filters by the query — the "search across the bot's accessible servers" path (ported from ArvinJA/scrape_discord + KanekiWeb/Messages-Searcher patterns, no self-bot). Bot results are merged with DDGS results (which find public content the bot can't reach) and ranked together.
+- **Enhanced `--channel-id` (bot API)**: automatic pagination via the `before=<last_id>` cursor when `--max` > 100 (the per-request cap), richer metadata (embeds, reactions, reply targets, guild/channel names resolved from the channel), and consolidated rate-limit (429) + retry handling via a shared `_api_get` helper.
+- **`--extract-full` support**: best-effort full-page extraction of DDGS-discovered Discord URLs via the resilient fetcher + cleaner.
+- Discord now **falls back to query search** when an unsupported source arg (e.g. `--channel`) is requested, instead of hard-failing — so `--platform telegram,reddit,discord --channel durov --query "AI"` runs all three providers.
+- Approach based on discord/discord-api-spec REST endpoints; no self-bot/user-token usage (TOS-compliant).
+
+### Changed — Reddit provider enhancements (RSS-first)
+
+Reddit's anonymous `.json` endpoints now return 403 for most requests (anti-bot rules; official API closed self-service registration). The Reddit provider now uses Reddit's **public RSS/Atom feeds** (`.rss`) as the primary path — these are served for RSS readers without the aggressive 403 blocking that hits `.json`:
+
+- **RSS-first architecture**: `r/{sub}.rss`, `user/{name}.rss`, and `search.rss?q={query}` are fetched and parsed as Atom feeds, mirroring the existing `google_news_source.py` RSS pattern. The old `.json` path is kept as a secondary fallback (runs only when RSS is blocked/rate-limited), so the public `reddit_search()` API name and behaviour are preserved.
+- **New `--user` capability**: fetch a user's posts and comments via their public `user/{name}.rss` feed (RedditProvider now supports `query`, `subreddit`, `user`).
+- **Subreddit listings no longer require a `--query`**: the RSS feed itself is the listing (the old `.json`-only path needed a query term). Combined subreddits (`python+programming`) are supported.
+- **Query relevance ranking**: subreddit/user feed entries are ranked by query-term matches (title weighted above selftext, whole-phrase bonus) and capped at `--max`.
+- **Random User-Agent rotation + retry/backoff** (ported from [datavorous/yars](https://github.com/datavorous/yars) `RandomUserAgentSession`).
+- **Optional `--extract-full` flag**: best-effort full-page extraction of each top result's permalink via the project's resilient fetcher + cleaner (the "extract full page content and clean" step), off by default for speed since the RSS `<content>` already carries the post selftext.
+- **Honest failure reporting**: 403/429 surfaces the real reason with actionable remediation (set `REDDIT_COOKIE`, retry, or apply for API access).
+- Feed URL builder, Atom + RSS 2.0 parser (namespace-aware), HTML-entity stripping, and external `[link]` extraction are unit-tested with 14 new tests.
+
+### Changed — Telegram provider enhancements
+
+Logic ported from [PythonicCafe/tchan](https://github.com/PythonicCafe/tchan) and [AlexSaite/telegram_scrapper_notoken](https://github.com/AlexSaite/telegram_scrapper_notoken) (no new dependencies; same public t.me/s/ source, same tier-0 no-auth model):
+
+- **Backwards pagination** via `?before=<id>` — `--max N` larger than one preview page (~20 posts) now actually returns up to N posts by walking older pages, instead of being capped at the first page.
+- **Channel-not-found detection** — t.me replies HTTP 200 with a "If you have Telegram" stub when a channel does not exist or is private; this is now detected and surfaced as a distinct `channel_not_found` error (was `fetch_failed`).
+- **Channel-failure → query fallback** (user-requested): when `--channel` is wrong / private / empty, the provider automatically falls back to public query search using the explicit `--query` if given, or the channel name itself, so the user still gets relevant public channels instead of an empty result.
+- **Richer channel metadata**: subscriber count, verified badge, photo/video/link counts.
+- **Numeric view counts**: `views_count` integer alongside the raw `views` string (e.g. "1.2K" → 1200).
+- **Input normalization**: `@username`, `t.me/`, `t.me/s/`, and full URLs all accepted.
+- Rotating User-Agents (anti-Cloudflare courtesy).
+
+### Changed — unified `social-search` command
+
+- Replaced the three separate social subcommands
+  (`telegram-channel`, `discord-channel`, `reddit-search`) with a single
+  unified `social-search` command.
+- `scout_it/social.py` is now a `scout_it/social/` package:
+  `base.py` (SocialProvider base + unified result schema),
+  `registry.py` (provider registry + capability-based dispatch),
+  `telegram.py` (TelegramProvider: `query`, `channel`),
+  `reddit.py` (RedditProvider: `query`, `subreddit`),
+  `discord.py` (DiscordProvider: `channel-id`).
+- Each provider declares `SUPPORTED_CAPABILITIES`; the CLI does not restrict
+  platform-specific arguments. When a requested source argument
+  (`--channel`, `--channel-id`, `--subreddit`, `--profile`) is unsupported
+  by a selected platform, that provider falls back to public query-based
+  discovery rather than being skipped. A provider with no public discovery
+  path (Discord) reports a clear failure while the other providers continue.
+- All providers normalize results into a common schema
+  (`{platform, author, content, url, timestamp, metadata}`) so multi-platform
+  results can be aggregated, ranked, filtered, and exported uniformly.
+- Selected providers run in parallel.
+- Adding a future platform requires only a provider implementation, a
+  capability declaration, and a registry entry — no CLI redesign.
+
+### Backwards compatibility
+- The original flat function names (`telegram_channel`, `telegram_search`,
+  `discord_channel_messages`, `reddit_search`) and the HTML parsers
+  (`_parse_telegram_primary`, `_parse_telegram_enhanced`) are re-exported
+  from `scout_it.social`, so `from scout_it import social` and
+  `from scout_it.social import ...` continue to work unchanged. A new
+  `social_search()` orchestrator is exported from both `scout_it.social`
+  and the top-level `scout_it` package.
+
+---
+
 ## [2.0.0] - 2026-08-14
 
 ### Added

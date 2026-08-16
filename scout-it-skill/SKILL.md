@@ -51,9 +51,7 @@ scout-it <subcommand> [options]
 | `github-search-code` | Search code across GitHub (requires GITHUB_TOKEN) |
 | `github-search-repos` | Search GitHub repositories |
 | `github-discussions` | List GitHub Discussions (requires GITHUB_TOKEN) |
-| `telegram-channel` | Fetch posts from a public Telegram channel, or search for channels by topic |
-| `discord-channel` | Fetch messages from a Discord channel (requires DISCORD_BOT_TOKEN) |
-| `reddit-search` | Best-effort Reddit search |
+| `social-search` | Unified social platform search (Telegram, Reddit, Discord, Instagram) with capability-based fallback |
 
 ---
 
@@ -411,7 +409,7 @@ scout-it semantic-search --query "attention mechanisms" --max 5  # query it
 
 ## config
 
-Set up API keys/tokens for GitHub, Brave, Bing, Google, SerpAPI, Discord, Reddit. Stored at `~/.scout-it/credentials.json` (owner-only file permissions).
+Set up API keys/tokens for GitHub, Brave, Bing, Google, SerpAPI, Discord, Reddit, Instagram. Stored at `~/.scout-it/credentials.json` (owner-only file permissions).
 
 ```bash
 scout-it config              # interactive wizard -- Enter to skip any key you don't have
@@ -492,34 +490,127 @@ scout-it github-commit --repo gajjalaashok75-UI/scout-it --sha <commit-sha>
 
 ---
 
-## Social platform subcommands
+## Social platform search
 
-### Telegram
+A single unified command, `social-search`, covers all social platforms. Each
+platform declares the capabilities it supports (`query`, `channel`,
+`channel-id`, `subreddit`, `profile`) and falls back to public query-based
+discovery when a requested source argument is unsupported.
+
+```bash
+# Search all enabled social providers (Telegram, Reddit, Discord, Instagram)
+scout-it social-search --query "AI agents"
+
+# Single platform
+scout-it social-search --platform telegram --query "AI agents"
+
+# Multiple platforms (comma-separated) — providers run in parallel
+scout-it social-search --platform telegram,reddit,discord,instagram --query "AI agents"
+```
+
+### Telegram (no auth needed)
 ```bash
 # Fetch recent posts from a known public channel
-scout-it telegram-channel --channel "channel_name" --max 10
+scout-it social-search --platform telegram --channel "channel_name" --max 10
+
+# Fetch more posts (pagination via ?before= walks older pages automatically)
+scout-it social-search --platform telegram --channel "channel_name" --max 100
 
 # Search for public channels matching a topic (via a site:t.me web search --
 # there's no official Telegram-wide search API for anonymous use)
-scout-it telegram-channel --query "Python programming" --max 5
+scout-it social-search --platform telegram --query "Python programming" --max 5
+
+# If --channel is wrong/private/empty, the provider automatically falls back
+# to query search (using --query if given, else the channel name) so you still
+# get relevant public channels.
+scout-it social-search --platform telegram --channel "typo_name" --query "AI"
 
 # Save to Markdown
-scout-it telegram-channel --channel "channel_name" --markdown --out channel.md
+scout-it social-search --platform telegram --channel "channel_name" --markdown --out channel.md
 ```
+Channel metadata (title, subscribers, verified badge) and numeric view counts
+are extracted alongside posts. Input accepts `@username`, `t.me/`, `t.me/s/`,
+and full URLs.
 
-### Discord (requires DISCORD_BOT_TOKEN set via `scout-it config`)
-
-### Discord (requires DISCORD_BOT_TOKEN set via `scout-it config`)
+### Discord (query works without token; channel-id needs DISCORD_BOT_TOKEN)
 ```bash
-# Fetch recent messages from a channel
-scout-it discord-channel --channel-id "123456789"
+# Search public Discord content — no token needed (DDGS web discovery)
+scout-it social-search --platform discord --query "python programming"
+
+# Full message search across your servers (needs DISCORD_BOT_TOKEN)
+scout-it social-search --platform discord --query "AI agents"
+
+# Fetch channel history (needs DISCORD_BOT_TOKEN; paginates beyond 100)
+scout-it social-search --platform discord --channel-id "123456789" --max 200
+```
+Without a token, `--query` runs a DDGS web search of public Discord content
+(servers, invites, message pages indexed by DuckDuckGo). With a token, it
+additionally scans every guild the bot is in (listing channels, fetching recent
+messages, filtering by the query). `--channel-id` always requires a token. A
+note in the output tells you when results are token-limited.
+
+### Reddit (RSS-first, no login needed)
+```bash
+# Subreddit listing (RSS feed) — no query needed
+scout-it social-search --platform reddit --subreddit "learnpython"
+
+# Combined subreddits
+scout-it social-search --platform reddit --subreddit "python+programming" --sort new
+
+# User activity (posts + comments) via their public RSS feed
+scout-it social-search --platform reddit --user spez
+
+# Site-wide search (falls back to .json if RSS is blocked)
+scout-it social-search --platform reddit --query "Python"
+
+# Full-page extraction of each top post's permalink (slower, richer content)
+scout-it social-search --platform reddit --subreddit python --extract-full
 ```
 
-### Reddit
+### Instagram (query works without login; profile scraping with 3-tier fallback)
 ```bash
-# Best-effort search (unreliable as of 2026)
-scout-it reddit-search --query "Python" --subreddit "learnprogramming"
+# Search public Instagram content — no login needed (DDGS web discovery)
+scout-it social-search --platform instagram --query "travel photography"
+
+# Scrape a specific profile (3-tier fallback: requests → Playwright → DDGS)
+scout-it social-search --platform instagram --profile "natgeo"
+
+# Set INSTAGRAM_SESSION_ID for reliable profile scraping (via scout-it config)
+scout-it config  # → select INSTAGRAM_SESSION_ID, paste sessionid cookie value
 ```
+Without `INSTAGRAM_SESSION_ID`, `--query` runs a DDGS web search of public
+Instagram content (profiles, posts, hashtag pages indexed by DuckDuckGo) and
+`--profile` attempts a 3-tier scrape (requests with browser headers → Playwright
+headless render → DDGS fallback). With a session ID, profile scraping is more
+reliable. A note in the output tells you when results are session-limited.
+
+### Capability-based fallback
+
+If you pass a platform-specific argument that a selected platform does not
+support, that platform falls back to query search instead of being skipped:
+
+```bash
+scout-it social-search --platform telegram,reddit,discord,instagram --channel durov --query "AI"
+```
+
+| Platform | Supported capabilities | Behavior for `--channel durov` |
+|----------|------------------------|--------------------------------|
+| Telegram | `query`, `channel` | Executes channel search |
+| Reddit | `query`, `subreddit`, `user` | `--channel` unsupported → falls back to `--query` search |
+| Discord | `channel-id`, `query` | `--channel` unsupported → falls back to `--query` (DDGS web search; + bot guild search if `DISCORD_BOT_TOKEN` set) |
+| Instagram | `profile`, `query` | `--channel` unsupported — falls back to `--query` (DDGS web search; set `INSTAGRAM_SESSION_ID` for profile scraping) |
+
+General rule per provider:
+- Requested feature supported → execute it.
+- Requested feature unsupported → fall back to provider query search.
+- Provider unavailable (no fallback) → report provider failure; other providers continue.
+
+All providers normalize results into a common schema
+(`{platform, author, content, url, timestamp, metadata}`) so multi-platform
+results can be aggregated, ranked, filtered, and exported uniformly.
+
+Adding a future platform needs only a provider implementation, a capability
+declaration, and a registry entry — no CLI redesign required.
 
 ---
 
