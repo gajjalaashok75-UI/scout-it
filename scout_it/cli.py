@@ -153,9 +153,7 @@ COMMAND_OUTPUT_STUBS: Dict[str, str] = {
     'github-search-code': 'github_search_code_results',
     'github-search-repos': 'github_search_repos_results',
     'github-discussions': 'github_discussions_results',
-    'telegram-channel': 'telegram_results',
-    'discord-channel': 'discord_results',
-    'reddit-search': 'reddit_results',
+    'social-search': 'social_search_results',
 }
 
 
@@ -706,62 +704,50 @@ def build_parser():
     gh_discussions_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
 
     # ======================================================================
-    # Social/platform subcommands
+    # Social/platform subcommand — unified social-search
     # ======================================================================
-    telegram_parser = subparsers.add_parser(
-        'telegram-channel',
-        help='Fetch posts from a PUBLIC Telegram channel, or search for channels by topic',
+    # One entry point for all social platforms. --platform selects which
+    # providers run (comma-separated; default = all enabled). Each provider
+    # declares the capabilities it supports and falls back to public query
+    # search when a requested platform-specific arg (e.g. --channel) is not
+    # supported for that platform. Adding a future platform requires only a
+    # new Provider + capability declaration + registry entry — no CLI change.
+    social_parser = subparsers.add_parser(
+        'social-search',
+        help='Search one or more social platforms (Telegram, Reddit, Discord) with capability-based fallback',
         description=(
-            'Two modes: --channel NAME fetches posts directly from a known public channel '
-            '(no auth needed). --query "..." instead searches for public channels matching a '
-            'topic (via a site:t.me web search -- there is no official Telegram-wide search '
-            'API for anonymous use) and returns a preview of each match.'
+            'Unified social platform search. By default every enabled provider runs; '
+            'use --platform telegram,reddit,discord to select a subset (comma-separated). '
+            'Each provider decides which platform-specific source argument it supports '
+            '(--channel, --channel-id, --subreddit, --profile) and, if a requested '
+            'argument is unsupported, falls back to public query-based discovery rather '
+            'than being skipped. Results are normalized to a common schema across '
+            'platforms. Supported platforms: telegram (query, channel), reddit '
+            '(query, subreddit, user), discord (channel-id, query — query works '
+            'without a token via web search; set DISCORD_BOT_TOKEN for full results), '
+            'instagram (query, profile — query works without login via web search; '
+            'set INSTAGRAM_SESSION_ID for direct profile scraping).'
         ),
     )
-    telegram_parser.add_argument('--channel', default=None, help="Channel username, e.g. 'durov' (or a t.me URL) -- direct mode")
-    telegram_parser.add_argument('--query', '-q', default=None, help='Search for public channels matching this topic -- search mode')
-    telegram_parser.add_argument('--max', '-m', type=int, default=20, help='Max posts to return (--channel mode) or max channels (--query mode)')
-    telegram_parser.add_argument('--posts-per-channel', type=int, default=3, help='(--query mode) posts to preview per matched channel')
-    telegram_parser.add_argument('--max-fetch-retries', type=int, default=3, help='Retry attempts per fetch tier')
-    telegram_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/telegram_results.json)')
-    telegram_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
-    telegram_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
-
-    discord_parser = subparsers.add_parser(
-        'discord-channel',
-        help='Fetch recent messages from a Discord channel (requires DISCORD_BOT_TOKEN)',
-        description=(
-            'Requires DISCORD_BOT_TOKEN, and the bot must already be a member of the target '
-            "server with read-history permission. Unlike telegram-channel, there's no --query "
-            "topic-search mode here: Discord has no anonymous/public read API of any kind "
-            '(you always need a bot that has actually been invited into the specific server), '
-            "so there's no server-wide or cross-server search this library could legitimately offer."
-        ),
-    )
-    discord_parser.add_argument('--channel-id', required=True, help='Numeric Discord channel ID')
-    discord_parser.add_argument('--max', '-m', type=int, default=50, help='Max messages to return')
-    discord_parser.add_argument('--before', default=None, help='Only messages before this message ID (pagination)')
-    discord_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/discord_results.json)')
-    discord_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
-    discord_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
-
-    reddit_parser = subparsers.add_parser(
-        'reddit-search',
-        help='Best-effort Reddit search (unreliable as of 2026 — see --help)',
-        description=(
-            'Best-effort only: Reddit blocks most anonymous requests as of 2026 and has no '
-            'reliable zero-config API path. This command tries anyway and reports the real '
-            'failure reason on a 403 rather than pretending to succeed. Set REDDIT_COOKIE '
-            "(a logged-in session's Cookie header) to improve your odds."
-        ),
-    )
-    reddit_parser.add_argument('--query', '-q', required=True, help='Search query')
-    reddit_parser.add_argument('--subreddit', default=None, help='Restrict search to one subreddit')
-    reddit_parser.add_argument('--sort', default='relevance', choices=['relevance', 'hot', 'top', 'new', 'comments'], help='Sort order')
-    reddit_parser.add_argument('--max', '-m', type=int, default=20, help='Max results')
-    reddit_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/reddit_results.json)')
-    reddit_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
-    reddit_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+    social_parser.add_argument('--query', '-q', default=None, help='Search query (used directly by query-capable platforms, and as the fallback for platforms that do not support a requested source arg)')
+    social_parser.add_argument('--platform', default=None, help='Comma-separated platform list, e.g. "telegram,reddit,discord" (default: all enabled providers)')
+    social_parser.add_argument('--max', '-m', type=int, default=20, help='Max results per platform (posts / messages / channels)')
+    # Platform-specific source arguments — none are required; each provider
+    # decides whether it supports the ones supplied.
+    social_parser.add_argument('--channel', default=None, help='(Telegram) public channel username, e.g. "durov" or a t.me URL')
+    social_parser.add_argument('--channel-id', default=None, help='(Discord) numeric channel ID — requires DISCORD_BOT_TOKEN')
+    social_parser.add_argument('--subreddit', default=None, help='(Reddit) restrict to one subreddit (or combine with +, e.g. python+programming)')
+    social_parser.add_argument('--user', default=None, help='(Reddit) fetch a user\'s posts/comments via their public RSS feed')
+    social_parser.add_argument('--profile', default=None, help='(Instagram) profile username to scrape, e.g. "natgeo" — 3-tier fallback: requests → Playwright → DDGS; set INSTAGRAM_SESSION_ID for reliable access')
+    # Provider tuning
+    social_parser.add_argument('--posts-per-channel', type=int, default=3, help='(Telegram --query mode) posts to preview per matched channel')
+    social_parser.add_argument('--max-fetch-retries', type=int, default=3, help='(Telegram) retry attempts per fetch tier')
+    social_parser.add_argument('--sort', default='relevance', choices=['relevance', 'hot', 'top', 'new', 'comments'], help='(Reddit) sort order')
+    social_parser.add_argument('--before', default=None, help='(Discord) only messages before this message ID (pagination)')
+    social_parser.add_argument('--out', '-o', default=None, help='Output file (default: .scout-it/social_search_results.json)')
+    social_parser.add_argument('--markdown', action='store_true', help='Save results as Markdown (.md) instead of JSON')
+    social_parser.add_argument('--json', action='store_true', help='Output raw JSON to stdout')
+    social_parser.add_argument('--extract-full', action='store_true', help='(Reddit) best-effort full-page extraction of each top result\'s permalink (slower)')
 
     # Semantic search subcommand (Phase 1 — Mode B: indexed corpus search)
     sem_parser = subparsers.add_parser(
@@ -1851,72 +1837,57 @@ def main():
             print(f"✅ {result['total_count']} discussions found\n   📂 Results saved to: {out_path.resolve()}\n")
 
     # ==========================================================================
-    # Social/platform commands
+    # Social/platform command — unified social-search
     # ==========================================================================
-    elif args.command == 'telegram-channel':
-        if not args.channel and not args.query:
-            print("❌ Error: provide either --channel NAME (direct mode) or --query \"...\" (search mode)\n")
-        elif args.query:
-            _cmd_timer = _PhaseTimer(f"telegram search '{args.query}'")
+    elif args.command == 'social-search':
+        if not args.query and not args.channel and not args.channel_id \
+                and not args.subreddit and not args.profile and not args.user:
+            print(
+                "❌ Error: provide at least one of --query, --channel, --channel-id, "
+                "--subreddit, --user, or --profile. Run `scout-it social-search --help` for the "
+                "capability/fallback rules.\n"
+            )
+        else:
+            label = f"social-search '{args.query or args.channel or args.channel_id or args.subreddit or args.user or args.profile}'"
+            _cmd_timer = _PhaseTimer(label, platform=args.platform or "all")
             with _cmd_timer:
-                result = social.telegram_search(
-                    args.query, max_channels=args.max, posts_per_channel=args.posts_per_channel,
+                result = social.social_search(
+                    query=args.query,
+                    platform=args.platform,
+                    channel=args.channel,
+                    channel_id=args.channel_id,
+                    subreddit=args.subreddit,
+                    profile=args.profile,
+                    user=args.user,
+                    max_results=args.max,
+                    sort=args.sort,
+                    posts_per_channel=args.posts_per_channel,
                     max_fetch_retries=args.max_fetch_retries,
+                    before=args.before,
+                    extract_full=args.extract_full,
                 )
             out_path = Path(args.out)
             _write_output(out_path, result)
             if args.json:
                 print(json.dumps(result, indent=2, ensure_ascii=False))
-            elif "error" in result:
-                _cmd_timer.failed(reason=result['error'])
-                print(f"❌ Error: {result['error_message']}\n")
             else:
-                _cmd_timer.done(channels_found=result['channel_count'])
-                print(f"   📂 Results saved to: {out_path.resolve()}\n")
-        else:
-            _cmd_timer = _PhaseTimer(f"telegram-channel @{args.channel}")
-            with _cmd_timer:
-                result = social.telegram_channel(args.channel, max_results=args.max, max_fetch_retries=args.max_fetch_retries)
-            out_path = Path(args.out)
-            _write_output(out_path, result)
-            if args.json:
-                print(json.dumps(result, indent=2, ensure_ascii=False))
-            elif "error" in result:
-                _cmd_timer.failed(reason=result['error'])
-                print(f"❌ Error: {result['error_message']}\n")
-            else:
-                _cmd_timer.done(posts=result['post_count_returned'], parser=result.get('parser_used', '?'))
-                print(f"   📂 Results saved to: {out_path.resolve()}\n")
-
-    elif args.command == 'discord-channel':
-        _cmd_timer = _PhaseTimer(f"discord-channel {args.channel_id}")
-        with _cmd_timer:
-            result = social.discord_channel_messages(args.channel_id, max_results=args.max, before_message_id=args.before)
-        out_path = Path(args.out)
-        _write_output(out_path, result)
-        if args.json:
-            print(json.dumps(result, indent=2, ensure_ascii=False))
-        elif "error" in result:
-            _cmd_timer.failed(reason=result['error'])
-            print(f"❌ Error: {result['error_message']}\n")
-        else:
-            _cmd_timer.done(messages=result['message_count'])
-            print(f"   📂 Results saved to: {out_path.resolve()}\n")
-
-    elif args.command == 'reddit-search':
-        _cmd_timer = _PhaseTimer(f"reddit-search '{args.query}'", subreddit=args.subreddit or "all")
-        with _cmd_timer:
-            result = social.reddit_search(args.query, subreddit=args.subreddit, max_results=args.max, sort=args.sort)
-        out_path = Path(args.out)
-        _write_output(out_path, result)
-        if args.json:
-            print(json.dumps(result, indent=2, ensure_ascii=False))
-        elif "error" in result:
-            _cmd_timer.failed(reason=result['error'])
-            print(f"❌ Error: {result['error_message']}\n")
-        else:
-            _cmd_timer.done(posts=result['result_count'])
-            print(f"   📂 Results saved to: {out_path.resolve()}\n")
+                total = result.get("total_results", 0)
+                failures = result.get("failures", [])
+                platforms = result.get("platforms", [])
+                if total == 0 and not failures:
+                    _cmd_timer.done(results=0, platforms=",".join(platforms))
+                    print("ℹ️  No results returned by any provider.\n")
+                elif total == 0 and failures:
+                    reasons = "; ".join(f"{f['platform']}: {f['error']}" for f in failures)
+                    _cmd_timer.failed(reason="all providers failed")
+                    print(f"❌ No results. Provider failures: {reasons}\n")
+                else:
+                    _cmd_timer.done(results=total, platforms=",".join(platforms),
+                                    failures=len(failures))
+                    if failures:
+                        for f in failures:
+                            print(f"   ⚠️  {f['platform']}: {f['error_message']}")
+                    print(f"   📂 Results saved to: {out_path.resolve()}\n")
 
     elif args.command == 'index':
         _cmd_timer = _PhaseTimer(f"index '{args.query}'")

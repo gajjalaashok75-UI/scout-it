@@ -65,7 +65,7 @@ It is designed for data collection, AI training pipelines, research, and any wor
 graph TB
     subgraph CLI["CLI Layer"]
         CLI_Entry["scout-it &lt;command&gt; [options]"]
-        Parser["Argparse<br/>30 subcommands"]
+        Parser["Argparse<br/>28 subcommands"]
     end
 
     subgraph SEARCH["Search Engines"]
@@ -97,8 +97,9 @@ graph TB
 
     subgraph SOCIAL["Social Platforms"]
         TG["Telegram Channel<br/>public t.me/s/"]
-        DC["Discord Channel<br/>bot required"]
+        DC["Discord Channel<br/>bot + DDGS"]
         RD["Reddit Search<br/>best-effort"]
+        IG["Instagram<br/>DDGS + profile scrape"]
     end
 
     subgraph GITHUB["GitHub Extractors"]
@@ -162,9 +163,9 @@ The entire pipeline supports **parallel extraction** via `ThreadPoolExecutor` (c
 
 ### Core Capabilities
 
-- **Search modes**: web, news, images, videos, YouTube, single-URL fetch, multi-engine search, Wikimedia search, semantic index/search, source plugins — 30 subcommands total
+- **Search modes**: web, news, images, videos, YouTube, single-URL fetch, multi-engine search, Wikimedia search, semantic index/search, source plugins — 28 subcommands total
 - **12 GitHub extractors**: repos, commits, PRs, issues, discussions, code search, repo search, files, folders
-- **3 social platform extractors**: Telegram channels (public), Discord channels (bot), Reddit search
+- **4 social platform extractors** (unified under `social-search`): Telegram channels (public), Discord channels (bot + DDGS), Reddit (RSS-first: subreddit / user / search feeds), Instagram (DDGS query + profile scraping)
 - **30+ source plugins**: openalex, arxiv, crossref, semantic_scholar, huggingface, zenodo, wikidata, gdelt, internet_archive, and more (all free or free-tier)
 - **5-tier content extraction**: Trafilatura → justext → BoilerPy3 → Readability → BeautifulSoup, with confidence scoring
 
@@ -670,19 +671,91 @@ All GitHub commands support `--out`, `--markdown`, and `--json`.
 
 ### Social Commands
 
+A single unified command, `social-search`, covers all social platforms.
+Each platform is a *provider* that declares the capabilities it supports,
+and the CLI does **not** restrict platform-specific arguments — each
+provider decides whether it can serve `--channel`, `--channel-id`,
+`--subreddit`, or `--profile`, and falls back to public query-based
+discovery when a requested argument is unsupported.
+
 ```bash
-# Telegram public channel — tier 0 (works now, needs nothing)
-scout-it telegram-channel --channel NAME [--max] [--max-fetch-retries] [--out] [--markdown] [--json]
-scout-it telegram-channel --query "..." [--max] [--posts-per-channel] [--out] [--markdown] [--json]
+# Search all enabled social providers (Telegram, Reddit, Discord, Instagram)
+scout-it social-search --query "AI agents"
 
-# Discord channel — tier 1 (needs DISCORD_BOT_TOKEN)
-scout-it discord-channel --channel-id ID [--max] [--before] [--out] [--markdown] [--json]
+# Single platform
+scout-it social-search --platform telegram --query "AI agents"
 
-# Reddit search — tier 2 (best-effort, optional REDDIT_COOKIE)
-scout-it reddit-search --query "..." [--subreddit] [--sort] [--max] [--out] [--markdown] [--json]
+# Multiple platforms (comma-separated) — providers run in parallel
+scout-it social-search --platform telegram,reddit,discord,instagram --query "AI agents"
+
+# Platform-specific source arguments
+scout-it social-search --platform telegram --channel durov
+scout-it social-search --platform reddit --subreddit python --query "best practices"
+scout-it social-search --platform reddit --user spez
+scout-it social-search --platform reddit --subreddit python+programming --sort new
+scout-it social-search --platform discord --channel-id 123456789
+scout-it social-search --platform discord --query "python programming"  # no token needed (DDGS)
+scout-it social-search --platform instagram --profile natgeo           # scrapes public profile (3-tier fallback)
+scout-it social-search --platform instagram --query "travel photography"  # no login needed (DDGS)
+
+# Reddit: full-page extraction of each top post's permalink (slower, richer)
+scout-it social-search --platform reddit --subreddit python --extract-full
+
+# Common options
+scout-it social-search --platform telegram --query "..." [--max] [--out] [--markdown] [--json]
 ```
 
+#### Capability-based fallback
+
+If you pass a platform-specific argument that a selected platform does not
+support, that platform falls back to query search instead of being skipped:
+
+```bash
+scout-it social-search --platform telegram,reddit,discord,instagram --channel durov --query "AI"
+```
+
+| Platform | Supported capabilities | Behavior for `--channel durov` |
+|----------|------------------------|--------------------------------|
+| Telegram | `query`, `channel` | Executes channel search |
+| Reddit | `query`, `subreddit`, `user` | `--channel` unsupported → falls back to `--query` search |
+| Discord | `channel-id`, `query` | `--channel` unsupported → falls back to `--query` (DDGS web search of Discord content; + bot guild search if `DISCORD_BOT_TOKEN` is set) |
+| Instagram | `profile`, `query` | `--channel` unsupported → falls back to `--query` (DDGS web search of Instagram content; set `INSTAGRAM_SESSION_ID` for direct profile scraping) |
+
+General rule per provider:
+- Requested feature supported → execute it.
+- Requested feature unsupported → fall back to provider query search.
+- Provider unavailable (no fallback) → report provider failure; other providers continue.
+
+#### Unified result format
+
+All providers normalize results into a common schema, so multi-platform
+results can be aggregated, ranked, filtered, and exported uniformly:
+
+```json
+{
+  "platform": "telegram",
+  "author": "...",
+  "content": "...",
+  "url": "...",
+  "timestamp": "...",
+  "metadata": { ... }
+}
+```
+
+| Platform | Capabilities | Auth / notes |
+|----------|--------------|--------------|
+| `telegram` | `query`, `channel` | Public `t.me/s/` previews — no login needed. Paginates `?before=` for larger `--max`; detects non-existent/private channels and falls back to query search when `--channel` is wrong/empty. |
+| `reddit` | `query`, `subreddit`, `user` | **RSS-first** — fetches public `.rss` feeds (subreddit, user activity, site-wide search), ranked by query relevance; falls back to anonymous `.json` only if RSS is blocked. `--extract-full` extracts full permalink pages. No login needed. |
+| `discord` | `channel-id`, `query` | **No token needed for `--query`**: DDGS web search of public Discord content (servers, invites, message pages). With `DISCORD_BOT_TOKEN`: full message search across the bot's guilds + `--channel-id` message history (paginated). No self-bot/user-token usage (TOS-compliant). |
+
 Unsupported platforms (return clear errors): Twitter/X, Instagram, TikTok.
+
+#### Adding a future platform
+
+No CLI redesign is required. A new platform needs only:
+1. A provider implementation (subclass of `SocialProvider`).
+2. A capability declaration (`SUPPORTED_CAPABILITIES`).
+3. Registration in the provider registry (`scout_it/social/registry.py`).
 
 ---
 
@@ -931,10 +1004,22 @@ scout-it github-repo --repo microsoft/vscode --file-tree
 scout-it github-commits --repo facebook/react --since "2024-01-01" -m 10
 
 # Public Telegram channel
-scout-it telegram-channel --channel technews --max 20
+scout-it social-search --platform telegram --channel technews --max 20
 
-# Reddit search
-scout-it reddit-search -q "python best practices" --subreddit learnpython
+# Reddit subreddit listing (RSS feed) — no query needed
+scout-it social-search --platform reddit --subreddit learnpython --max 20
+
+# Reddit user activity (posts + comments) via RSS feed
+scout-it social-search --platform reddit --user spez
+
+# Reddit site-wide search (falls back to .json if RSS is blocked)
+scout-it social-search --platform reddit --query "python best practices"
+
+# Discord search — no token needed (DDGS web discovery of public Discord content)
+scout-it social-search --platform discord --query "python programming"
+
+# Discord channel history (needs DISCORD_BOT_TOKEN; paginates beyond 100)
+scout-it social-search --platform discord --channel-id 123456789 --max 200
 ```
 
 ---
@@ -945,14 +1030,19 @@ scout-it reddit-search -q "python best practices" --subreddit learnpython
 scout-it/
 ├── scout_it/                    # Main package
 │   ├── __init__.py              # Public API + exports
-│   ├── cli.py                   # Argparse CLI (30 subcommands)
+│   ├── cli.py                   # Argparse CLI (28 subcommands)
 │   ├── extraction.py            # Search engines, ExtractionEngine, fetch_resilient
 │   ├── cleaner.py               # process_results / advanced_clean_text / scoring
 │   ├── engines.py               # Brave, Bing, Google, SerpAPI engine wrappers
 │   ├── config.py                # Credential management (~/.scout-it/credentials.json)
 │   ├── output.py                # Output path routing + markdown rendering
 │   ├── github_extract.py        # All 12 GitHub extractors
-│   ├── social.py                # Telegram, Discord, Reddit extraction
+│   ├── social/                  # Unified social-search (Telegram, Reddit, Discord)
+│   │   ├── base.py              # SocialProvider base + unified result schema
+│   │   ├── registry.py          # Provider registry (capability-based dispatch)
+│   │   ├── telegram.py          # TelegramProvider (query, channel)
+│   │   ├── reddit.py            # RedditProvider (query, subreddit)
+│   │   └── discord.py           # DiscordProvider (channel-id)
 │   ├── google_news_source.py    # Google News RSS (news-search --source google-news)
 │   ├── toi_rss_source.py        # Times of India RSS (news-search --location)
 │   ├── wikimedia_source.py      # Wikimedia search (wikipedia-search / --source wikimedia)

@@ -4,7 +4,7 @@ This file provides guidance to GakrCLI Code (gakrcli.ai/code) when working with 
 
 ## Project
 
-**scout-it v2.0.0** — a Python package and CLI (`scout-it`) for enterprise-grade web search, content extraction, GitHub data extraction, and social platform scraping. Python >= 3.9, MIT license. Entry point is `scout_it/cli.py` (argparse, 30 subcommands); public API is re-exported from `scout_it/__init__.py`.
+**scout-it v2.0.0** — a Python package and CLI (`scout-it`) for enterprise-grade web search, content extraction, GitHub data extraction, and social platform scraping. Python >= 3.9, MIT license. Entry point is `scout_it/cli.py` (argparse, 28 subcommands); public API is re-exported from `scout_it/__init__.py`.
 
 This file replaces the old `AGENTS.md` (which has been deleted). It is the authoritative agent guide; it intentionally does not repeat the README.
 
@@ -121,7 +121,7 @@ Tiered fallback: plain requests → TLS impersonation (`tls_fingerprint.py`, opt
 ### GitHub and social
 
 - `scout_it/github_extract.py` — 12 extractors (repos, commits, single commit+diff, PRs, PR+diff, issues, issue+comments, files, folders, code/repo search, discussions). Repo-wide commands take an optional GitHub URL or `owner/repo`. Rate-limit-sensitive; `github-discussions` and `github-search-code` require a token.
-- `scout_it/social.py` — telegram-channel (public), discord-channel (needs `DISCORD_BOT_TOKEN`), reddit-search (best-effort, optional `REDDIT_COOKIE`).
+- `scout_it/social/` — unified `social-search` package: `base.py` (SocialProvider base + unified result schema), `registry.py` (provider registry, capability-based dispatch), `telegram.py` (query, channel — public `t.me/s/`), `reddit.py` (RSS-first: query, subreddit, user — public `.rss` feeds with `.json` fallback; optional `REDDIT_COOKIE`), `discord.py` (channel-id + query — bot REST API for message history with pagination when `DISCORD_BOT_TOKEN` set; DDGS web discovery of public Discord content for `--query` with no token, bot guild search across accessible servers with token), `instagram.py` (profile + query — DDGS web search for public Instagram content with no login; 3-tier profile scraping: requests → Playwright → DDGS fallback; optional `INSTAGRAM_SESSION_ID` for reliable profile access; proxy support via `INSTAGRAM_PROXY`/`HTTPS_PROXY`). Each provider declares `SUPPORTED_CAPABILITIES`; unsupported source args fall back to query search. Replaced the former `telegram-channel`, `discord-channel`, and `reddit-search` subcommands.
 
 ### Credentials and state
 

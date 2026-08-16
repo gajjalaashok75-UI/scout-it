@@ -837,9 +837,16 @@ class TestRawHtml:
 
     RAW_HTML = "<html><title>Test Page</title><body><p>Paragraph 1</p><p>Paragraph 2</p></body></html>"
 
+    # When Playwright is installed, fetch_url sets force_js=True which bypasses
+    # the mocked requests.get. Patch _playwright_available so the requests-only
+    # path is used (matching the pre-Playwright-install behavior these tests
+    # were written for).
+    _PW_PATCH = 'scout_it.commands.url._playwright_available'
+
     def test_raw_html_mode_key_present(self):
         """Test raw_html key is present when raw_html=True"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
+        with mock.patch('scout_it.cli.requests.get') as mock_get, \
+                mock.patch(self._PW_PATCH, return_value=False):
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = self.RAW_HTML
@@ -853,7 +860,8 @@ class TestRawHtml:
 
     def test_raw_html_starts_with_html_tag(self):
         """Test raw_html output starts with typical HTML markup"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
+        with mock.patch('scout_it.cli.requests.get') as mock_get, \
+                mock.patch(self._PW_PATCH, return_value=False):
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = self.RAW_HTML
@@ -867,7 +875,8 @@ class TestRawHtml:
 
     def test_raw_html_is_multi_line(self):
         """Test raw_html has multiple lines (prettified, not single-line)"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
+        with mock.patch('scout_it.cli.requests.get') as mock_get, \
+                mock.patch(self._PW_PATCH, return_value=False):
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = self.RAW_HTML
@@ -884,7 +893,8 @@ class TestRawHtml:
 
     def test_raw_html_with_max_chars_truncation(self):
         """Test raw_html respects max_chars truncation"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
+        with mock.patch('scout_it.cli.requests.get') as mock_get, \
+                mock.patch(self._PW_PATCH, return_value=False):
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = self.RAW_HTML * 50  # Make it long
@@ -898,7 +908,8 @@ class TestRawHtml:
 
     def test_raw_html_counts_words_correctly(self):
         """Test raw_html mode reports correct word count"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
+        with mock.patch('scout_it.cli.requests.get') as mock_get, \
+                mock.patch(self._PW_PATCH, return_value=False):
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = self.RAW_HTML
@@ -911,7 +922,8 @@ class TestRawHtml:
 
     def test_raw_html_has_no_cleaner_keys(self):
         """Test raw_html mode does not contain cleaner-specific keys"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
+        with mock.patch('scout_it.cli.requests.get') as mock_get, \
+                mock.patch(self._PW_PATCH, return_value=False):
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = self.RAW_HTML
@@ -930,7 +942,8 @@ class TestJsonOutputValidity:
 
     def test_fetch_url_default_json_valid(self):
         """fetch_url (default) output serializes to valid strict JSON"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
+        with mock.patch('scout_it.cli.requests.get') as mock_get, \
+                mock.patch('scout_it.commands.url._playwright_available', return_value=False):
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = "<html><title>Test</title><body>Line1\nLine2\nLine3</body></html>"
@@ -963,7 +976,8 @@ class TestJsonOutputValidity:
 
     def test_fetch_url_raw_html_json_valid(self):
         """fetch_url with raw_html=True output serializes to valid strict JSON"""
-        with mock.patch('scout_it.cli.requests.get') as mock_get:
+        with mock.patch('scout_it.cli.requests.get') as mock_get, \
+                mock.patch('scout_it.commands.url._playwright_available', return_value=False):
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_response.text = "<html><title>Test</title><body>Content</body></html>"
