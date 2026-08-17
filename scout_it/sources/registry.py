@@ -22,6 +22,10 @@ from .source_config import is_source_enabled, get_source_config, SOURCE_BY_NAME
 
 logger = logging.getLogger(__name__)
 
+# API search sources loaded via ``--source`` (singular) only — excluded from the
+# ``--sources`` (plural) augmentation pipeline and from ``scout-it sources``.
+API_SEARCH_SOURCE_NAMES = {"tavily", "exa", "firecrawl"}
+
 # ─── Registry ────────────────────────────────────────────────────────────────
 
 _plugins: Dict[str, SourcePlugin] = {}
@@ -92,6 +96,17 @@ def _discover() -> None:
         except Exception as exc:
             logger.warning("Failed to load source plugin %s: %s", mod_name, exc)
 
+    # API search sources (Tavily/Exa/Firecrawl) are loaded on demand via
+    # ``--source`` (singular) — they are NOT part of the ``--sources`` (plural)
+    # augmentation pipeline. Load them here so ``get_plugin()`` can find them.
+    for mod_name in ("tavily", "exa", "firecrawl"):
+        try:
+            importlib.import_module(f"scout_it.sources.plugins.{mod_name}")
+        except ImportError as exc:
+            logger.debug("API search source %s not available: %s", mod_name, exc)
+        except Exception as exc:
+            logger.warning("Failed to load API search source %s: %s", mod_name, exc)
+
 
 def get_plugin(name: str) -> Optional[SourcePlugin]:
     """Get a registered plugin by name, discovering if needed."""
@@ -104,6 +119,8 @@ def list_plugins() -> List[Dict[str, Any]]:
     _discover()
     out = []
     for name, plugin in sorted(_plugins.items()):
+        if name in API_SEARCH_SOURCE_NAMES:
+            continue
         cfg = get_source_config(name)
         meta = SOURCE_BY_NAME.get(name, {})
         out.append({
@@ -124,6 +141,8 @@ def list_available() -> List[str]:
     _discover()
     out = []
     for name, plugin in _plugins.items():
+        if name in API_SEARCH_SOURCE_NAMES:
+            continue
         cfg = get_source_config(name)
         if cfg.get("enabled", True) and plugin.is_available():
             out.append(name)
@@ -137,11 +156,20 @@ async def _search_source_async(
     plugin: SourcePlugin,
     query: str,
     max_results: int,
+    search_type: str = "web",
 ) -> List[Dict[str, Any]]:
-    """Search one source, catching errors so one failure doesn't affect others."""
+    """Search one source, catching errors so one failure doesn't affect others.
+
+    ``search_type`` is forwarded to plugins that support it (e.g. Tavily,
+    Exa, Firecrawl route to the correct API based on web/news/image/multi).
+    Plugins that don't accept ``search_type`` ignore it via ``**kwargs``.
+    """
     try:
-        results = plugin.search(query, max_results=max_results)
-        # Ensure every result has the source field set.
+        try:
+            results = plugin.search(query, max_results=max_results, search_type=search_type)
+        except TypeError:
+            # Plugin's search() doesn't accept search_type — call without it.
+            results = plugin.search(query, max_results=max_results)
         for r in results:
             if not r.get("source"):
                 r["source"] = plugin.name
@@ -155,12 +183,18 @@ async def _search_all_async(
     query: str,
     sources: Sequence[str],
     max_results_per_source: int = 10,
+    search_type: str = "web",
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Search multiple sources concurrently."""
     _discover()
     coros = []
     active_sources = []
     for name in sources:
+        # API search sources (Tavily/Exa/Firecrawl) are --source (singular)
+        # only — never queried via the --sources (plural) augmentation path.
+        if name in API_SEARCH_SOURCE_NAMES:
+            logger.debug("API search source %s not available via --sources; use --source instead", name)
+            continue
         plugin = _plugins.get(name)
         if not plugin:
             logger.warning("Unknown source: %s", name)
@@ -172,7 +206,7 @@ async def _search_all_async(
         if not plugin.is_available():
             logger.debug("Source %s not available (missing key?), skipping", name)
             continue
-        coros.append(_search_source_async(plugin, query, max_results_per_source))
+        coros.append(_search_source_async(plugin, query, max_results_per_source, search_type))
         active_sources.append(name)
 
     results_lists = await asyncio.gather(*coros, return_exceptions=True)
@@ -206,6 +240,7 @@ def search_all(
     query: str,
     sources: Optional[Sequence[str]] = None,
     max_results_per_source: int = 10,
+    search_type: str = "web",
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Search multiple sources concurrently, return results grouped by source.
 
@@ -213,6 +248,9 @@ def search_all(
         query: search query.
         sources: list of source names. If None, uses all enabled & available.
         max_results_per_source: max results per source.
+        search_type: "web" | "news" | "image" | "multi" — forwarded to API
+            search sources (Tavily/Exa/Firecrawl) so they use the right API
+            parameters. Ignored by academic/data source plugins.
 
     Returns:
         Dict mapping source name → list of SearchResult dicts.
@@ -221,7 +259,7 @@ def search_all(
         sources = list_available()
     if not sources:
         return {}
-    return run_async_helper(_search_all_async(query, sources, max_results_per_source))
+    return run_async_helper(_search_all_async(query, sources, max_results_per_source, search_type))
 
 
 def source_search(

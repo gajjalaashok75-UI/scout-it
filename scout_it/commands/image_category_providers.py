@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Sequence
 import logging
 
-from .image_search_feed import IMAGE_SEARCH_FEEDS, flickr_tag_feed
+from .image_search_feed import IMAGE_SEARCH_FEEDS, flickr_tag_feed, deviantart_query_feeds
 from .image_rss import fetch_image_feed_entries
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,8 @@ __all__ = [
     "get_available_image_categories",
     "get_image_category_feeds",
     "fetch_image_category_feeds",
+    "flickr_query_feed",
+    "deviantart_query_feed",
 ]
 
 
@@ -107,3 +109,13 @@ def flickr_query_feed(query: str) -> str:
     """Build a Flickr tag feed from an arbitrary search query."""
     tag = query.strip().lower().replace(" ", ",")
     return flickr_tag_feed(tag) if tag else ""
+
+
+def deviantart_query_feed(query: str) -> List[str]:
+    """Build DeviantArt RSS feed URLs from an arbitrary search query.
+
+    Uses ``deviantart_query_feeds`` to map query keywords to the best
+    DeviantArt tag feeds. Returns a list of feed URLs (may be empty if the
+    query is blank).
+    """
+    return deviantart_query_feeds(query)

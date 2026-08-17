@@ -157,6 +157,30 @@ COMMAND_OUTPUT_STUBS: Dict[str, str] = {
 }
 
 
+def _print_source_messages() -> None:
+    """Print and clear any leftover skip/error messages from source plugins.
+
+    API search sources (Tavily/Exa/Firecrawl) now run via ``--source`` (singular)
+    and drain their own messages inside the search functions. This helper is
+    kept as a safety net to flush any stray messages after ``--sources`` (plural)
+    augmentation. It is a no-op when there are no messages.
+    """
+    try:
+        from .sources import source_messages
+    except ImportError:
+        return
+    messages = source_messages.drain()
+    if not messages:
+        return
+    for msg in messages:
+        src = msg.get("source", "unknown")
+        reason = msg.get("reason", "")
+        if msg.get("type") == "skip":
+            print(f"   ⏭️  Source '{src}' skipped: {reason}")
+        else:
+            print(f"   ⚠️  Source '{src}' error: {reason}")
+
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # web_search has been moved to scout_it/web-search/
@@ -243,8 +267,10 @@ def build_parser():
     web_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     web_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
     web_parser.add_argument('--backend', default='auto', choices=['auto', 'html', 'lite'], help='DDGS backend')
-    web_parser.add_argument('--source', default=None, choices=['wikimedia'],
-                            help='Search source override (default: DuckDuckGo). Use "wikimedia" to search Wikipedia directly. '
+    web_parser.add_argument('--source', default=None,
+                            help='Search source override(s) running as parallel discovery streams alongside DuckDuckGo. '
+                                 'Comma-separated: "wikimedia" (Wikimedia), "tavily", "exa", "firecrawl" (API search providers, '
+                                 'need API keys via `scout-it config`). Example: --source wikimedia,tavily. '
                                  'If the primary source returns zero results, falls back to the other source.')
     web_parser.add_argument('--category', nargs='+', default=None,
                             help='Category-specific RSS feeds to include (ai, engineering, cloud, devops, research, etc.). '
@@ -343,10 +369,15 @@ def build_parser():
     img_parser.add_argument('--min-height', type=int, default=None, help='Minimum image height in pixels')
     img_parser.add_argument('--max-height', type=int, default=None, help='Maximum image height in pixels')
     img_parser.add_argument('--category', nargs='+', default=None, dest='category',
-                            help='Image RSS categories to include (e.g. nature space travel). '
-                                 'Fetches Media RSS feeds (Flickr/NASA) alongside DuckDuckGo and ranks them together.')
+                            help='Image RSS categories to include (e.g. nature space travel anime_art fantasy_art). '
+                                 'Fetches Media RSS feeds (Flickr/NASA/DeviantArt) alongside DuckDuckGo and ranks them together.')
     img_parser.add_argument('--rss', action='store_true',
-                            help='Include image RSS discovery even without --category (uses a Flickr tag feed from the query)')
+                            help='Include image RSS discovery even without --category — fetches a Flickr tag feed '
+                                 'and keyword-matched DeviantArt tag feeds from the query in parallel')
+    img_parser.add_argument('--source', default=None,
+                            help='Search source override(s) running as parallel discovery streams alongside DuckDuckGo Images. '
+                                 'Comma-separated API search providers: "tavily", "firecrawl" (need API keys via `scout-it config`). '
+                                 'Example: --source tavily,firecrawl. Results are merged and ranked together.')
     img_parser.set_defaults(retry_on_zero=True)
     img_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries when 0 valid images are found')
     img_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts when 0 valid images are found')
@@ -378,8 +409,10 @@ def build_parser():
     news_parser.add_argument('--safesearch', default='moderate', choices=['on', 'moderate', 'off'], help='Safe search mode')
     news_parser.add_argument('--timelimit', default=None, help='DuckDuckGo time limit (d, w, m, y)')
     news_parser.add_argument('--workers', type=int, default=5, help='Parallel workers for content extraction')
-    news_parser.add_argument('--source', default=None, choices=['google-news'],
-                             help='Search source override (default: DuckDuckGo News). Use "google-news" to search Google News RSS directly. '
+    news_parser.add_argument('--source', default=None,
+                             help='Search source override(s) running as parallel discovery streams alongside DuckDuckGo News. '
+                                  'Comma-separated: "google-news" (Google News RSS), "tavily", "exa", "firecrawl" (API search providers, '
+                                  'need API keys via `scout-it config`). Example: --source google-news,tavily. '
                                   'If the primary source returns zero results, falls back to the other source.')
     news_parser.add_argument('--category', nargs='+', default=None,
                              help='Category-specific RSS feeds to include (ai, startups, security, cloud). '
@@ -511,8 +544,10 @@ def build_parser():
     )
     multi_parser.add_argument('--query', '-q', required=True, help='Search query')
     multi_parser.add_argument('--engines', default='duckduckgo', help='Comma-separated engine names (duckduckgo,brave,bing,google,serpapi,wikimedia)')
-    multi_parser.add_argument('--source', default=None, choices=['wikimedia'],
-                              help='Include Wikimedia as a search source. Shorthand for --engines wikimedia.')
+    multi_parser.add_argument('--source', default=None,
+                              help='Search source override(s) running as parallel discovery streams alongside the engines. '
+                                   'Comma-separated: "wikimedia" (added to engine list), "tavily", "exa", "firecrawl" (API search providers, '
+                                   'need API keys via `scout-it config`). Example: --source wikimedia,tavily.')
     multi_parser.add_argument('--max', '-m', type=int, default=10, help='Max merged results')
     multi_parser.add_argument('--workers', '-w', type=int, default=5, help='Parallel content-extraction workers')
     multi_parser.add_argument('--serpapi-engine', default='google', help='Underlying engine for SerpAPI (google/bing/yahoo/baidu/yandex/...)')
@@ -911,11 +946,13 @@ def main():
                 semantic_rerank=True,
                 composite_rerank=True,
                 use_source_bandit=use_bandit,
+                search_type='web',
             )
             output['structured_results'] = structured_results
             if not use_bandit:
                 output['source_plugins'] = source_names
             print(f'   📊 Merged → {len(structured_results)} ranked results')
+            _print_source_messages()
 
 
         
@@ -949,6 +986,7 @@ def main():
             max_height=args.max_height,
             categories=args.category,
             include_rss=args.rss,
+            source=args.source,
         )
         
         output = {
@@ -973,6 +1011,7 @@ def main():
                 'retry_backoff': args.retry_backoff,
                 'categories': args.category,
                 'include_rss': args.rss,
+                'source': args.source,
             },
             'stats': stats,
             'image_results': image_results
@@ -999,11 +1038,13 @@ def main():
                 semantic_rerank=True,
                 composite_rerank=True,
                 use_source_bandit=use_bandit,
+                search_type='image',
             )
             output['structured_results'] = image_results
             if not use_bandit:
                 output['source_plugins'] = source_names
             print(f'   📊 Merged → {len(image_results)} ranked results')
+            _print_source_messages()
 
         out_path = Path(args.out)
         _write_output(out_path, output)
@@ -1117,11 +1158,13 @@ def main():
                 semantic_rerank=True,
                 composite_rerank=True,
                 use_source_bandit=use_bandit,
+                search_type='news',
             )
             output['structured_results'] = news_results
             if not use_bandit:
                 output['source_plugins'] = source_names
             print(f'   📊 Merged → {len(news_results)} ranked results')
+            _print_source_messages()
 
 
         out_path = Path(args.out)
@@ -1212,11 +1255,13 @@ def main():
                 semantic_rerank=True,
                 composite_rerank=True,
                 use_source_bandit=use_bandit,
+                search_type='web',
             )
             output['structured_results'] = video_results
             if not use_bandit:
                 output['source_plugins'] = source_names
             print(f'   📊 Merged → {len(video_results)} ranked results')
+            _print_source_messages()
 
 
         out_path = Path(args.out)
@@ -1438,10 +1483,6 @@ def main():
     # ==========================================================================
     elif args.command == 'multi-search':
         engine_list = [e.strip() for e in args.engines.split(',') if e.strip()]
-        # If --source is provided, append it to the engine list
-        if args.source:
-            if args.source == 'wikimedia' and 'wikimedia' not in engine_list:
-                engine_list.append('wikimedia')
         _cmd_timer = _PhaseTimer(f"multi-search '{args.query}'", engines=engine_list)
         with _cmd_timer:
             structured_results, stats = multi_search(
@@ -1453,6 +1494,7 @@ def main():
                 enable_js_fallback=args.enable_js_fallback,
                 dedupe=args.dedupe,
                 serpapi_engine=args.serpapi_engine,
+                source=args.source,
             )
         output = {
             'query': args.query,
@@ -1490,11 +1532,13 @@ def main():
                 semantic_rerank=True,
                 composite_rerank=True,
                 use_source_bandit=use_bandit,
+                search_type='multi',
             )
             output['structured_results'] = structured_results
             if not use_bandit:
                 output['source_plugins'] = source_names
             print(f'   📊 Merged → {len(structured_results)} ranked results')
+            _print_source_messages()
 
         out_path = Path(args.out)
         _write_output(out_path, output)

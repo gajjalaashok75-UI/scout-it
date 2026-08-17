@@ -334,3 +334,184 @@ def test_video_search_preserves_urlless_ddgs_results():
         results, stats = video_search("dogs", max_results=3)
     assert len(results) == 1
     assert results[0]["title"] == "stub video"
+
+
+# ---------------------------------------------------------------------------
+# DeviantArt RSS integration tests
+# ---------------------------------------------------------------------------
+def test_deviantart_feed_builder():
+    from scout_it.commands.image_search_feed import deviantart_feed
+    assert deviantart_feed("gallery") == (
+        "https://backend.deviantart.com/rss.xml?q=gallery&type=deviation"
+    )
+    assert deviantart_feed("animegirls") == (
+        "https://backend.deviantart.com/rss.xml?q=animegirls&type=deviation"
+    )
+    # Special characters are URL-encoded
+    assert deviantart_feed("fate grand order") == (
+        "https://backend.deviantart.com/rss.xml?q=fate+grand+order&type=deviation"
+    )
+
+
+def test_deviantart_query_feeds_keyword_matching():
+    from scout_it.commands.image_search_feed import deviantart_query_feeds
+    feeds = deviantart_query_feeds("anime girls sword")
+    tags = [f.split("q=")[1].split("&")[0] for f in feeds]
+    assert "animegirls" in tags
+    assert "anime" in tags
+    assert "swords" in tags
+    # All URLs point to the DeviantArt backend
+    for url in feeds:
+        assert url.startswith("https://backend.deviantart.com/rss.xml?q=")
+
+
+def test_deviantart_query_feeds_dnd_elves():
+    from scout_it.commands.image_search_feed import deviantart_query_feeds
+    feeds = deviantart_query_feeds("dnd elves")
+    tags = {f.split("q=")[1].split("&")[0] for f in feeds}
+    assert "dnd" in tags
+    assert "elves" in tags
+    assert "rpg" in tags  # dnd keyword maps to both dnd and rpg
+
+
+def test_deviantart_query_feeds_fallback_for_unknown_query():
+    """Queries with no keyword match still produce a feed (raw query as tag)."""
+    from scout_it.commands.image_search_feed import deviantart_query_feeds
+    feeds = deviantart_query_feeds("sunset landscape photography")
+    assert len(feeds) >= 1
+    assert feeds[0].startswith("https://backend.deviantart.com/rss.xml?q=")
+
+
+def test_deviantart_query_feeds_empty_query():
+    from scout_it.commands.image_search_feed import deviantart_query_feeds
+    assert deviantart_query_feeds("") == []
+    assert deviantart_query_feeds("   ") == []
+
+
+def test_deviantart_query_feeds_dedup():
+    """If multiple keywords map to the same tag, the tag feed appears only once."""
+    from scout_it.commands.image_search_feed import deviantart_query_feeds
+    feeds = deviantart_query_feeds("dnd dungeons dragons rpg")
+    tags = [f.split("q=")[1].split("&")[0] for f in feeds]
+    # No duplicate tag feeds
+    assert len(tags) == len(set(tags))
+
+
+def test_deviantart_keyword_map_coverage():
+    from scout_it.commands.image_search_feed import DEVIANTART_KEYWORD_MAP
+    # User-supplied keywords are all present
+    for key in ["gallery", "animegirls", "fategrandorder", "swords", "dnd", "elves"]:
+        assert key in DEVIANTART_KEYWORD_MAP, f"missing keyword: {key}"
+
+
+def test_deviantart_categories_in_registry():
+    """New DeviantArt-enriched categories are in IMAGE_SEARCH_FEEDS."""
+    from scout_it.commands.image_search_feed import IMAGE_SEARCH_FEEDS
+    for cat in ["digital_art", "fantasy_art", "anime_art", "concept_art", "fan_art", "photography"]:
+        assert cat in IMAGE_SEARCH_FEEDS, f"missing category: {cat}"
+        feeds = IMAGE_SEARCH_FEEDS[cat]
+        da_feeds = [f for f in feeds if "deviantart" in f["url"]]
+        assert da_feeds, f"category {cat} has no DeviantArt feeds"
+
+
+def test_deviantart_categories_available_via_provider():
+    """New categories are exposed by get_available_image_categories()."""
+    cats = get_available_image_categories()
+    for cat in ["digital_art", "fantasy_art", "anime_art", "concept_art", "fan_art"]:
+        assert cat in cats, f"category {cat} not available"
+
+
+def test_deviantart_category_provider_returns_entries():
+    """DeviantArt-enriched categories work through the provider pipeline."""
+    with mock.patch(
+        "scout_it.commands.image_category_providers.fetch_image_feed_entries",
+        return_value=[
+            {"title": "anime girl", "image_url": "http://da/1.jpg", "source_url": "http://da/1"},
+            {"title": "manga panel", "image_url": "http://da/2.jpg", "source_url": "http://da/2"},
+        ],
+    ):
+        results = fetch_image_category_feeds(["anime_art"], "anime", max_results=50)
+    assert len(results) == 2
+    assert {r["image_url"] for r in results} == {"http://da/1.jpg", "http://da/2.jpg"}
+
+
+def test_deviantart_query_feed_wrapper():
+    from scout_it.commands.image_category_providers import deviantart_query_feed
+    feeds = deviantart_query_feed("swords fantasy")
+    assert isinstance(feeds, list)
+    assert len(feeds) >= 1
+    assert all("backend.deviantart.com" in f for f in feeds)
+
+
+def test_image_search_include_rss_fetches_deviantart():
+    """When include_rss=True, the pipeline fetches DeviantArt feeds alongside Flickr."""
+    from dataclasses import dataclass
+    from scout_it.commands.image import image_search
+
+    @dataclass
+    class FakeImg:
+        title: str
+        image_url: str
+        source_url: str
+        thumbnail_url: str
+        width: int
+        height: int
+        image_size: str = ""
+
+    fake_result = FakeImg("ddgs", "http://ddgs/1.jpg", "http://ddgs/1",
+                          "http://ddgs/1t.jpg", 800, 600)
+    captured_urls: list = []
+
+    def fake_fetch(urls, limit=500, **kwargs):
+        captured_urls.extend(urls)
+        return [
+            {"title": "da art", "image_url": "http://da/1.jpg",
+             "source_url": "http://da/1", "thumbnail_url": "http://da/1t.jpg",
+             "width": 100, "height": 100, "body": "anime", "source": "rss:deviantart"},
+        ]
+
+    with mock.patch("scout_it.commands.image.ImageSearchEngine") as mock_engine:
+        inst = mock.Mock()
+        inst.execute_image_search.return_value = [fake_result]
+        inst.stats = {"total": 1, "success": 1, "execution_time": 0.1}
+        mock_engine.return_value = inst
+        with mock.patch("scout_it.commands.image.fetch_image_feed_entries",
+                        side_effect=fake_fetch):
+            results, stats = image_search("anime girls", max_results=5, include_rss=True)
+
+    # DeviantArt feeds must have been requested
+    da_urls = [u for u in captured_urls if "deviantart" in u]
+    assert da_urls, "DeviantArt feeds were not fetched with include_rss=True"
+    # Flickr feed must also have been requested
+    flickr_urls = [u for u in captured_urls if "flickr" in u]
+    assert flickr_urls, "Flickr feed was not fetched with include_rss=True"
+    # Stats reflect RSS candidates
+    assert stats["rss_candidates"] >= 1
+
+
+def test_image_search_include_rss_no_deviantart_for_empty_query():
+    """include_rss with an empty query should not crash and should still fetch Flickr."""
+    from dataclasses import dataclass
+    from scout_it.commands.image import image_search
+
+    @dataclass
+    class FakeImg:
+        title: str
+        image_url: str
+        source_url: str
+        thumbnail_url: str
+        width: int
+        height: int
+        image_size: str = ""
+
+    with mock.patch("scout_it.commands.image.ImageSearchEngine") as mock_engine:
+        inst = mock.Mock()
+        inst.execute_image_search.return_value = []
+        inst.stats = {"total": 0, "success": 0, "execution_time": 0.1}
+        mock_engine.return_value = inst
+        with mock.patch("scout_it.commands.image.fetch_image_feed_entries",
+                        return_value=[]) as mock_fetch:
+            results, stats = image_search("", max_results=5, include_rss=True)
+
+    # fetch_image_feed_entries may or may not be called, but no crash
+    assert stats["rss_candidates"] == 0

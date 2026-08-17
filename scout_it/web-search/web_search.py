@@ -157,17 +157,66 @@ def web_search(
             })
         return normalized
     
+    # ── API search sources (Tavily/Exa/Firecrawl) as parallel discovery ──
+    # ``source`` may be a comma-separated list like "wikimedia,tavily,exa".
+    api_source_names: List[str] = []
+    if source:
+        api_source_names = [
+            s.strip() for s in source.split(',')
+            if s.strip() and s.strip() != 'wikimedia'
+        ]
+
+    # Pre-discover plugins in the main thread to avoid a race condition where
+    # concurrent ThreadPoolExecutor workers call get_plugin() before
+    # _discover() has finished registering all plugins.
+    if api_source_names:
+        from ..sources.registry import _discover as _discover_plugins
+        _discover_plugins()
+
+    def _run_api_source(name: str) -> List[Dict[str, Any]]:
+        """Query one API search source (Tavily/Exa/Firecrawl) directly.
+
+        Runs as a parallel discovery stream alongside DDGS, exactly like the
+        Wikimedia stream. Results are normalized into the search-candidate
+        shape (title/url/href/body/snippet/source) so the ranker treats them
+        the same as DDGS/Wikimedia candidates. Skip/error messages are
+        collected for the CLI to print after discovery.
+        """
+        from ..sources.registry import get_plugin
+        plugin = get_plugin(name)
+        if plugin is None:
+            console.print(f"[yellow]Unknown --source '{name}' — ignored[/yellow]")
+            return []
+        results = plugin.search(query, max_results=RSS_NO_LIMIT, search_type='web')
+        normalized = []
+        for r in results:
+            url = r.get('url', '') or r.get('id', '')
+            if not url:
+                continue
+            normalized.append({
+                'title': r.get('title', ''),
+                'url': url,
+                'href': url,
+                'body': r.get('snippet', '') or r.get('content', ''),
+                'snippet': r.get('snippet', ''),
+                'source': name,
+                'content': r.get('content', ''),
+            })
+        return normalized
+
     # Execute discovery streams in parallel
     streams: List[Tuple[str, Any]] = [('ddgs', _run_ddgs_discovery)]
     if categories:
         streams.append(('category_rss', lambda cats=categories: _run_category_rss(cats)))
-    if source == 'wikimedia':
+    if source and 'wikimedia' in source:
         streams.append(('wikimedia', _run_wikimedia_discovery))
+    for name in api_source_names:
+        streams.append((f'api_{name}', lambda n=name: _run_api_source(n)))
     
     stream_outputs: Dict[str, Any] = {}
     
     if len(streams) > 1:
-        with ThreadPoolExecutor(max_workers=min(len(streams), 3)) as executor:
+        with ThreadPoolExecutor(max_workers=min(len(streams), 6)) as executor:
             fut_map = {executor.submit(fn): label for label, fn in streams}
             for fut in as_completed(fut_map):
                 label = fut_map[fut]
@@ -199,6 +248,26 @@ def web_search(
         wiki_added = _dedup_append(wiki_results) if wiki_results else 0
         search_stats['wikimedia_count'] = wiki_added
         console.print(f"[green]Wikimedia returned {wiki_added} unique results[/green]")
+
+    # Merge API search-source streams (tavily/exa/firecrawl).
+    api_added_total = 0
+    for label in [k for k in stream_outputs if k.startswith('api_')]:
+        name = label[4:]
+        api_results = stream_outputs[label]
+        api_added = _dedup_append(api_results) if api_results else 0
+        search_stats[f'{name}_count'] = api_added
+        api_added_total += api_added
+        console.print(f"[green]{name} returned {api_added} unique results[/green]")
+    if api_added_total:
+        search_stats['api_sources'] = api_source_names
+    # Print any skip/error messages collected by API sources.
+    from ..sources.api_search_base import source_messages as _src_msgs
+    if _src_msgs.has_messages():
+        for msg in _src_msgs.drain():
+            if msg['type'] == 'skip':
+                console.print(f"[yellow]⏭️  Source '{msg['source']}' skipped: {msg['reason']}[/yellow]")
+            else:
+                console.print(f"[yellow]⚠️  Source '{msg['source']}': {msg['reason']}[/yellow]")
     
     discovery_time = time.time() - discovery_start
     candidate_count = len(all_candidates)

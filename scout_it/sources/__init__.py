@@ -29,6 +29,7 @@ Available sources (all free or free-tier):
 
 from .base import SourcePlugin, SourceConfig, make_result
 from .base import SearchResult  # type: SearchResult is a type alias for Dict
+from .api_search_base import ApiSearchSource, SourceMessageCollector, source_messages
 from .registry import (
     get_plugin,
     list_plugins,
@@ -60,6 +61,9 @@ __all__ = [
     "SearchResult",
     "SourcePlugin",
     "SourceConfig",
+    "ApiSearchSource",
+    "SourceMessageCollector",
+    "source_messages",
     "get_plugin",
     "list_plugins",
     "list_available",

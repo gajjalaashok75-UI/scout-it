@@ -155,6 +155,7 @@ def search_sources_parallel(
     query: str,
     sources: Sequence[str],
     max_per_source: int = 10,
+    search_type: str = "web",
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Search multiple source plugins in parallel (async).
 
@@ -162,7 +163,7 @@ def search_sources_parallel(
     Failed sources return an empty list (errors are isolated).
     """
     from .registry import search_all
-    return search_all(query, sources=sources, max_results_per_source=max_per_source)
+    return search_all(query, sources=sources, max_results_per_source=max_per_source, search_type=search_type)
 
 
 def augment_search_with_sources(
@@ -178,17 +179,24 @@ def augment_search_with_sources(
     content_type_hint: str = "web",
     use_source_bandit: bool = False,
     bandit_top_k: int = 5,
+    search_type: str = "web",
 ) -> List[Dict[str, Any]]:
     """Augment regular search results with source plugin results.
 
     This is the main entry point called by CLI commands when --sources is given.
     It:
     1. Resolves which sources to query (explicit list, or bandit-selected)
-    2. Searches those sources in parallel (async)
+    2. Searches those sources in parallel (async), forwarding ``search_type``
+       so API sources (Tavily/Exa/Firecrawl) use the right API parameters
     3. Merges with the regular results
     4. Deduplicates and semantic-ranks the combined pool
     5. Applies composite re-ranking (relevance + authority + freshness + diversity)
     6. Records outcomes to the source-selection bandit (for future learning)
+
+    Skip/error messages from API sources (missing key, rate limit, network
+    errors) are collected in the shared ``source_messages`` collector — call
+    ``source_messages.drain()`` after this function to retrieve them for
+    display.
 
     Args:
         query: search query.
@@ -203,6 +211,8 @@ def augment_search_with_sources(
         use_source_bandit: if True and sources is None, use the source-selection
             bandit to pick the best sources for the query type.
         bandit_top_k: how many sources the bandit should select.
+        search_type: "web" | "news" | "image" | "multi" — forwarded to API
+            search sources so they use the correct API parameters.
 
     Returns:
         List of SearchResult dicts, ranked by composite score. If --sources is not
@@ -229,8 +239,8 @@ def augment_search_with_sources(
     if not source_names:
         return regular_results
 
-    # Search sources in parallel.
-    source_results = search_sources_parallel(query, source_names, max_per_source)
+    # Search sources in parallel, forwarding search_type to API sources.
+    source_results = search_sources_parallel(query, source_names, max_per_source, search_type=search_type)
 
     # Check if we got any source results.
     total_source = sum(len(v) for v in source_results.values())

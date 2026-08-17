@@ -44,6 +44,9 @@ class TestNewSourcePlugins:
     def test_total_plugin_count(self):
         from scout_it.sources import list_plugins
         plugins = list_plugins()
+        # 31 academic/data/code sources. API search sources (tavily, exa,
+        # firecrawl) are excluded from the --sources (plural) listing — they
+        # are queried directly via --source (singular).
         assert len(plugins) == 31, f"Expected 31 plugins, got {len(plugins)}"
 
     def test_new_source_content_types(self):

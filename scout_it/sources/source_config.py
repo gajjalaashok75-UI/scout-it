@@ -390,6 +390,45 @@ SOURCE_CREDENTIALS: List[Dict[str, Any]] = [
 SOURCE_NAMES = {s["name"] for s in SOURCE_CREDENTIALS}
 SOURCE_BY_NAME = {s["name"]: s for s in SOURCE_CREDENTIALS}
 
+# API search sources (Tavily/Exa/Firecrawl) are NOT part of SOURCE_CREDENTIALS
+# because they are not --sources (plural) plugins. They are queried directly
+# via --source (singular) and need their credential metadata for key lookups.
+API_SEARCH_CREDENTIALS = {
+    "tavily": {
+        "name": "tavily",
+        "display_name": "Tavily",
+        "content_type": "web",
+        "requires_key": True,
+        "api_key_env": "TAVILY_API_KEY",
+        "description": "AI-optimized web/news/image search. Use --source tavily (not --sources).",
+        "get_it": "https://tavily.com — free tier: 1,000 searches/month",
+        "free_tier": True,
+        "default_enabled": True,
+    },
+    "exa": {
+        "name": "exa",
+        "display_name": "Exa",
+        "content_type": "web",
+        "requires_key": True,
+        "api_key_env": "EXA_API_KEY",
+        "description": "Neural web/news search with highlights. Use --source exa (not --sources).",
+        "get_it": "https://exa.ai — free tier available",
+        "free_tier": True,
+        "default_enabled": True,
+    },
+    "firecrawl": {
+        "name": "firecrawl",
+        "display_name": "Firecrawl",
+        "content_type": "web",
+        "requires_key": True,
+        "api_key_env": "FIRECRAWL_API_KEY",
+        "description": "Web/news/image search + page scraping. Use --source firecrawl (not --sources).",
+        "get_it": "https://firecrawl.dev — free tier: 500 credits/month",
+        "free_tier": True,
+        "default_enabled": True,
+    },
+}
+
 
 def load_sources_config() -> Dict[str, Dict[str, Any]]:
     """Load the per-source config from ``~/.scout-it/sources.json``.
@@ -420,10 +459,11 @@ def save_sources_config(config: Dict[str, Dict[str, Any]]) -> None:
 def get_source_config(source_name: str) -> Dict[str, Any]:
     """Get the merged config for a source.
 
-    Merges defaults from SOURCE_CREDENTIALS with the stored config file
-    and any environment variable overrides.
+    Merges defaults from SOURCE_CREDENTIALS (or API_SEARCH_CREDENTIALS for
+    --source API providers) with the stored config file and any environment
+    variable overrides.
     """
-    defaults = SOURCE_BY_NAME.get(source_name, {})
+    defaults = SOURCE_BY_NAME.get(source_name) or API_SEARCH_CREDENTIALS.get(source_name, {})
     stored = load_sources_config().get(source_name, {})
 
     cfg = {

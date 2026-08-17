@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any, List, Sequence, Tuple
 
 from ..extraction import ImageSearchEngine, _compact_options
 from ..staged_ranker import rank_candidates_initial
-from .image_category_providers import fetch_image_category_feeds, flickr_query_feed
+from .image_category_providers import fetch_image_category_feeds, flickr_query_feed, deviantart_query_feed
 from .image_rss import fetch_image_feed_entries
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,7 @@ def image_search(
     max_height: Optional[int] = None,
     categories: Optional[Sequence[str]] = None,
     include_rss: bool = False,
+    source: Optional[str] = None,
     top_k: Optional[int] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Execute the unified image search pipeline: discover -> rank -> output.
@@ -81,6 +82,10 @@ def image_search(
       2. Image RSS category feeds (when ``categories`` given or
          ``include_rss=True``). A Flickr tag feed derived from ``query`` is
          also fetched when no explicit categories are provided.
+      3. API search sources (when ``source`` lists ``tavily``/``firecrawl``).
+         These run as parallel discovery streams alongside DuckDuckGo, exactly
+         like the RSS feeds, and their image results are merged before
+         ranking. Exa has no image search support and is silently ignored.
 
     Ranking uses the shared lightweight ``rank_candidates_initial`` scorer
     (title/body relevance, source quality, recency) - the same one used by
@@ -91,6 +96,8 @@ def image_search(
         max_results: Max images to fetch from DuckDuckGo.
         categories: Image RSS categories to include (e.g. ``["nature","space"]``).
         include_rss: Force RSS discovery even without ``categories``.
+        source: Comma-separated API search sources (``tavily``, ``firecrawl``)
+            to run as parallel discovery streams.
         top_k: Number of ranked results to return (defaults to ``max_results``).
 
     Returns:
@@ -152,11 +159,62 @@ def image_search(
         candidates.extend(rss_entries)
         rss_count += len(rss_entries)
     elif include_rss:
+        # Query-driven discovery: fetch a Flickr tag feed AND DeviantArt tag
+        # feeds (keyword-matched) in parallel, then rank them together.
+        query_feed_urls: List[str] = []
         flickr_url = flickr_query_feed(query)
         if flickr_url:
-            rss_entries = fetch_image_feed_entries([flickr_url], limit=max_results)
+            query_feed_urls.append(flickr_url)
+        query_feed_urls.extend(deviantart_query_feed(query))
+        if query_feed_urls:
+            rss_entries = fetch_image_feed_entries(query_feed_urls, limit=max_results)
             candidates.extend(rss_entries)
             rss_count += len(rss_entries)
+
+    # ---- Discovery stream 3: API search sources (tavily/firecrawl) ----
+    api_source_names: List[str] = []
+    if source:
+        api_source_names = [s.strip() for s in source.split(',') if s.strip()]
+
+    if api_source_names:
+        from ..sources.registry import _discover as _discover_plugins
+        _discover_plugins()
+
+    api_count = 0
+    for name in api_source_names:
+        from ..sources.registry import get_plugin
+        plugin = get_plugin(name)
+        if plugin is None:
+            print(f"Unknown --source '{name}' — ignored")
+            continue
+        results = plugin.search(query, max_results=max_results, search_type='image')
+        for r in results:
+            meta = r.get('metadata', {}) or {}
+            img_url = meta.get('image_url', '') or r.get('url', '')
+            if not img_url:
+                continue
+            candidates.append({
+                "title": r.get('title', '') or meta.get('image_description', '') or name,
+                "image_url": img_url,
+                "source_url": r.get('url', img_url),
+                "thumbnail_url": img_url,
+                "width": 0,
+                "height": 0,
+                "image_size": "",
+                "body": r.get('snippet', '') or meta.get('image_description', ''),
+                "source": name,
+                "publish_date": r.get('timestamp', '') or '',
+            })
+            api_count += 1
+
+    # Print any skip/error messages collected by API sources.
+    from ..sources.api_search_base import source_messages as _src_msgs
+    if _src_msgs.has_messages():
+        for msg in _src_msgs.drain():
+            if msg['type'] == 'skip':
+                print(f"⏭️  Source '{msg['source']}' skipped: {msg['reason']}")
+            else:
+                print(f"⚠️  Source '{msg['source']}': {msg['reason']}")
 
     # ---- Rank (shared scorer) ----
     limit = int(top_k) if top_k is not None else int(max_results)
@@ -198,11 +256,13 @@ def image_search(
         'pipeline': 'unified',
         'ddgs_candidates': len(ddgs_dicts),
         'rss_candidates': rss_count,
+        'api_candidates': api_count,
         'total_candidates': len(candidates),
         'ranked_output': len(output),
         'rss_categories': rss_categories,
+        'api_sources': api_source_names,
     }
 
     print(f"📈 Found {len(output)} ranked images for query: {query} "
-          f"(DDGS: {len(ddgs_dicts)}, RSS: {rss_count})")
+          f"(DDGS: {len(ddgs_dicts)}, RSS: {rss_count}, API: {api_count})")
     return output, stats
