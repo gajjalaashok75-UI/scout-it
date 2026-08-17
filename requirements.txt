@@ -9,6 +9,13 @@ rich>=13.0.0
 urllib3>=1.26.0
 youtube-transcript-api>=0.6.2
 
+# API search source providers (--sources tavily / exa / firecrawl)
+# Optional but recommended: enable rich web/news/image search via API keys.
+# Without these packages installed, the corresponding sources are skipped
+# with a clear message (run `scout-it config` to set API keys).
+tavily-python>=0.5.0
+exa-py>=1.0.0
+
 # Optional: JS-rendering fallback tier for web-search/news-search/fetch-url/video-extract
 # (pip install -r requirements.txt does NOT install this by default; see js-render extra)
 # playwright>=1.40.0

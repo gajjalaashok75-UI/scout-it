@@ -166,7 +166,7 @@ The entire pipeline supports **parallel extraction** via `ThreadPoolExecutor` (c
 - **Search modes**: web, news, images, videos, YouTube, single-URL fetch, multi-engine search, Wikimedia search, semantic index/search, source plugins — 28 subcommands total
 - **12 GitHub extractors**: repos, commits, PRs, issues, discussions, code search, repo search, files, folders
 - **4 social platform extractors** (unified under `social-search`): Telegram channels (public), Discord channels (bot + DDGS), Reddit (RSS-first: subreddit / user / search feeds), Instagram (DDGS query + profile scraping)
-- **30+ source plugins**: openalex, arxiv, crossref, semantic_scholar, huggingface, zenodo, wikidata, gdelt, internet_archive, and more (all free or free-tier)
+- **31 source plugins**: openalex, arxiv, crossref, semantic_scholar, huggingface, zenodo, wikidata, gdelt, internet_archive, and more — plus 3 API search providers (**Tavily**, **Exa**, **Firecrawl**) as `--source` parallel discovery streams for web/news/image search via API keys (all free or free-tier)
 - **5-tier content extraction**: Trafilatura → justext → BoilerPy3 → Readability → BeautifulSoup, with confidence scoring
 
 ### Search Enhancements (NEW)
@@ -339,7 +339,7 @@ scout-it web-search --query "<text>" [options]
 | `--safesearch` `<level>` | Safe search: `on`, `moderate`, `off` (default: `moderate`) |
 | `--timelimit` `<range>` | Time limit: `d`, `w`, `m`, `y` |
 | `--backend` `<backend>` | DDGS backend: `auto`, `html`, `lite` (default: `auto`) |
-| `--source` `<wikimedia>` | Search source override (default: DuckDuckGo). Use `wikimedia` to search Wikipedia directly. Falls back to the other source on zero results |
+| `--source` `<list>` | Comma-separated parallel discovery streams alongside DuckDuckGo: `wikimedia` (Wikimedia), `tavily`, `exa`, `firecrawl` (API search providers, need API keys via `scout-it config`). Example: `--source wikimedia,tavily` |
 | `--category` `<categories...>` | RSS feed categories (ai, engineering, cloud, devops, research, security, startups, etc.). Multiple allowed, e.g. `--category ai cloud`. Merged with DuckDuckGo results |
 | `--no-retry-on-zero` | Disable retries on 0 results (retries on by default) |
 | `--retry-attempts` `<n>` | Retry attempts when 0 successful extractions (default: 2) |
@@ -457,8 +457,8 @@ scout-it image-search --query "<text>" [options]
 | `--max-width` `<px>` | Maximum width |
 | `--min-height` `<px>` | Minimum height |
 | `--max-height` `<px>` | Maximum height |
-| `--category` `<categories...>` | Image RSS categories (e.g. `nature space travel`). Fetches Media RSS feeds (Flickr/NASA) alongside DuckDuckGo and ranks them together |
-| `--rss` | Include image RSS discovery even without `--category` (uses a Flickr tag feed from the query) |
+| `--category` `<categories...>` | Image RSS categories (e.g. `nature space travel anime_art fantasy_art`). Fetches Media RSS feeds (Flickr/NASA/DeviantArt) alongside DuckDuckGo and ranks them together |
+| `--rss` | Include image RSS discovery even without `--category` — fetches a Flickr tag feed **and** keyword-matched DeviantArt tag feeds from the query in parallel |
 | `--no-retry-on-zero` | Disable retries on 0 results |
 | `--retry-attempts` `<n>` | Retry attempts when 0 valid images found (default: 2) |
 | `--retry-backoff` `<seconds>` | Backoff seconds between retries (default: 1.0) |
