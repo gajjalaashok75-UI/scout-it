@@ -33,7 +33,7 @@ export default function Quickstart() {
       <p>This goes through the same resilient three-tier fetch chain as every other command — see <a href="/docs/fetch-url/">fetch URL &amp; retry chain</a> for how it decides between plain requests and a headless-browser fallback.</p>
 
       <h2 id="store-credentials">4. store credentials (optional)</h2>
-      <p>Commands like <code>github-discussions</code>, <code>multi-search</code>, and <code>discord-channel</code> need an API key. Instead of exporting environment variables every session, run the interactive wizard once:</p>
+      <p>Commands like <code>github-discussions</code>, <code>multi-search</code>, and <code>social-search --platform discord</code> need an API key. Instead of exporting environment variables every session, run the interactive wizard once:</p>
       <pre><code>scout-it config</code></pre>
       <p>Values are stored at <code>~/.scout-it/credentials.json</code> with owner-only file permissions and loaded automatically on every future run. Real environment variables always take precedence, so CI setups are unaffected.</p>
 
@@ -43,7 +43,7 @@ export default function Quickstart() {
         <li><strong><a href="/docs/image-video/">Image &amp; video search</a></strong> — dimension filters, YouTube metadata and transcripts</li>
         <li><strong><a href="/docs/multi-engine/">Multi-engine search</a></strong> — query DuckDuckGo, Brave, and Google in parallel</li>
         <li><strong><a href="/docs/github/">GitHub extraction</a></strong> — repos, commits, diffs, issues, and discussions</li>
-        <li><strong><a href="/docs/cli-reference/">CLI reference</a></strong> — every one of the 22 subcommands in one place</li>
+        <li><strong><a href="/docs/cli-reference/">CLI reference</a></strong> — every one of the 28 subcommands in one place</li>
       </ul>
     </DocsLayout>
   )

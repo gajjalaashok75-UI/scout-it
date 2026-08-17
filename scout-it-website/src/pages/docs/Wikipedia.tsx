@@ -12,9 +12,9 @@ export default function Wikipedia() {
   return (
     <DocsLayout
       title="scout-it Wikimedia & semantic search — wikipedia-search, sources, index, semantic-search"
-      description="Search the 12 Wikimedia projects, plug in 30+ academic/dataset/knowledge sources, and build a persistent semantic corpus with index + semantic-search."
+      description="Search the 12 Wikimedia projects, plug in 31 academic/dataset/knowledge sources, and build a persistent semantic corpus with index + semantic-search."
       heading="Wikimedia & semantic search"
-      lede="Knowledge-base search beyond DuckDuckGo: the full Wikimedia family, 30+ free source plugins, and a persistent hybrid BM25+vector index."
+      lede="Knowledge-base search beyond DuckDuckGo: the full Wikimedia family, 31 free source plugins, and a persistent hybrid BM25+vector index."
       toc={toc}
     >
       <h2 id="wikipedia-search">wikipedia-search</h2>
@@ -64,6 +64,7 @@ export default function Wikipedia() {
       </div>
       <pre><code>{sourcesFlags.example}</code></pre>
       <p>Pass any listed source to <code>--sources</code> on <code>web-search</code>, <code>news-search</code>, <code>image-search</code>, <code>video-search</code>, or <code>multi-search</code>. Sources needing a key (e.g. <code>semantic_scholar</code>, <code>core</code>) show ❌ until configured; free sources are ready immediately.</p>
+      <p>Three API search providers — <code>tavily</code>, <code>exa</code>, <code>firecrawl</code> — are <strong>not</strong> in the <code>scout-it sources</code> list. They run as parallel discovery streams via <code>--source</code> (singular) instead, alongside DuckDuckGo. See <a href="/docs/api-sources/">API search sources</a> for the full reference.</p>
 
       <h2 id="index">index</h2>
       <p>{indexFlags.intro}</p>

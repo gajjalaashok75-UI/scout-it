@@ -7,7 +7,7 @@ export const SITE = {
   installCommand: 'pip install scout-it',
   pypiUrl: 'https://pypi.org/project/scout-it/',
   github: 'https://github.com/gajjalaashok75-UI/scout-it',
-  version: '1.4.0',
+  version: '2.0.0',
   ogDefault: '/scout-it-mark.svg',
   ogDocs: '/scout-it-mark.svg',
 } as const

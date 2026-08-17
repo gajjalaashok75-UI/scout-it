@@ -26,7 +26,7 @@ scout-it web-search --query "<text>" [options]
 | `--safesearch` `<level>` | Safe search mode: `on`, `moderate`, `off` (default: `moderate`) |
 | `--timelimit` `<range>` | DuckDuckGo time limit: `d`, `w`, `m`, `y` |
 | `--backend` `<backend>` | DDGS backend: `auto`, `html`, `lite` (default: `auto`) |
-| `--source` `<wikimedia>` | Search source override (default: DuckDuckGo). Use `wikimedia` to search Wikipedia directly. Falls back to the other source on zero results |
+| `--source` `<list>` | Comma-separated parallel discovery streams alongside DuckDuckGo: `wikimedia` (Wikimedia), `tavily`, `exa`, `firecrawl` (API search providers, need API keys via `scout-it config`). Example: `--source wikimedia,tavily` |
 | `--category` `<categories...>` | Category RSS feeds to include (`ai`, `engineering`, `cloud`, `devops`, `research`, `security`, `startups`, etc.). Multiple allowed, e.g. `--category ai cloud`. Merged with DuckDuckGo results |
 | `--no-retry-on-zero` | Disable retries when 0 successful extractions (retries on by default) |
 | `--retry-attempts` `<n>` | Retry attempts when 0 successful extractions (default: 2) |
@@ -49,6 +49,35 @@ scout-it web-search --query "quantum computing" --source wikimedia -m 5
 scout-it web-search --query "site behind cloudflare" --max-fetch-retries 4 --tls-impersonate
 scout-it web-search --query "news" --enable-alternate-source --use-bandit
 scout-it web-search --query "AI regulation" --max 15 --markdown --out ai-report.md
+```
+
+#### API search sources (Tavily / Exa / Firecrawl)
+
+In addition to the free academic/data source plugins (`--sources`), three API-backed search providers are available as parallel discovery streams via `--source` (singular). They run alongside DuckDuckGo (and `--source wikimedia`) and require an API key (set via `scout-it config`):
+
+| Source | Search types | API key env var | Get a key |
+|--------|-------------|-----------------|-----------|
+| `tavily` | web, news, image, multi | `TAVILY_API_KEY` | https://tavily.com (1,000 free/month) |
+| `exa` | web, news, multi (no image) | `EXA_API_KEY` | https://exa.ai |
+| `firecrawl` | web, news, image, multi | `FIRECRAWL_API_KEY` | https://firecrawl.dev (500 free credits/month) |
+
+When a key is missing, the source is **skipped silently** with a message telling you how to enable it — the rest of the search continues. Rate-limit, auth, and network errors are also caught per-source and reported without stopping the pipeline.
+
+```bash
+# Search Tavily + DDGS in parallel, merge + rank together
+scout-it web-search --query "rust async runtime" --source tavily
+
+# Multi-source: Tavily + Exa + Firecrawl, all in parallel alongside DDGS
+scout-it web-search --query "transformer architecture" --source tavily,exa,firecrawl
+
+# Mix API providers with the built-in Wikimedia source
+scout-it web-search --query "python async" --source wikimedia,tavily
+
+# News search with Tavily (topic=news) + Exa (category=news)
+scout-it news-search --query "AI regulation" --source tavily,exa
+
+# Image search with Tavily (include_images) + Firecrawl (sources=images)
+scout-it image-search --query "northern lights" --source tavily,firecrawl
 ```
 
 ## news-search

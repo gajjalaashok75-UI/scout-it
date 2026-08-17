@@ -34,6 +34,18 @@ const features = [
     link: 'github extraction',
   },
   {
+    title: 'API search providers in parallel',
+    body: 'Tavily, Exa, and Firecrawl run alongside DuckDuckGo via --source, merging and ranking together. Free tiers, skipped cleanly when no key is set.',
+    href: '/docs/api-sources/',
+    link: 'API search sources',
+  },
+  {
+    title: 'unified social search',
+    body: 'one social-search command reaches Telegram, Discord, Reddit, and Instagram — capability-based fallback, normalized schema, tiered setup.',
+    href: '/docs/social/',
+    link: 'social platforms',
+  },
+  {
     title: 'credentials, stored once',
     body: 'an interactive wizard writes to ~/.scout-it/credentials.json so you stop exporting env vars every session.',
     href: '/docs/configuration/',
@@ -153,7 +165,7 @@ export default function Home() {
       <section className="section section-tint">
         <div className="container" style={{ textAlign: 'center' }}>
           <div className="callout-card" data-reveal>
-            <h2>one install, five search modes, twenty-two commands</h2>
+            <h2>one install, five search modes, twenty-eight commands</h2>
             <p>no sign-up required. structured JSON from the first run.</p>
             <CopyCommand command={SITE.installCommand} />
           </div>

@@ -33,7 +33,7 @@ scout-it <subcommand> [options]
 | `multi-search` | Search across DuckDuckGo + Brave/Bing/Google/SerpAPI/Wikimedia in parallel |
 | `wikipedia-search` | Search any Wikimedia project (12 projects) via the MediaWiki Action API |
 | `list-engines` | List available search engines and their config status |
-| `sources` | List available academic/dataset/knowledge source plugins (30+) |
+| `sources` | List available source plugins (31, plus Tavily/Exa/Firecrawl API providers via `--source`) |
 | `index` | Index results into the persistent semantic store (LanceDB) |
 | `semantic-search` | Hybrid BM25+vector search over an indexed corpus |
 | `config` | Set up API keys/tokens for all platforms |
@@ -79,7 +79,7 @@ scout-it web-search --query "your search query"
 | `--backend` | str | `auto` | `auto`, `html`, or `lite` |
 | `--sources` | str | *(none)* | Also search source plugins (comma-separated, e.g. `openalex,arxiv,wikidata`) and merge with BM25F+vector re-ranking. Run `scout-it sources` for the list |
 | `--auto-sources` | flag | — | Let the source-selection bandit pick the best sources for this query type. Overrides `--sources` |
-| `--source` | str | *(none)* | Search source override — use `wikimedia` to search Wikipedia directly (falls back to DuckDuckGo on zero results) |
+| `--source` | str | *(none)* | Comma-separated parallel discovery streams alongside DuckDuckGo: `wikimedia` (Wikimedia), `tavily`, `exa`, `firecrawl` (API search providers, need API keys via `scout-it config`). Example: `--source wikimedia,tavily` |
 | `--category` | str (nargs+) | *(none)* | RSS feed categories (`ai`, `engineering`, `cloud`, `devops`, `research`, `security`, `startups`, etc.). Multiple allowed, e.g. `--category ai cloud` |
 | `--snippets` | flag | — | Return ranked snippets only. Skips content extraction for ~10x faster results (~2-4s vs 20-70s) |
 | `--no-retry-on-zero` | flag | — | Skip retry on zero successful extractions |
@@ -148,8 +148,8 @@ scout-it image-search --query "sunset landscapes" --max 10
 | `--layout` | str | *(none)* | `Square`, `Tall`, `Wide` |
 | `--license-image` | str | *(none)* | License filter |
 | `--min-width` / `--max-width` / `--min-height` / `--max-height` | int | *(none)* | Dimension filters (in pixels) |
-| `--category` | str (nargs+) | *(none)* | Image RSS categories (e.g. `nature space travel`). Fetches Media RSS feeds (Flickr/NASA) alongside DuckDuckGo |
-| `--rss` | flag | — | Include image RSS discovery even without `--category` (uses a Flickr tag feed from the query) |
+| `--category` | str (nargs+) | *(none)* | Image RSS categories (e.g. `nature space travel anime_art fantasy_art`). Fetches Media RSS feeds (Flickr/NASA/DeviantArt) alongside DuckDuckGo |
+| `--rss` | flag | — | Include image RSS discovery even without `--category` — fetches a Flickr tag feed **and** keyword-matched DeviantArt tag feeds from the query in parallel |
 | `--no-retry-on-zero` | flag | — | Disable retry when 0 valid images are found |
 | `--retry-attempts` | int | `2` | Retry attempts |
 | `--retry-backoff` | float | `1.0` | Backoff seconds between retries |

@@ -61,6 +61,7 @@ export default function WebSearch() {
         <li>Output is written as JSON (or Markdown with <code>--markdown</code>).</li>
       </ol>
       <p>Every individual page fetch behind these two commands goes through the shared resilient fetch chain — see <a href="/docs/fetch-url/">fetch URL &amp; retry chain</a> for the full three-tier breakdown.</p>
+      <p>Both commands also accept <code>--source</code> (singular) for parallel discovery streams alongside DuckDuckGo: <code>--source wikimedia</code> (web-search), <code>--source google-news</code> (news-search), and the API search providers <code>--source tavily,exa,firecrawl</code>. See <a href="/docs/api-sources/">API search sources</a> for the full Tavily/Exa/Firecrawl reference.</p>
       <p>Each item in the output's <code>structured_results</code> includes <code>title</code>, <code>url</code>, <code>final_url</code>, <code>cleaned_content</code>, <code>paragraphs</code>, <code>content_sections</code>, <code>top_keywords</code>, <code>readability_metrics</code>, <code>quality_signals</code>, and <code>content_quality_score</code> — see <a href="/docs/output/">output &amp; JSON shapes</a> for the full schema.</p>
     </DocsLayout>
   )

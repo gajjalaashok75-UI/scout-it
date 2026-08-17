@@ -8,6 +8,8 @@
   <url><loc>https://scout-it.netlify.app/docs/image-video/</loc><priority>0.7</priority></url>
   <url><loc>https://scout-it.netlify.app/docs/fetch-url/</loc><priority>0.7</priority></url>
   <url><loc>https://scout-it.netlify.app/docs/multi-engine/</loc><priority>0.7</priority></url>
+  <url><loc>https://scout-it.netlify.app/docs/wikipedia/</loc><priority>0.7</priority></url>
+  <url><loc>https://scout-it.netlify.app/docs/api-sources/</loc><priority>0.7</priority></url>
   <url><loc>https://scout-it.netlify.app/docs/github/</loc><priority>0.7</priority></url>
   <url><loc>https://scout-it.netlify.app/docs/social/</loc><priority>0.6</priority></url>
   <url><loc>https://scout-it.netlify.app/docs/cli-reference/</loc><priority>0.7</priority></url>

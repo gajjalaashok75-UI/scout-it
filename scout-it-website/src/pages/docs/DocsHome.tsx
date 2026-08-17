@@ -20,7 +20,7 @@ export default function DocsHome() {
     >
       <h2 id="how-it-works">how it works</h2>
       <p>Run a search from your terminal and get back more than links. scout-it queries DuckDuckGo (or several engines at once), fetches every result page through a resilient three-tier fallback chain, extracts the main content with multiple extraction strategies, cleans and scores it, and writes the result as structured JSON — ready for a data pipeline, an LLM context window, or a quick grep.</p>
-      <p>It's not just search: the same toolkit pulls full repo context from GitHub (commits, diffs, issues, discussions) via the official API, and reads public Telegram, Discord, and Reddit content where a legitimate zero- or low-config path exists.</p>
+      <p>It's not just search: the same toolkit pulls full repo context from GitHub (commits, diffs, issues, discussions) via the official API, and reads public Telegram, Discord, Reddit, and Instagram content where a legitimate zero- or low-config path exists.</p>
 
       <h2 id="query-types">query types</h2>
       <ul>
@@ -35,10 +35,12 @@ export default function DocsHome() {
 
       <h2 id="features">key features</h2>
       <ul>
-        <li><strong>Multi-mode CLI</strong> — 22 subcommands across search, GitHub, and social platforms, all sharing one binary</li>
+        <li><strong>Multi-mode CLI</strong> — 28 subcommands across search, GitHub, and social platforms, all sharing one binary</li>
         <li><strong>Resilient fetching</strong> — a shared three-tier fallback chain (requests → Playwright → last-resort request) behind every page fetch</li>
         <li><strong>Zero-result retry</strong> — web, image, news, and video search all retry with progressively relaxed filters if the first attempt comes back empty</li>
         <li><strong>Multi-engine search</strong> — DuckDuckGo needs no setup; Brave, Google, Bing, Yahoo, Baidu, and Yandex plug in via API keys</li>
+        <li><strong>API search providers</strong> — Tavily, Exa, and Firecrawl run as parallel discovery streams via <code>--source</code> alongside DuckDuckGo, merging and ranking together (free tiers; skipped cleanly when no key is set)</li>
+        <li><strong>Unified social search</strong> — one <code>social-search</code> command reaches Telegram, Discord, Reddit, and Instagram with capability-based fallback</li>
         <li><strong>GitHub mining without scraping</strong> — official REST + GraphQL, full diffs with structured <code>patch_lines</code>, discussions, code search</li>
         <li><strong>Stored credentials</strong> — an interactive wizard writes secrets once instead of re-exporting env vars every session</li>
         <li><strong>JSON-first output</strong> — with an opt-in <code>--markdown</code> mode and line-length-safe chunking for long text fields</li>

@@ -42,7 +42,7 @@ scout-it wikipedia-search --query "API" --project mediawiki --sections
 
 ## sources
 
-List all source plugins available via the `--sources` flag on `web-search`, `news-search`, `image-search`, `video-search`, and `multi-search`. All sources are free or have free tiers — 30+ plugins including `openalex`, `arxiv`, `crossref`, `semantic_scholar`, `huggingface`, `zenodo`, `wikidata`, `gdelt`, `internet_archive`, `openstreetmap`, `hackernews`, `stackexchange`, and more.
+List all source plugins available via the `--sources` flag on `web-search`, `news-search`, `image-search`, `video-search`, and `multi-search`. All sources are free or have free tiers — 31 plugins including `openalex`, `arxiv`, `crossref`, `semantic_scholar`, `huggingface`, `zenodo`, `wikidata`, `gdelt`, `internet_archive`, `openstreetmap`, `hackernews`, `stackexchange`, and more.
 
 ```bash
 scout-it sources [--json]
@@ -52,7 +52,7 @@ scout-it sources [--json]
 |------|-------------|
 | `--json` | Output as JSON instead of a formatted table |
 
-Sources needing a key (e.g. `semantic_scholar`, `core`) show ❌ until configured via `scout-it config`; free sources are ready immediately. Use `--sources openalex,arxiv` on any search command to merge those results with BM25F+vector re-ranking, or `--auto-sources` to let the bandit pick.
+Sources needing a key (e.g. `semantic_scholar`, `core`) show ❌ until configured via `scout-it config`; free sources are ready immediately. Use `--sources openalex,arxiv` on any search command to merge those results with BM25F+vector re-ranking, or `--auto-sources` to let the bandit pick. Three API search providers (`tavily`, `exa`, `firecrawl`) are also available as parallel discovery streams via `--source` (singular) — they require their respective API keys (set via `scout-it config`) and are skipped with a clear message when the key is missing.
 
 ## index
 

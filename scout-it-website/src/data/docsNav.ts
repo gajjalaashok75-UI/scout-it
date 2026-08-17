@@ -25,6 +25,7 @@ export const docsNav: DocsNavGroup[] = [
       { title: 'Fetch URL & retry chain', href: '/docs/fetch-url/' },
       { title: 'Multi-engine search', href: '/docs/multi-engine/' },
       { title: 'Wikimedia & semantic search', href: '/docs/wikipedia/' },
+      { title: 'API search sources', href: '/docs/api-sources/' },
     ],
   },
   {

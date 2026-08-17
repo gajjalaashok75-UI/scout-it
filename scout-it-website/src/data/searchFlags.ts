@@ -33,7 +33,7 @@ export const webSearchFlags: FlagGroup = {
     { flag: '--safesearch', arg: '<level>', description: 'Safe search mode: on, moderate, off (default: moderate).' },
     { flag: '--timelimit', arg: '<range>', description: 'DuckDuckGo time limit: d (day), w (week), m (month), y (year).' },
     { flag: '--backend', arg: '<backend>', description: 'DDGS backend: auto, html, lite (default: auto).' },
-    { flag: '--source', arg: '<wikimedia>', description: 'Search source override (default: DuckDuckGo). Use "wikimedia" to search Wikipedia directly. Falls back to the other source on zero results.' },
+    { flag: '--source', arg: '<list>', description: 'Comma-separated parallel discovery streams alongside DuckDuckGo: "wikimedia" (Wikimedia), "tavily", "exa", "firecrawl" (API search providers, need API keys via `scout-it config`). Example: --source wikimedia,tavily.' },
     { flag: '--category', arg: '<categories...>', description: 'Category-specific RSS feeds to include (ai, engineering, cloud, devops, research, security, startups, etc.). Multiple allowed, e.g. --category ai cloud. Merged with DuckDuckGo results.' },
     { flag: '--no-retry-on-zero', description: 'Disable retries when 0 successful extractions (retries are on by default).' },
     { flag: '--retry-attempts', arg: '<n>', description: 'Retry attempts when 0 successful extractions (default: 2).' },
@@ -48,7 +48,7 @@ export const webSearchFlags: FlagGroup = {
     { flag: '--no-js-fallback', description: 'Disable the automatic Playwright fallback for blocked/failed page fetches.' },
     { flag: '--semantic', description: 'Re-rank results by semantic relevance (hybrid BM25+dense-vector + cross-encoder). Needs: pip install sentence-transformers torch.' },
   ],
-  example: 'scout-it web-search --query "machine learning" --max 5\nscout-it web-search --query "kubernetes" --category devops --snippets\nscout-it web-search --query "transformer architecture" --sources openalex,arxiv --semantic -m 5',
+  example: 'scout-it web-search --query "machine learning" --max 5\nscout-it web-search --query "kubernetes" --category devops --snippets\nscout-it web-search --query "transformer architecture" --sources openalex,arxiv --semantic -m 5\nscout-it web-search --query "AI regulation" --source wikimedia,tavily -m 15',
 }
 
 export const newsSearchFlags: FlagGroup = {
@@ -68,7 +68,7 @@ export const newsSearchFlags: FlagGroup = {
     { flag: '--safesearch', arg: '<level>', description: 'Safe search mode: on, moderate, off (default: moderate).' },
     { flag: '--timelimit', arg: '<range>', description: 'DuckDuckGo time limit: d, w, m, y.' },
     { flag: '--workers', arg: '<n>', description: 'Parallel workers for content extraction (default: 5).' },
-    { flag: '--source', arg: '<google-news>', description: 'Search source override (default: DuckDuckGo News). Use "google-news" to search Google News RSS directly. Falls back to the other source on zero results.' },
+    { flag: '--source', arg: '<list>', description: 'Comma-separated parallel discovery streams alongside DuckDuckGo News: "google-news" (Google News RSS), "tavily", "exa", "firecrawl" (API search providers, need API keys via `scout-it config`). Example: --source google-news,tavily.' },
     { flag: '--category', arg: '<categories...>', description: 'News RSS categories (ai, startups, security, cloud, all). Multiple allowed, e.g. --category ai startups. Merged with DuckDuckGo News.' },
     { flag: '--no-retry-on-zero', description: 'Disable retries on zero results (retries are on by default).' },
     { flag: '--retry-attempts', arg: '<n>', description: 'Retry attempts on zero results (default: 2).' },
@@ -101,6 +101,7 @@ export const imageSearchFlags: FlagGroup = {
     { flag: '--markdown', description: 'Save results as Markdown (.md) instead of JSON.' },
     { flag: '--sources', arg: '<list>', description: 'Also search source plugins (comma-separated, e.g. internet_archive,openstreetmap) and merge with BM25F+vector re-ranking.' },
     { flag: '--auto-sources', description: 'Let the source-selection bandit pick the best sources for this query type. Overrides --sources.' },
+    { flag: '--source', arg: '<list>', description: 'Comma-separated API image search providers alongside DuckDuckGo Images: "tavily", "firecrawl" (need API keys via `scout-it config`). Example: --source tavily,firecrawl.' },
     { flag: '--download, -d', description: 'Download images to disk.' },
     { flag: '--download-dir', arg: '<path>', description: 'Download directory (default: .scout-it/downloaded_images).' },
     { flag: '--region', arg: '<region>', description: 'DuckDuckGo region (default: us-en; example: us-en, wt-wt).' },
@@ -199,7 +200,7 @@ export const multiSearchFlags: FlagGroup = {
   flags: [
     { flag: '--query, -q', arg: '<text>', description: 'Search query (required).' },
     { flag: '--engines', arg: '<list>', description: 'Comma-separated engine names: duckduckgo, brave, bing, google, serpapi, wikimedia (default: duckduckgo).' },
-    { flag: '--source', arg: '<wikimedia>', description: 'Include Wikimedia as a search source. Shorthand for --engines wikimedia.' },
+    { flag: '--source', arg: '<list>', description: 'Comma-separated parallel discovery streams alongside the engines: "wikimedia" (added to the engine list), "tavily", "exa", "firecrawl" (API search providers, need API keys via `scout-it config`). Example: --source wikimedia,tavily.' },
     { flag: '--max, -m', arg: '<n>', description: 'Max merged results (default: 10).' },
     { flag: '--workers, -w', arg: '<n>', description: 'Parallel content-extraction workers (default: 5).' },
     { flag: '--serpapi-engine', arg: '<engine>', description: 'Underlying engine for SerpAPI: google, bing, yahoo, baidu, yandex, etc. (default: google).' },
@@ -276,9 +277,53 @@ export const sourcesFlags: FlagGroup = {
   id: 'sources',
   label: 'sources',
   usage: 'scout-it sources [--json]',
-  intro: 'List all source plugins available via the --sources flag on web-search, news-search, image-search, video-search, and multi-search. All sources are free or have free tiers (30+ plugins: openalex, arxiv, crossref, semantic_scholar, huggingface, zenodo, wikidata, gdelt, internet_archive, and more).',
+  intro: 'List all source plugins available via the --sources flag on web-search, news-search, image-search, video-search, and multi-search. All sources are free or have free tiers (31 plugins: openalex, arxiv, crossref, semantic_scholar, huggingface, zenodo, wikidata, gdelt, internet_archive, and more). Three API search providers (tavily, exa, firecrawl) are separate — they run as parallel discovery streams via --source (singular).',
   flags: [
     { flag: '--json', description: 'Output as JSON instead of a formatted table.' },
   ],
   example: 'scout-it sources\nscout-it sources --json',
 }
+
+export interface ApiSourceInfo {
+  name: string
+  searchTypes: string[]
+  envVar: string
+  getKeyUrl: string
+  getKeyNote: string
+  sdk: string
+  supportsImage: boolean
+  blurb: string
+}
+
+export const apiSourceProviders: ApiSourceInfo[] = [
+  {
+    name: 'tavily',
+    searchTypes: ['web', 'news', 'image', 'multi'],
+    envVar: 'TAVILY_API_KEY',
+    getKeyUrl: 'https://tavily.com',
+    getKeyNote: '1,000 free searches / month',
+    sdk: 'tavily-python',
+    supportsImage: true,
+    blurb: 'AI-optimized web/news/image search with an "answer" summary and content chunks. Uses include_answer="advanced" (web), topic="news" (news), include_images=True (image), and include_images + include_favicon + include_usage (multi).',
+  },
+  {
+    name: 'exa',
+    searchTypes: ['web', 'news', 'multi'],
+    envVar: 'EXA_API_KEY',
+    getKeyUrl: 'https://exa.ai',
+    getKeyNote: 'free tier available',
+    sdk: 'exa-py',
+    supportsImage: false,
+    blurb: 'Neural web/news search with highlights. Supports web, news (category="news"), and multi. Does NOT support image-search — exa is silently skipped on image-search even when listed in --source.',
+  },
+  {
+    name: 'firecrawl',
+    searchTypes: ['web', 'news', 'image', 'multi'],
+    envVar: 'FIRECRAWL_API_KEY',
+    getKeyUrl: 'https://www.firecrawl.dev',
+    getKeyNote: 'free tier available',
+    sdk: 'requests (Firecrawl v2 REST API)',
+    supportsImage: true,
+    blurb: 'Web/news/image search with built-in page scraping. Supports all four search types via POST /v2/search with sources=["web"], ["news"], ["images"], or ["news","web","images"] (multi). No SDK required — uses requests.',
+  },
+]

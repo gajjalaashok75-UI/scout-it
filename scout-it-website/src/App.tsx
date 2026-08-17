@@ -10,6 +10,7 @@ import ImageVideo from './pages/docs/ImageVideo'
 import FetchUrl from './pages/docs/FetchUrl'
 import MultiEngine from './pages/docs/MultiEngine'
 import Wikipedia from './pages/docs/Wikipedia'
+import ApiSources from './pages/docs/ApiSources'
 import GitHub from './pages/docs/GitHub'
 import Social from './pages/docs/Social'
 import CliReference from './pages/docs/CliReference'
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/docs/fetch-url/" element={<FetchUrl />} />
         <Route path="/docs/multi-engine/" element={<MultiEngine />} />
         <Route path="/docs/wikipedia/" element={<Wikipedia />} />
+        <Route path="/docs/api-sources/" element={<ApiSources />} />
         <Route path="/docs/github/" element={<GitHub />} />
         <Route path="/docs/social/" element={<Social />} />
         <Route path="/docs/cli-reference/" element={<CliReference />} />
