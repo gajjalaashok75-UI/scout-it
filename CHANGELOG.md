@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — API search sources (Tavily, Exa, Firecrawl)
+
+Three new API-backed search sources are now available via `--source` (singular) on `web-search`, `news-search`, `image-search`, and `multi-search`. They run as parallel discovery streams alongside DuckDuckGo (like `--source wikimedia`), accepting comma-separated values (e.g. `--source tavily,exa,firecrawl`):
+
+- **Tavily** (`--source tavily`) — AI-optimized web/news/image search with answer + content chunks. Supports all four search types: web (`include_answer="advanced"`), news (`topic="news"`), image (`include_images=True`), multi (`include_images` + `include_favicon` + `include_usage`). Uses the `tavily-python` SDK.
+- **Exa** (`--source exa`) — neural web/news search with highlights. Supports web, news (`category="news"`), and multi. Does **not** support image-search. Uses the `exa-py` SDK.
+- **Firecrawl** (`--source firecrawl`) — web/news/image search with built-in page scraping. Supports all four search types via the Firecrawl v2 REST API (`POST /v2/search` with `sources=["web"]`, `["news"]`, `["images"]`, or `["news","web","images"]`). Uses `requests` (no SDK needed).
+
+Key behaviours:
+- **Credential-gated**: each source checks for its API key (`TAVILY_API_KEY`, `EXA_API_KEY`, `FIRECRAWL_API_KEY`) in `~/.scout-it/credentials.json` (set via `scout-it config`). When the key is missing, the source is **skipped silently** with a clear message telling the user how to enable it — the rest of the pipeline (DDGS + other sources) continues unaffected.
+- **Error isolation**: rate-limit (429 / quota exhausted), auth (401/403), and network errors are caught per-source. The failing source returns no results and prints a concise error message; other sources continue.
+- **No truncation**: content returned by the APIs (Tavily chunks, Exa highlights, Firecrawl markdown) is preserved in full on the `content` field, so the semantic ranker and the final output see everything.
+- **Structured for growth**: a new `ApiSearchSource` base class (`scout_it/sources/api_search_base.py`) centralizes credential gating, error handling, and skip-message collection. Adding a new API source is a matter of subclassing and implementing `_raw_search` + `_normalize_result`.
+- **Search-type dispatch**: the `--source` flag forwards a `search_type` (web/news/image/multi) through the search chain so each API source uses the correct API parameters for the command being run.
+- **Parallel**: API sources are fetched in parallel with each other and with DDGS (and `--source wikimedia`), then merged and ranked together via the existing semantic + composite re-ranking pipeline.
+
+New dependencies: `tavily-python>=0.5.0`, `exa-py>=1.0.0` (Firecrawl uses `requests`, already installed). Added to `requirements.txt`.
+
+### Added — DeviantArt RSS feeds for image-search
+
+Image-search now discovers images from **DeviantArt** Media RSS feeds alongside Flickr/NASA:
+
+- **`deviantart_feed(tag)`** builds `https://backend.deviantart.com/rss.xml?q=<tag>&type=deviation` for any DeviantArt tag/category/topic.
+- **`deviantart_query_feeds(query)`** maps the user’s search query to the best DeviantArt tag feeds via a 97-keyword map (`DEVIANTART_KEYWORD_MAP`). Longer phrases match first (`digital art` wins over `art`), tags are deduplicated. Covers the full range of DeviantArt browse topics: gallery, animegirls, fategrandorder, swords, dnd, elves, fantasy, cosplay, concept art, character design, fan art, photography, comics, superheroes, adoptables, fursona, SCP Foundation, and many more.
+- **`--rss` flag** now fetches keyword-matched DeviantArt feeds **in parallel** with the Flickr tag feed (both are fetched by the shared parallel RSS transport, then ranked together with DuckDuckGo results).
+- **New `--category` options**: `digital_art`, `fantasy_art`, `anime_art`, `concept_art`, `fan_art`, `photography` — each maps to a mix of DeviantArt + Flickr feeds.
+- Queries with no keyword match still get a DeviantArt feed (the raw query becomes the tag), so every `--rss` search gets a DeviantArt discovery stream.
+- The `--category` flag behavior is unchanged — existing categories (nature, space, travel, etc.) still work exactly as before.
+
 ### Added — Instagram provider (DDGS + profile scraping + Playwright)
 
 New `--platform instagram` provider with two capabilities:
