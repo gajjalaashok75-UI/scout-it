@@ -12,7 +12,7 @@ scout-it news-search --query "<text>" [options]
 
 | News-specific flag | Description |
 |------|-------------|
-| `--source` `<google-news>` | Search source override (default: DuckDuckGo News). Use `google-news` for Google News RSS. Falls back to the other source on zero results |
+| `--source` `<list>` | Parallel discovery streams alongside DuckDuckGo News: `google-news` (Google News RSS), plus the API providers that support news — `tavily`, `exa`, `serper` (need API keys via `scout-it config`). Comma-separated. Example: `--source google-news,tavily,serper` |
 | `--category` `<categories...>` | News RSS categories: `ai`, `startups`, `security`, `cloud`, `all`. Multiple allowed, e.g. `--category ai startups` |
 | `--location` `<places...>` | Location(s) for localized news from Times of India RSS (e.g. `india`, `US`, `UK`, `europe`, `china`, `india-delhi`, `india-bangalore`). Multiple allowed |
 | `--max-chars` `<n>` | Maximum characters to keep in extracted article content |

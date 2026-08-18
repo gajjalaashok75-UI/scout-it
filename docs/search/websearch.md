@@ -26,7 +26,7 @@ scout-it web-search --query "<text>" [options]
 | `--safesearch` `<level>` | Safe search mode: `on`, `moderate`, `off` (default: `moderate`) |
 | `--timelimit` `<range>` | DuckDuckGo time limit: `d`, `w`, `m`, `y` |
 | `--backend` `<backend>` | DDGS backend: `auto`, `html`, `lite` (default: `auto`) |
-| `--source` `<list>` | Comma-separated parallel discovery streams alongside DuckDuckGo: `wikimedia` (Wikimedia), `tavily`, `exa`, `firecrawl` (API search providers, need API keys via `scout-it config`). Example: `--source wikimedia,tavily` |
+| `--source` `<list>` | Comma-separated parallel discovery streams alongside DuckDuckGo: `wikimedia` (Wikimedia), `tavily`, `exa`, `firecrawl`, `linkup`, `langsearch`, `serper` (API search providers, need API keys via `scout-it config`). Example: `--source wikimedia,tavily,serper` |
 | `--category` `<categories...>` | Category RSS feeds to include (`ai`, `engineering`, `cloud`, `devops`, `research`, `security`, `startups`, etc.). Multiple allowed, e.g. `--category ai cloud`. Merged with DuckDuckGo results |
 | `--no-retry-on-zero` | Disable retries when 0 successful extractions (retries on by default) |
 | `--retry-attempts` `<n>` | Retry attempts when 0 successful extractions (default: 2) |
@@ -51,33 +51,39 @@ scout-it web-search --query "news" --enable-alternate-source --use-bandit
 scout-it web-search --query "AI regulation" --max 15 --markdown --out ai-report.md
 ```
 
-#### API search sources (Tavily / Exa / Firecrawl)
+#### API search sources (Tavily / Exa / Firecrawl / Linkup / Langsearch / Serper)
 
-In addition to the free academic/data source plugins (`--sources`), three API-backed search providers are available as parallel discovery streams via `--source` (singular). They run alongside DuckDuckGo (and `--source wikimedia`) and require an API key (set via `scout-it config`):
+In addition to the free academic/data source plugins (`--sources`), six API-backed search providers are available as parallel discovery streams via `--source` (singular). They run alongside DuckDuckGo (and `--source wikimedia`) and require an API key (set via `scout-it config`):
 
 | Source | Search types | API key env var | Get a key |
 |--------|-------------|-----------------|-----------|
 | `tavily` | web, news, image, multi | `TAVILY_API_KEY` | https://tavily.com (1,000 free/month) |
-| `exa` | web, news, multi (no image) | `EXA_API_KEY` | https://exa.ai |
+| `exa` | web, news, multi (no image/video) | `EXA_API_KEY` | https://exa.ai |
 | `firecrawl` | web, news, image, multi | `FIRECRAWL_API_KEY` | https://firecrawl.dev (500 free credits/month) |
+| `linkup` | web, image, multi | `LINKUP_API_KEY` | https://linkup.so |
+| `langsearch` | web, multi | `LANGSEARCH_API_KEY` | https://langsearch.com |
+| `serper` | web, news, image, video, multi | `SERPER_API_KEY` | https://serper.dev (2,500 free/month) |
 
-When a key is missing, the source is **skipped silently** with a message telling you how to enable it — the rest of the search continues. Rate-limit, auth, and network errors are also caught per-source and reported without stopping the pipeline.
+When a key is missing, the source is **skipped silently** with a message telling you how to enable it — the rest of the search continues. Rate-limit, auth, and network errors are also caught per-source and reported without stopping the pipeline. The **complete provider payload** (full content + metadata) is preserved untruncated in the output via `api_content` and `api_metadata` fields, alongside the independently extracted `cleaned_content`.
 
 ```bash
 # Search Tavily + DDGS in parallel, merge + rank together
 scout-it web-search --query "rust async runtime" --source tavily
 
-# Multi-source: Tavily + Exa + Firecrawl, all in parallel alongside DDGS
-scout-it web-search --query "transformer architecture" --source tavily,exa,firecrawl
+# Multi-source: all six providers, all in parallel alongside DDGS
+scout-it web-search --query "transformer architecture" --source tavily,exa,firecrawl,linkup,langsearch,serper
 
 # Mix API providers with the built-in Wikimedia source
-scout-it web-search --query "python async" --source wikimedia,tavily
+scout-it web-search --query "python async" --source wikimedia,tavily,serper
 
-# News search with Tavily (topic=news) + Exa (category=news)
-scout-it news-search --query "AI regulation" --source tavily,exa
+# News search with Tavily (topic=news) + Exa (category=news) + Serper
+scout-it news-search --query "AI regulation" --source tavily,exa,serper
 
-# Image search with Tavily (include_images) + Firecrawl (sources=images)
-scout-it image-search --query "northern lights" --source tavily,firecrawl
+# Image search with Tavily + Firecrawl + Linkup (all support image)
+scout-it image-search --query "northern lights" --source tavily,firecrawl,linkup
+
+# Video search with Serper (the only --source provider supporting video)
+scout-it video-search --query "python tutorial" --source serper
 ```
 
 ## news-search

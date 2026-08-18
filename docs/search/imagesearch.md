@@ -18,6 +18,7 @@ scout-it image-search --query "<text>" [options]
 | `--markdown` | Save results as Markdown (.md) instead of JSON |
 | `--sources` `<list>` | Also search source plugins (comma-separated, e.g. `internet_archive,openstreetmap`) and merge with BM25F+vector re-ranking. Run `scout-it sources` for the list |
 | `--auto-sources` | Let the source-selection bandit pick the best sources for this query type. Overrides `--sources` |
+| `--source` `<list>` | Comma-separated API image search providers alongside DuckDuckGo Images: `tavily`, `firecrawl`, `linkup` (need API keys via `scout-it config`). Example: `--source tavily,firecrawl,linkup` |
 | `--download, -d` | Download images to disk |
 | `--download-dir` `<path>` | Download directory (default: `.scout-it/downloaded_images`) |
 | `--region` `<region>` | DuckDuckGo region (default: `us-en`; example: `us-en`, `wt-wt`) |

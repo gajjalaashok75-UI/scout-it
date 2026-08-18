@@ -22,6 +22,7 @@ scout-it video-search --query "<text>" [options]
 | `--resolution` `<res>` | Video resolution filter: `high`, `standard` |
 | `--duration` `<duration>` | Video duration filter: `short`, `medium`, `long` |
 | `--license-videos` `<license>` | Video license filter |
+| `--source` `<list>` | Comma-separated API video search providers alongside DuckDuckGo Videos: `serper` (Google Video SERP, needs `SERPER_API_KEY` via `scout-it config`). Example: `--source serper` |
 | `--category` `<categories...>` | Video RSS categories to include (e.g. `technology science news`). Fetches YouTube channel RSS feeds alongside DuckDuckGo and ranks them together |
 | `--rss` | Include video RSS discovery even without `--category` (pulls a default set of YouTube channels) |
 | `--no-retry-on-zero` | Disable retries when 0 results are found (retries on by default) |
