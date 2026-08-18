@@ -24,7 +24,10 @@ logger = logging.getLogger(__name__)
 
 # API search sources loaded via ``--source`` (singular) only — excluded from the
 # ``--sources`` (plural) augmentation pipeline and from ``scout-it sources``.
-API_SEARCH_SOURCE_NAMES = {"tavily", "exa", "firecrawl"}
+API_SEARCH_SOURCE_NAMES = {
+    "tavily", "exa", "firecrawl",
+    "linkup", "langsearch", "serper",
+}
 
 # ─── Registry ────────────────────────────────────────────────────────────────
 
@@ -96,10 +99,11 @@ def _discover() -> None:
         except Exception as exc:
             logger.warning("Failed to load source plugin %s: %s", mod_name, exc)
 
-    # API search sources (Tavily/Exa/Firecrawl) are loaded on demand via
-    # ``--source`` (singular) — they are NOT part of the ``--sources`` (plural)
-    # augmentation pipeline. Load them here so ``get_plugin()`` can find them.
-    for mod_name in ("tavily", "exa", "firecrawl"):
+    # API search sources (Tavily/Exa/Firecrawl/Linkup/LangSearch/Serper) are
+    # loaded on demand via ``--source`` (singular) — they are NOT part of the
+    # ``--sources`` (plural) augmentation pipeline. Load them here so
+    # ``get_plugin()`` can find them.
+    for mod_name in ("tavily", "exa", "firecrawl", "linkup", "langsearch", "serper"):
         try:
             importlib.import_module(f"scout_it.sources.plugins.{mod_name}")
         except ImportError as exc:

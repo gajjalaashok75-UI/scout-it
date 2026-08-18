@@ -9,7 +9,7 @@ scorer, and return the top results.
 import json
 import logging
 import re
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from html import unescape
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import quote_plus, urlparse
@@ -213,6 +213,7 @@ def video_search(
     categories: Optional[Sequence[str]] = None,
     include_rss: bool = False,
     top_k: Optional[int] = None,
+    source: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Execute the unified video search pipeline: discover -> rank -> output.
 
@@ -220,6 +221,10 @@ def video_search(
       1. DuckDuckGo Videos (always).
       2. Video RSS category feeds (YouTube channel feeds) when ``categories``
          is given or ``include_rss=True``.
+      3. API search sources (e.g. ``serper``) when ``source`` lists them —
+         run as a parallel discovery stream alongside DuckDuckGo and merged
+         before ranking. Each runs in parallel; a missing API key skips the
+         source silently with a printed message.
 
     Ranking uses the shared ``rank_candidates_initial`` scorer (title/body
     relevance, source quality, recency) - the same one used by
@@ -231,6 +236,8 @@ def video_search(
         categories: Video RSS categories to include (e.g. ``["technology","science"]``).
         include_rss: Force RSS discovery even without ``categories``.
         top_k: Number of ranked results to return (defaults to ``max_results``).
+        source: Comma-separated API search sources (e.g. ``"serper"``) that
+            support video search, run as parallel discovery streams.
 
     Returns:
         ``(video_results, stats)`` tuple with ranked video metadata.
@@ -282,6 +289,76 @@ def video_search(
             candidates.extend(rss_entries)
             rss_count += len(rss_entries)
 
+    # ── API search sources (e.g. Serper /videos) as parallel discovery ──
+    # ``source`` may be a comma-separated list like "serper". Each named
+    # source is queried directly via its plugin with search_type='video';
+    # results are normalized into the video-candidate shape and merged
+    # before ranking. Missing keys / errors are isolated (source skipped).
+    api_source_names: List[str] = []
+    if source:
+        api_source_names = [s.strip() for s in source.split(',') if s.strip()]
+
+    api_added_total = 0
+    if api_source_names:
+        from ..sources.registry import _discover as _discover_plugins, get_plugin
+
+        # Pre-discover in the main thread to avoid the race where concurrent
+        # workers call get_plugin() before _discover() finishes registering.
+        _discover_plugins()
+
+        def _run_api_video_source(name: str) -> List[Dict[str, Any]]:
+            plugin = get_plugin(name)
+            if plugin is None:
+                print(f"Unknown --source '{name}' — ignored")
+                return []
+            results = plugin.search(query, max_results=max_results, search_type='video')
+            out: List[Dict[str, Any]] = []
+            for r in results:
+                meta = r.get('metadata', {}) or {}
+                url = r.get('url', '') or r.get('id', '')
+                if not url:
+                    continue
+                out.append({
+                    'title': r.get('title', ''),
+                    'content': url,
+                    'url': url,
+                    'description': r.get('snippet', '') or meta.get('channel', '') or '',
+                    'body': r.get('snippet', '') or r.get('title', ''),
+                    'snippet': r.get('snippet', ''),
+                    'thumbnail': meta.get('thumbnail', '') or meta.get('image_url', ''),
+                    'image': meta.get('image_url', '') or meta.get('thumbnail', ''),
+                    'source': name,
+                    'publish_date': r.get('timestamp', '') or '',
+                    # Preserve the FULL API-provided content + metadata so the
+                    # complete provider JSON reaches the output untruncated.
+                    'api_content': r.get('content', '') or '',
+                    'api_metadata': meta,
+                    'api_authority_score': r.get('authority_score', 0.0),
+                    'api_timestamp': r.get('timestamp', '') or '',
+                })
+            return out
+
+        with ThreadPoolExecutor(max_workers=min(len(api_source_names), 3)) as ex:
+            fut_map = {ex.submit(_run_api_video_source, n): n for n in api_source_names}
+            for fut in as_completed(fut_map):
+                name = fut_map[fut]
+                try:
+                    api_results = fut.result()
+                except Exception as exc:
+                    logger.warning("API video source %s failed: %s", name, exc)
+                    api_results = []
+                candidates.extend(api_results)
+                api_added_total += len(api_results)
+
+        # Drain + print any skip/error messages collected by API sources.
+        from ..sources.api_search_base import source_messages as _src_msgs
+        if _src_msgs.has_messages():
+            for msg in _src_msgs.drain():
+                if msg['type'] == 'skip':
+                    print(f"⏭️  Source '{msg['source']}' skipped: {msg['reason']}")
+                else:
+                    print(f"⚠️  Source '{msg['source']}': {msg['reason']}")
+
     # ---- Rank (shared scorer) ----
     limit = int(top_k) if top_k is not None else int(max_results)
     ranked = rank_candidates_initial(candidates, query, top_k=max(limit, len(candidates)))
@@ -312,6 +389,18 @@ def video_search(
             "initial_rank_score": entry.get("initial_rank_score", 0.0),
             "rank_breakdown": entry.get("rank_breakdown", {}),
         })
+        # Preserve the FULL API-provided content + metadata for --source
+        # providers so the complete provider JSON is in the output.
+        api_content = entry.get("api_content", "")
+        api_metadata = entry.get("api_metadata", {})
+        if api_content:
+            output[-1]["api_content"] = api_content
+        if api_metadata:
+            output[-1]["api_metadata"] = api_metadata
+        if entry.get("api_authority_score"):
+            output[-1]["api_authority_score"] = entry.get("api_authority_score")
+        if entry.get("api_timestamp"):
+            output[-1]["api_timestamp"] = entry.get("api_timestamp")
         if len(output) >= limit:
             break
 
@@ -321,13 +410,16 @@ def video_search(
         'ddgs_candidates': len(ddgs_results),
         'youtube_candidates': youtube_count,
         'rss_candidates': rss_count,
+        'api_candidates': api_added_total,
+        'api_sources': api_source_names,
         'total_candidates': len(candidates),
         'ranked_output': len(output),
         'rss_categories': rss_categories,
     }
 
     print(f"🎥 Found {len(output)} ranked videos for query: {query} "
-          f"(DDGS: {len(ddgs_results)}, YouTube: {youtube_count}, RSS: {rss_count})")
+          f"(DDGS: {len(ddgs_results)}, YouTube: {youtube_count}, RSS: {rss_count}, "
+          f"API: {api_added_total})")
     return output, stats
 
 

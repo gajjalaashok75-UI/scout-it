@@ -1,7 +1,7 @@
 """
 scout-it: Python toolkit for AI-powered web search, content extraction, and structured data output.
 
-Version: 2.0.0
+Version: 2.1.0
 Author: Ashok-gakr
 License: MIT
 
@@ -24,7 +24,7 @@ Quick Start:
 # Define version FIRST so submodules (e.g. github_extract, social) can do
 # `from . import __version__` at import time without hitting a circular-import
 # AttributeError.
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 __author__ = "Ashok-gakr"
 __license__ = "MIT"
 

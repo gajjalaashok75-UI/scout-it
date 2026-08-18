@@ -36,12 +36,12 @@ def multi_search(
     added to the engine list (zero-config, no API key needed).
 
     When ``source`` is given (comma-separated), the listed API search
-    providers (``tavily``, ``exa``, ``firecrawl``) and ``wikimedia`` are
-    added as parallel discovery streams alongside the engines. ``wikimedia``
-    is appended to the engine list; API sources are queried directly and
-    their URL candidates are merged into the discovery results before
-    content extraction — exactly like the ``--source`` flag on
-    ``web-search``.
+    providers (``tavily``, ``exa``, ``firecrawl``, ``linkup``, ``langsearch``,
+    ``serper``) and ``wikimedia`` are added as parallel discovery streams
+    alongside the engines. ``wikimedia`` is appended to the engine list; API
+    sources are queried directly and their URL candidates are merged into the
+    discovery results before content extraction — exactly like the ``--source``
+    flag on ``web-search``.
     """
     engines = engines or ['duckduckgo']
     if sources:
@@ -96,6 +96,16 @@ def multi_search(
                                 'href': url,
                                 'body': r.get('snippet', '') or r.get('content', ''),
                                 'source': name,
+                                # Preserve the FULL API-provided content + metadata
+                                # so they flow through ranking → extraction → cleaning
+                                # into the final output JSON untruncated. ``body`` is
+                                # the short snippet used for ranking relevance; these
+                                # carry the complete provider payload (Tavily content,
+                                # Exa text/highlights, Firecrawl markdown, etc.).
+                                'api_content': r.get('content', '') or '',
+                                'api_metadata': r.get('metadata', {}) or {},
+                                'api_authority_score': r.get('authority_score', 0.0),
+                                'api_timestamp': r.get('timestamp', '') or '',
                             })
                 except Exception as exc:
                     logger.warning("API source %s failed: %s", name, exc)

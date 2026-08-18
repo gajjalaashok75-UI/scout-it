@@ -201,6 +201,12 @@ def web_search(
                 'snippet': r.get('snippet', ''),
                 'source': name,
                 'content': r.get('content', ''),
+                # Preserve the FULL API-provided content + metadata so the
+                # complete provider JSON reaches the output untruncated.
+                'api_content': r.get('content', '') or '',
+                'api_metadata': r.get('metadata', {}) or {},
+                'api_authority_score': r.get('authority_score', 0.0),
+                'api_timestamp': r.get('timestamp', '') or '',
             })
         return normalized
 
@@ -422,6 +428,19 @@ def web_search(
                 'source': candidate.get('source', ''),
                 'score': candidate.get('initial_rank_score', 0.0),
             }
+            # Preserve the FULL API-provided content + metadata for --source
+            # providers (tavily/exa/firecrawl/linkup/langsearch/serper) so the
+            # complete provider JSON is available in the output untruncated.
+            api_content = candidate.get('api_content', '')
+            api_metadata = candidate.get('api_metadata', {})
+            if api_content:
+                snippet['api_content'] = api_content
+            if api_metadata:
+                snippet['api_metadata'] = api_metadata
+            if candidate.get('api_authority_score'):
+                snippet['api_authority_score'] = candidate.get('api_authority_score')
+            if candidate.get('api_timestamp'):
+                snippet['api_timestamp'] = candidate.get('api_timestamp')
             snippets_output.append(snippet)
         
         print(f"\n✅ WEB SEARCH COMPLETE!")

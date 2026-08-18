@@ -33,6 +33,16 @@ class EnterpriseResult:
     fetch_time: float = 0.0
     content_quality_score: float = 0.0
 
+    # API-source passthrough: the FULL content + metadata provided by an
+    # ``--source`` API search provider (tavily/exa/firecrawl/linkup/langsearch/
+    # serper). Preserved untruncated through ranking → extraction → cleaning
+    # so the complete provider JSON is available in the final output, alongside
+    # the extracted ``main_content`` (which comes from re-fetching the URL).
+    api_content: str = ""
+    api_metadata: dict = field(default_factory=dict)
+    api_authority_score: float = 0.0
+    api_timestamp: str = ""
+
 
 @dataclass
 class ImageSearchResult:

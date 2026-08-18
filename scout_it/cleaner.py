@@ -1139,6 +1139,22 @@ def process_record(rec: dict) -> dict:
         'source': rec.get('source'),
         'extraction_method': rec.get('extraction_method'),
     }
+
+    # ── API-source passthrough ────────────────────────────────────────────
+    # Preserve the FULL content + metadata provided by an ``--source`` API
+    # search provider (tavily/exa/firecrawl/linkup/langsearch/serper) so the
+    # complete provider JSON is available in the output untruncated, alongside
+    # the extracted ``cleaned_content`` (which comes from re-fetching the URL).
+    api_content = rec.get('api_content', '') or ''
+    api_metadata = rec.get('api_metadata', {}) or {}
+    if api_content:
+        result['api_content'] = api_content
+    if api_metadata:
+        result['api_metadata'] = api_metadata
+    if rec.get('api_authority_score'):
+        result['api_authority_score'] = rec.get('api_authority_score')
+    if rec.get('api_timestamp'):
+        result['api_timestamp'] = rec.get('api_timestamp')
     
     # Add content quality score
     quality_score = 0.0

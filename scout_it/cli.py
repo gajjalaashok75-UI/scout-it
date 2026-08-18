@@ -269,8 +269,9 @@ def build_parser():
     web_parser.add_argument('--backend', default='auto', choices=['auto', 'html', 'lite'], help='DDGS backend')
     web_parser.add_argument('--source', default=None,
                             help='Search source override(s) running as parallel discovery streams alongside DuckDuckGo. '
-                                 'Comma-separated: "wikimedia" (Wikimedia), "tavily", "exa", "firecrawl" (API search providers, '
-                                 'need API keys via `scout-it config`). Example: --source wikimedia,tavily. '
+                                 'Comma-separated: "wikimedia" (Wikimedia), "tavily", "exa", "firecrawl", "linkup", '
+                                 '"langsearch", "serper" (API search providers, need API keys via `scout-it config`). '
+                                 'Example: --source wikimedia,tavily. '
                                  'If the primary source returns zero results, falls back to the other source.')
     web_parser.add_argument('--category', nargs='+', default=None,
                             help='Category-specific RSS feeds to include (ai, engineering, cloud, devops, research, etc.). '
@@ -376,8 +377,8 @@ def build_parser():
                                  'and keyword-matched DeviantArt tag feeds from the query in parallel')
     img_parser.add_argument('--source', default=None,
                             help='Search source override(s) running as parallel discovery streams alongside DuckDuckGo Images. '
-                                 'Comma-separated API search providers: "tavily", "firecrawl" (need API keys via `scout-it config`). '
-                                 'Example: --source tavily,firecrawl. Results are merged and ranked together.')
+                                 'Comma-separated API search providers: "tavily", "firecrawl", "linkup", "serper" (need API '
+                                 'keys via `scout-it config`). Example: --source tavily,firecrawl. Results are merged and ranked together.')
     img_parser.set_defaults(retry_on_zero=True)
     img_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries when 0 valid images are found')
     img_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts when 0 valid images are found')
@@ -411,8 +412,8 @@ def build_parser():
     news_parser.add_argument('--workers', type=int, default=5, help='Parallel workers for content extraction')
     news_parser.add_argument('--source', default=None,
                              help='Search source override(s) running as parallel discovery streams alongside DuckDuckGo News. '
-                                  'Comma-separated: "google-news" (Google News RSS), "tavily", "exa", "firecrawl" (API search providers, '
-                                  'need API keys via `scout-it config`). Example: --source google-news,tavily. '
+                                  'Comma-separated: "google-news" (Google News RSS), "tavily", "exa", "firecrawl", "serper" (API '
+                                  'search providers, need API keys via `scout-it config`). Example: --source google-news,tavily. '
                                   'If the primary source returns zero results, falls back to the other source.')
     news_parser.add_argument('--category', nargs='+', default=None,
                              help='Category-specific RSS feeds to include (ai, startups, security, cloud). '
@@ -464,6 +465,11 @@ def build_parser():
                                     'Fetches YouTube channel RSS feeds alongside DuckDuckGo and ranks them together.')
     video_parser.add_argument('--rss', action='store_true',
                                help='Include video RSS discovery even without --category (pulls a default set of YouTube channels)')
+    video_parser.add_argument('--source', default=None,
+                               help='Search source override(s) running as parallel discovery streams alongside DuckDuckGo Videos. '
+                                    'Comma-separated API search providers: "serper" (Google SERP videos endpoint, '
+                                    'need API key via `scout-it config`). Example: --source serper. '
+                                    'Results are merged and ranked together.')
     video_parser.set_defaults(retry_on_zero=True)
     video_parser.add_argument('--no-retry-on-zero', dest='retry_on_zero', action='store_false', help='Disable retries when 0 results are found')
     video_parser.add_argument('--retry-attempts', type=int, default=2, help='Retry attempts when 0 results are found')
@@ -546,8 +552,9 @@ def build_parser():
     multi_parser.add_argument('--engines', default='duckduckgo', help='Comma-separated engine names (duckduckgo,brave,bing,google,serpapi,wikimedia)')
     multi_parser.add_argument('--source', default=None,
                               help='Search source override(s) running as parallel discovery streams alongside the engines. '
-                                   'Comma-separated: "wikimedia" (added to engine list), "tavily", "exa", "firecrawl" (API search providers, '
-                                   'need API keys via `scout-it config`). Example: --source wikimedia,tavily.')
+                                   'Comma-separated: "wikimedia" (added to engine list), "tavily", "exa", "firecrawl", "linkup", '
+                                   '"langsearch", "serper" (API search providers, need API keys via `scout-it config`). '
+                                   'Example: --source wikimedia,tavily.')
     multi_parser.add_argument('--max', '-m', type=int, default=10, help='Max merged results')
     multi_parser.add_argument('--workers', '-w', type=int, default=5, help='Parallel content-extraction workers')
     multi_parser.add_argument('--serpapi-engine', default='google', help='Underlying engine for SerpAPI (google/bing/yahoo/baidu/yandex/...)')
@@ -1209,6 +1216,7 @@ def main():
             retry_backoff=args.retry_backoff,
             categories=args.category,
             include_rss=args.rss,
+            source=args.source,
         )
 
         # Enhance truncated DDGS descriptions with full YouTube descriptions

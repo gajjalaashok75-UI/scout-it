@@ -54,6 +54,10 @@ KNOWN_CREDENTIALS: List[Dict[str, str]] = [
     {"key": "TAVILY_API_KEY", "desc": "Tavily API key — enables --source tavily on web-search, news-search, image-search, and multi-search. Runs as a parallel discovery stream alongside DuckDuckGo; no key = source skipped silently.", "get_it": "https://tavily.com (free tier: 1,000 searches/month)"},
     {"key": "EXA_API_KEY", "desc": "Exa API key — enables --source exa on web-search, news-search, and multi-search. Neural web/news search with highlights; no key = source skipped silently. Not available for image-search.", "get_it": "https://exa.ai (free tier available)"},
     {"key": "FIRECRAWL_API_KEY", "desc": "Firecrawl API key — enables --source firecrawl on web-search, news-search, image-search, and multi-search. Search + built-in page scraping; no key = source skipped silently.", "get_it": "https://firecrawl.dev (free tier: 500 credits/month)"},
+    # ── API search sources (Linkup / LangSearch / Serper) ──────────────
+    {"key": "LINKUP_API_KEY", "desc": "Linkup API key — enables --source linkup on web-search, image-search, and multi-search. Agentic web search with sourced answers; no key = source skipped silently. (Requires: pip install linkup-sdk)", "get_it": "https://linkup.so (free tier available)"},
+    {"key": "LANGSEARCH_API_KEY", "desc": "LangSearch API key — enables --source langsearch on web-search and multi-search. Web search with summaries; no key = source skipped silently.", "get_it": "https://langsearch.com (free tier available)"},
+    {"key": "SERPER_API_KEY", "desc": "Serper API key — enables --source serper on web-search, news-search, image-search, video-search, and multi-search. Google SERP results; no key = source skipped silently.", "get_it": "https://serper.dev (free tier: 2,500 searches)"},
 ]
 KNOWN_KEYS = {c["key"] for c in KNOWN_CREDENTIALS}
 

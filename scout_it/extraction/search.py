@@ -394,6 +394,12 @@ class EnterpriseSearchEngine:
                 url=r.get('url') or r.get('href') or '',
                 snippet=(r.get('snippet') or r.get('body') or '')[:400],
                 source=r.get('source', 'unknown'),
+                # Preserve the FULL API-provided content + metadata (from
+                # ``--source`` providers) so they reach the output JSON.
+                api_content=r.get('api_content', '') or '',
+                api_metadata=r.get('api_metadata', {}) or {},
+                api_authority_score=r.get('api_authority_score', 0.0) or 0.0,
+                api_timestamp=r.get('api_timestamp', '') or '',
             ))
 
         if self.results:

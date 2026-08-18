@@ -204,6 +204,12 @@ def image_search(
                 "body": r.get('snippet', '') or meta.get('image_description', ''),
                 "source": name,
                 "publish_date": r.get('timestamp', '') or '',
+                # Preserve the FULL API-provided content + metadata so the
+                # complete provider JSON reaches the output untruncated.
+                "api_content": r.get('content', '') or '',
+                "api_metadata": meta,
+                "api_authority_score": r.get('authority_score', 0.0),
+                "api_timestamp": r.get('timestamp', '') or '',
             })
             api_count += 1
 
@@ -248,6 +254,18 @@ def image_search(
             "initial_rank_score": entry.get("initial_rank_score", 0.0),
             "rank_breakdown": entry.get("rank_breakdown", {}),
         })
+        # Preserve the FULL API-provided content + metadata for --source
+        # providers so the complete provider JSON is in the output.
+        api_content = entry.get("api_content", "")
+        api_metadata = entry.get("api_metadata", {})
+        if api_content:
+            output[-1]["api_content"] = api_content
+        if api_metadata:
+            output[-1]["api_metadata"] = api_metadata
+        if entry.get("api_authority_score"):
+            output[-1]["api_authority_score"] = entry.get("api_authority_score")
+        if entry.get("api_timestamp"):
+            output[-1]["api_timestamp"] = entry.get("api_timestamp")
         if len(output) >= limit:
             break
 
