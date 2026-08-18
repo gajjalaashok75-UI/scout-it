@@ -33,7 +33,7 @@ scout-it <subcommand> [options]
 | `multi-search` | Search across DuckDuckGo + Brave/Bing/Google/SerpAPI/Wikimedia in parallel |
 | `wikipedia-search` | Search any Wikimedia project (12 projects) via the MediaWiki Action API |
 | `list-engines` | List available search engines and their config status |
-| `sources` | List available source plugins (31, plus Tavily/Exa/Firecrawl API providers via `--source`) |
+| `sources` | List available source plugins (31, plus Tavily/Exa/Firecrawl/Linkup/Langsearch/Serper API providers via `--source`) |
 | `index` | Index results into the persistent semantic store (LanceDB) |
 | `semantic-search` | Hybrid BM25+vector search over an indexed corpus |
 | `config` | Set up API keys/tokens for all platforms |
@@ -79,7 +79,7 @@ scout-it web-search --query "your search query"
 | `--backend` | str | `auto` | `auto`, `html`, or `lite` |
 | `--sources` | str | *(none)* | Also search source plugins (comma-separated, e.g. `openalex,arxiv,wikidata`) and merge with BM25F+vector re-ranking. Run `scout-it sources` for the list |
 | `--auto-sources` | flag | — | Let the source-selection bandit pick the best sources for this query type. Overrides `--sources` |
-| `--source` | str | *(none)* | Comma-separated parallel discovery streams alongside DuckDuckGo: `wikimedia` (Wikimedia), `tavily`, `exa`, `firecrawl` (API search providers, need API keys via `scout-it config`). Example: `--source wikimedia,tavily` |
+| `--source` | str | *(none)* | Comma-separated parallel discovery streams alongside DuckDuckGo: `wikimedia` (Wikimedia), `tavily`, `exa`, `firecrawl`, `linkup`, `langsearch`, `serper` (API search providers, need API keys via `scout-it config`). Example: `--source wikimedia,tavily,serper`. Full provider content + metadata preserved untruncated in output via `api_content`/`api_metadata` |
 | `--category` | str (nargs+) | *(none)* | RSS feed categories (`ai`, `engineering`, `cloud`, `devops`, `research`, `security`, `startups`, etc.). Multiple allowed, e.g. `--category ai cloud` |
 | `--snippets` | flag | — | Return ranked snippets only. Skips content extraction for ~10x faster results (~2-4s vs 20-70s) |
 | `--no-retry-on-zero` | flag | — | Skip retry on zero successful extractions |
@@ -137,6 +137,7 @@ scout-it image-search --query "sunset landscapes" --max 10
 | `--markdown` | flag | — | Save as Markdown instead of JSON |
 | `--sources` | str | *(none)* | Also search source plugins (comma-separated, e.g. `internet_archive,openstreetmap`) and merge with BM25F+vector re-ranking |
 | `--auto-sources` | flag | — | Bandit-picked sources for this query type. Overrides `--sources` |
+| `--source` | str | *(none)* | Comma-separated API image search providers alongside DuckDuckGo Images: `tavily`, `firecrawl`, `linkup` (need API keys via `scout-it config`). Example: `--source tavily,firecrawl,linkup` |
 | `--download` / `-d` | flag | — | Download the images |
 | `--download-dir` | str | `.scout-it/downloaded_images` | Where to save downloaded images |
 | `--region` | str | `us-en` | DuckDuckGo region (e.g. us-en, wt-wt) |
@@ -177,7 +178,7 @@ Same unified extraction engine, staged ranking, `--snippets`, `--sources` / `--a
 | `--safesearch` | str | `moderate` | `on`, `moderate`, `off` |
 | `--timelimit` | str | *(none)* | `d`/`w`/`m`/`y` |
 | `--workers` | int | `5` | Parallel workers for article content extraction |
-| `--source` | str | *(none)* | Search source override — use `google-news` for Google News RSS (falls back to DuckDuckGo News on zero results) |
+| `--source` | str | *(none)* | Parallel discovery streams alongside DuckDuckGo News: `google-news` (Google News RSS), plus the API providers that support news - `tavily`, `exa`, `serper` (need API keys via `scout-it config`). Comma-separated. Example: `--source google-news,tavily,serper` |
 | `--category` | str (nargs+) | *(none)* | News RSS categories (`ai`, `startups`, `security`, `cloud`, `all`). Multiple allowed, e.g. `--category ai startups` |
 | `--location` | str (nargs+) | *(none)* | Location(s) for localized news from Times of India RSS (e.g. `india`, `US`, `UK`, `europe`, `china`, `india-delhi`). Multiple allowed |
 | `--max-chars` | int | *(none)* | Maximum characters to keep in extracted article content |
@@ -215,6 +216,7 @@ scout-it video-search --query "python tutorial" --max 5
 | `--resolution` | str | *(none)* | `high` or `standard` |
 | `--duration` | str | *(none)* | `short`, `medium`, or `long` |
 | `--license-videos` | str | *(none)* | License filter |
+| `--source` | str | *(none)* | Comma-separated API video search providers alongside DuckDuckGo Videos: `serper` (Google Video SERP, needs `SERPER_API_KEY` via `scout-it config`). Example: `--source serper` |
 | `--category` | str (nargs+) | *(none)* | Video RSS categories (e.g. `technology science news`). Fetches YouTube channel RSS feeds alongside DuckDuckGo |
 | `--rss` | flag | — | Include video RSS discovery even without `--category` (pulls a default set of YouTube channels) |
 | `--no-retry-on-zero` | flag | — | Disable retries when 0 results are found |
@@ -294,7 +296,7 @@ scout-it multi-search --query "your query" --engines duckduckgo,brave,bing
 |------|------|---------|-------------|
 | `--query` / `-q` | str | *required* | Search query |
 | `--engines` | str | `duckduckgo` | Comma-separated: `duckduckgo,brave,bing,google,serpapi,wikimedia` |
-| `--source` | str | *(none)* | Include Wikimedia as a search source. Shorthand for `--engines wikimedia` |
+| `--source` | str | *(none)* | Comma-separated parallel discovery streams: `wikimedia` (shorthand for `--engines wikimedia`), plus the API search providers `tavily`, `exa`, `firecrawl`, `linkup`, `langsearch`, `serper` (need API keys via `scout-it config`). Example: `--source wikimedia,tavily,serper` |
 | `--max` / `-m` | int | `10` | Max merged results |
 | `--workers` / `-w` | int | `5` | Parallel content-extraction workers |
 | `--serpapi-engine` | str | `google` | Underlying engine for SerpAPI (google/bing/yahoo/baidu/yandex) |
@@ -625,6 +627,8 @@ For web-search/news-search/fetch-url specifically, each result also contains:
 - `confidence_score` — content quality score (0.0–1.0)
 - `extraction_status` — `"success"` or `"failed"`
 - `content_word_count` — word count of cleaned content
+
+When a result came from an API `--source` provider (tavily/exa/firecrawl/linkup/langsearch/serper), four extra passthrough fields carry the **complete, untruncated** provider payload alongside `cleaned_content`: `api_content` (full provider content), `api_metadata` (full provider metadata dict), `api_authority_score`, and `api_timestamp`. These let you read the provider's own content without re-fetching the page. Any new `--source` provider added in future gets this preservation automatically.
 
 **`--markdown` works on every command that writes output** (all 30 of them, not just web-search) — renders the same data as a Markdown document (tables, fenced code blocks, headers) instead of JSON. `--out somefile.md` does the same thing without needing the flag explicitly.
 
