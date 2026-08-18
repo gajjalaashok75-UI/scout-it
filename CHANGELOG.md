@@ -7,7 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [2.1.0] - 2026-08-17
+
+### Added — New API search sources (Linkup, Langsearch, Serper) + video-search support
+
+Three new API-backed search sources join Tavily, Exa, and Firecrawl, bringing the `--source` provider total to six. Available via `--source` (singular) on `web-search`, `news-search`, `image-search`, `video-search`, and `multi-search`:
+
+- **Linkup** (`--source linkup`) — AI web/image search via the `linkup-sdk`. Supports web, image, and multi search types.
+- **Langsearch** (`--source langsearch`) — web/multi search via the Langsearch REST API. Supports web and multi.
+- **Serper** (`--source serper`) — Google SERP search via the Serper.dev REST API. Supports all five search types: web, news, image, video, and multi.
+
+The `--source` flag now accepts comma-separated values (e.g. `--source tavily,exa,serper`) and is available on **all five** search subcommands, including `video-search` (new in this release — previously only web/image/news/multi had it).
+
+Credentials: `LINKUP_API_KEY`, `LANGSEARCH_API_KEY`, `SERPER_API_KEY` in `~/.scout-it/credentials.json` (set via `scout-it config`). Missing key → graceful skip with a clear message; other sources continue.
+
+New dependencies: `linkup-sdk` added to `requirements.txt`. Langsearch and Serper use `requests` (already installed).
+
+### Fixed — Full API result preservation in output JSON
+
+Previously, the discovery layer mapped only `snippet or content` into the candidate `body` (truncating rich content when both were present) and dropped the API `metadata` entirely. Now the **complete provider payload** is preserved untruncated through the full pipeline:
+
+- **`api_content`** — the full content returned by the API (Tavily content, Exa text, Firecrawl markdown, Serper snippet, Langsearch content, Linkup content).
+- **`api_metadata`** — the full metadata dict (Tavily `answer`/`score`, Exa `highlights`/`author`, Firecrawl `structured_json`/`favicon`, etc.).
+- **`api_authority_score`** and **`api_timestamp`** — the provider's relevance score and publish date.
+
+These fields flow: API plugin → candidate → `EnterpriseResult` (new passthrough fields on the dataclass) → `process_results` cleaner → final output JSON. They appear **alongside** the extracted `cleaned_content` (which comes from re-fetching the URL), so consumers get both the provider's own content and the independently extracted content. Available in both snippets mode (`--snippets`) and full extraction mode.
 
 ### Added — API search sources (Tavily, Exa, Firecrawl)
 

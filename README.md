@@ -1,6 +1,6 @@
 # scout-it
 
-[![PyPI version](https://img.shields.io/badge/version-2.0.0-blue)](https://pypi.org/project/scout-it/)
+[![PyPI version](https://img.shields.io/badge/version-2.1.0-blue)](https://pypi.org/project/scout-it/)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.9-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -166,7 +166,7 @@ The entire pipeline supports **parallel extraction** via `ThreadPoolExecutor` (c
 - **Search modes**: web, news, images, videos, YouTube, single-URL fetch, multi-engine search, Wikimedia search, semantic index/search, source plugins — 28 subcommands total
 - **12 GitHub extractors**: repos, commits, PRs, issues, discussions, code search, repo search, files, folders
 - **4 social platform extractors** (unified under `social-search`): Telegram channels (public), Discord channels (bot + DDGS), Reddit (RSS-first: subreddit / user / search feeds), Instagram (DDGS query + profile scraping)
-- **31 source plugins**: openalex, arxiv, crossref, semantic_scholar, huggingface, zenodo, wikidata, gdelt, internet_archive, and more — plus 3 API search providers (**Tavily**, **Exa**, **Firecrawl**) as `--source` parallel discovery streams for web/news/image search via API keys (all free or free-tier)
+- **31 source plugins**: openalex, arxiv, crossref, semantic_scholar, huggingface, zenodo, wikidata, gdelt, internet_archive, and more — plus 6 API search providers (**Tavily**, **Exa**, **Firecrawl**, **Linkup**, **Langsearch**, **Serper**) as `--source` parallel discovery streams for web/news/image/video/multi search via API keys (all free or free-tier)
 - **5-tier content extraction**: Trafilatura → justext → BoilerPy3 → Readability → BeautifulSoup, with confidence scoring
 
 ### Search Enhancements (NEW)
@@ -245,7 +245,7 @@ pip install -e ".[dev]"
 ### Verify installation
 
 ```bash
-scout-it --version          # Shows scout-it 2.0.0
+scout-it --version          # Shows scout-it 2.1.0
 scout-it -v                 # Short flag
 scout-it --help             # Full command list
 ```
@@ -339,7 +339,7 @@ scout-it web-search --query "<text>" [options]
 | `--safesearch` `<level>` | Safe search: `on`, `moderate`, `off` (default: `moderate`) |
 | `--timelimit` `<range>` | Time limit: `d`, `w`, `m`, `y` |
 | `--backend` `<backend>` | DDGS backend: `auto`, `html`, `lite` (default: `auto`) |
-| `--source` `<list>` | Comma-separated parallel discovery streams alongside DuckDuckGo: `wikimedia` (Wikimedia), `tavily`, `exa`, `firecrawl` (API search providers, need API keys via `scout-it config`). Example: `--source wikimedia,tavily` |
+| `--source` `<list>` | Comma-separated parallel discovery streams alongside DuckDuckGo: `wikimedia` (Wikimedia), `tavily`, `exa`, `firecrawl`, `linkup`, `langsearch`, `serper` (API search providers, need API keys via `scout-it config`). Example: `--source wikimedia,tavily,serper` |
 | `--category` `<categories...>` | RSS feed categories (ai, engineering, cloud, devops, research, security, startups, etc.). Multiple allowed, e.g. `--category ai cloud`. Merged with DuckDuckGo results |
 | `--no-retry-on-zero` | Disable retries on 0 results (retries on by default) |
 | `--retry-attempts` `<n>` | Retry attempts when 0 successful extractions (default: 2) |
