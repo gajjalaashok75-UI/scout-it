@@ -4,7 +4,7 @@ import { apiSourceProviders } from '../../data/searchFlags'
 const toc = [
   { id: 'overview', label: 'overview' },
   { id: 'source-vs-sources', label: '--source vs --sources' },
-  { id: 'providers', label: 'the three providers' },
+  { id: 'providers', label: 'the six providers' },
   { id: 'setup', label: 'setup' },
   { id: 'examples', label: 'examples' },
   { id: 'behaviour', label: 'behaviour' },
@@ -13,18 +13,19 @@ const toc = [
 export default function ApiSources() {
   return (
     <DocsLayout
-      title="scout-it API search sources — Tavily, Exa, Firecrawl via --source"
-      description="Tavily, Exa, and Firecrawl run as parallel discovery streams alongside DuckDuckGo via the --source flag on web-search, news-search, image-search, and multi-search. Free tiers, clean skip on missing keys."
+      title="scout-it API search sources — Tavily, Exa, Firecrawl, Linkup, Langsearch, Serper via --source"
+      description="Six API-backed search providers run as parallel discovery streams alongside DuckDuckGo via the --source flag on web-search, news-search, image-search, video-search, and multi-search. Free tiers, clean skip on missing keys, full untruncated content + metadata in the output."
       heading="API search sources"
-      lede="Three API-backed search providers run alongside DuckDuckGo as parallel discovery streams — added with --source (singular), not --sources (plural)."
+      lede="Six API-backed search providers run alongside DuckDuckGo as parallel discovery streams — added with --source (singular), not --sources (plural)."
       toc={toc}
     >
       <h2 id="overview">overview</h2>
-      <p>scout-it ships with three API-key-based search providers: <strong>Tavily</strong>, <strong>Exa</strong>, and <strong>Firecrawl</strong>. Each runs as a parallel discovery stream alongside DuckDuckGo (and alongside <code>--source wikimedia</code> or <code>--source google-news</code> where supported), with the results merged and ranked together through the same semantic + composite re-ranking pipeline as everything else.</p>
-      <p>They are available on <code>web-search</code>, <code>news-search</code>, <code>image-search</code>, and <code>multi-search</code> via the <code>--source</code> flag (singular), which accepts comma-separated values:</p>
-      <pre><code>{`scout-it web-search --query "AI regulation" --source tavily,exa,firecrawl -m 15
-scout-it news-search --query "climate" --source google-news,tavily
-scout-it image-search --query "landscape" --source tavily,firecrawl
+      <p>scout-it ships with six API-key-based search providers: <strong>Tavily</strong>, <strong>Exa</strong>, <strong>Firecrawl</strong>, <strong>Linkup</strong>, <strong>Langsearch</strong>, and <strong>Serper</strong>. Each runs as a parallel discovery stream alongside DuckDuckGo (and alongside <code>--source wikimedia</code> or <code>--source google-news</code> where supported), with the results merged and ranked together through the same semantic + composite re-ranking pipeline as everything else.</p>
+      <p>They are available on <code>web-search</code>, <code>news-search</code>, <code>image-search</code>, <code>video-search</code>, and <code>multi-search</code> via the <code>--source</code> flag (singular), which accepts comma-separated values:</p>
+      <pre><code>{`scout-it web-search --query "AI regulation" --source tavily,exa,firecrawl,serper -m 15
+scout-it news-search --query "climate" --source google-news,tavily,serper
+scout-it image-search --query "landscape" --source tavily,firecrawl,linkup
+scout-it video-search --query "python tutorial" --source serper
 scout-it multi-search --query "rust vs go" --engines duckduckgo --source wikimedia,tavily`}</code></pre>
 
       <h2 id="source-vs-sources">--source vs --sources</h2>
@@ -41,8 +42,8 @@ scout-it multi-search --query "rust vs go" --engines duckduckgo --source wikimed
           <tbody>
             <tr>
               <td><code>--source</code> (singular)</td>
-              <td>Parallel discovery streams alongside DuckDuckGo — Wikimedia, Google News RSS, and the API providers (tavily, exa, firecrawl). Comma-separated. Results are merged and ranked together.</td>
-              <td><code>--source wikimedia,tavily</code></td>
+              <td>Parallel discovery streams alongside DuckDuckGo — Wikimedia, Google News RSS, and the six API providers (tavily, exa, firecrawl, linkup, langsearch, serper). Comma-separated. Results are merged and ranked together.</td>
+              <td><code>--source wikimedia,tavily,serper</code></td>
             </tr>
             <tr>
               <td><code>--sources</code> (plural)</td>
@@ -54,7 +55,7 @@ scout-it multi-search --query "rust vs go" --engines duckduckgo --source wikimed
       </div>
       <p>The API providers are deliberately excluded from <code>--sources</code> (plural) and from the <code>scout-it sources</code> list. They are only reachable through <code>--source</code> (singular). The two flags can be combined on the same command if you want both free plugins and API providers in one run.</p>
 
-      <h2 id="providers">the three providers</h2>
+      <h2 id="providers">the six providers</h2>
       <div className="table-wrap">
         <table>
           <thead>
@@ -92,21 +93,27 @@ scout-it multi-search --query "rust vs go" --engines duckduckgo --source wikimed
 # or set them directly for CI
 export TAVILY_API_KEY=tvly-...
 export EXA_API_KEY=...
-export FIRECRAWL_API_KEY=fc-...`}</code></pre>
+export FIRECRAWL_API_KEY=fc-...
+export LINKUP_API_KEY=...
+export LANGSEARCH_API_KEY=...
+export SERPER_API_KEY=...`}</code></pre>
       <p>As with every other credential, a real environment variable always takes precedence over a stored one, and the values are written to <code>~/.scout-it/credentials.json</code> with owner-only permissions. See <a href="/docs/configuration/">configuration &amp; credentials</a> for the full picture.</p>
 
       <h2 id="examples">examples</h2>
-      <pre><code>{`# all three API providers at once
-scout-it web-search --query "transformer architecture" --source tavily,exa,firecrawl -m 15
+      <pre><code>{`# all six API providers at once (where each supports the search type)
+scout-it web-search --query "transformer architecture" --source tavily,exa,firecrawl,linkup,langsearch,serper -m 15
 
-# mix a free stream with an API provider
-scout-it web-search --query "quantum computing" --source wikimedia,tavily -m 10
+# mix a free stream with API providers
+scout-it web-search --query "quantum computing" --source wikimedia,tavily,serper -m 10
 
-# news — Google News RSS + Tavily news
-scout-it news-search --query "AI regulation" --source google-news,tavily -m 15
+# news — Google News RSS + Tavily + Serper news
+scout-it news-search --query "AI regulation" --source google-news,tavily,serper -m 15
 
-# images — only Tavily and Firecrawl support image search
-scout-it image-search --query "northern lights" --source tavily,firecrawl --max 20
+# images — Tavily, Firecrawl, and Linkup support image search
+scout-it image-search --query "northern lights" --source tavily,firecrawl,linkup --max 20
+
+# video — Serper is the only --source provider that supports video-search
+scout-it video-search --query "python tutorial" --source serper --max 10
 
 # multi-search — engines + an API provider
 scout-it multi-search --query "rust async runtime" --engines duckduckgo --source tavily --max 15`}</code></pre>
@@ -115,8 +122,8 @@ scout-it multi-search --query "rust async runtime" --engines duckduckgo --source
       <ul>
         <li><strong>Credential-gated</strong> — each provider checks for its API key in <code>~/.scout-it/credentials.json</code> (set via <code>scout-it config</code>). When the key is missing, the provider is <strong>skipped with a clear message</strong> telling you how to enable it. The rest of the pipeline (DuckDuckGo + any other sources) continues unaffected.</li>
         <li><strong>Error isolation</strong> — rate-limit (429 / quota), auth (401/403), and network errors are caught per-provider. The failing provider returns no results and prints a concise error; the others continue.</li>
-        <li><strong>No truncation</strong> — content from the APIs (Tavily chunks, Exa highlights, Firecrawl markdown) is preserved in full on the <code>content</code> field, so the semantic ranker and the final output see everything.</li>
-        <li><strong>Image support varies</strong> — Tavily and Firecrawl support <code>image-search</code>. Exa does <strong>not</strong>; on <code>image-search</code>, exa is silently skipped even when listed in <code>--source</code>.</li>
+        <li><strong>No truncation</strong> — the <strong>complete provider payload</strong> is preserved untruncated in the output via dedicated passthrough fields: <code>api_content</code> (the full content: Tavily chunks, Exa text, Firecrawl markdown, Langsearch summary, Linkup source snippets, Serper snippet) and <code>api_metadata</code> (the full metadata dict: Tavily answer/score, Exa highlights/author, Firecrawl structured_json/favicon, Serper thumbnail/channel, etc.), plus <code>api_authority_score</code> and <code>api_timestamp</code>. These appear <strong>alongside</strong> the independently extracted <code>cleaned_content</code>, so consumers get both the provider's own content and the re-fetched page content. Available in both snippets mode (<code>--snippets</code>) and full extraction mode. Any new <code>--source</code> provider added in future automatically gets this preservation for free.</li>
+        <li><strong>Search-type support varies</strong> — Tavily (web/news/image/multi), Exa (web/news/multi, no image/video), Firecrawl (web/news/image/multi), Linkup (web/image/multi), Langsearch (web/multi), Serper (web/news/image/video/multi — the only one supporting video). Providers that don't support the search type you're running are silently skipped even when listed in <code>--source</code>.</li>
         <li><strong>Parallel</strong> — the API providers are fetched in parallel with each other and with DuckDuckGo, then merged and ranked together.</li>
       </ul>
     </DocsLayout>

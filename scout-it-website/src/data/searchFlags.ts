@@ -33,7 +33,7 @@ export const webSearchFlags: FlagGroup = {
     { flag: '--safesearch', arg: '<level>', description: 'Safe search mode: on, moderate, off (default: moderate).' },
     { flag: '--timelimit', arg: '<range>', description: 'DuckDuckGo time limit: d (day), w (week), m (month), y (year).' },
     { flag: '--backend', arg: '<backend>', description: 'DDGS backend: auto, html, lite (default: auto).' },
-    { flag: '--source', arg: '<list>', description: 'Comma-separated parallel discovery streams alongside DuckDuckGo: "wikimedia" (Wikimedia), "tavily", "exa", "firecrawl" (API search providers, need API keys via `scout-it config`). Example: --source wikimedia,tavily.' },
+    { flag: '--source', arg: '<list>', description: 'Comma-separated parallel discovery streams alongside DuckDuckGo: "wikimedia" (Wikimedia), "tavily", "exa", "firecrawl", "linkup", "langsearch", "serper" (API search providers, need API keys via `scout-it config`). Example: --source wikimedia,tavily,serper.' },
     { flag: '--category', arg: '<categories...>', description: 'Category-specific RSS feeds to include (ai, engineering, cloud, devops, research, security, startups, etc.). Multiple allowed, e.g. --category ai cloud. Merged with DuckDuckGo results.' },
     { flag: '--no-retry-on-zero', description: 'Disable retries when 0 successful extractions (retries are on by default).' },
     { flag: '--retry-attempts', arg: '<n>', description: 'Retry attempts when 0 successful extractions (default: 2).' },
@@ -48,7 +48,7 @@ export const webSearchFlags: FlagGroup = {
     { flag: '--no-js-fallback', description: 'Disable the automatic Playwright fallback for blocked/failed page fetches.' },
     { flag: '--semantic', description: 'Re-rank results by semantic relevance (hybrid BM25+dense-vector + cross-encoder). Needs: pip install sentence-transformers torch.' },
   ],
-  example: 'scout-it web-search --query "machine learning" --max 5\nscout-it web-search --query "kubernetes" --category devops --snippets\nscout-it web-search --query "transformer architecture" --sources openalex,arxiv --semantic -m 5\nscout-it web-search --query "AI regulation" --source wikimedia,tavily -m 15',
+  example: 'scout-it web-search --query "machine learning" --max 5\nscout-it web-search --query "kubernetes" --category devops --snippets\nscout-it web-search --query "transformer architecture" --sources openalex,arxiv --semantic -m 5\nscout-it web-search --query "AI regulation" --source wikimedia,tavily,serper -m 15',
 }
 
 export const newsSearchFlags: FlagGroup = {
@@ -68,7 +68,7 @@ export const newsSearchFlags: FlagGroup = {
     { flag: '--safesearch', arg: '<level>', description: 'Safe search mode: on, moderate, off (default: moderate).' },
     { flag: '--timelimit', arg: '<range>', description: 'DuckDuckGo time limit: d, w, m, y.' },
     { flag: '--workers', arg: '<n>', description: 'Parallel workers for content extraction (default: 5).' },
-    { flag: '--source', arg: '<list>', description: 'Comma-separated parallel discovery streams alongside DuckDuckGo News: "google-news" (Google News RSS), "tavily", "exa", "firecrawl" (API search providers, need API keys via `scout-it config`). Example: --source google-news,tavily.' },
+    { flag: '--source', arg: '<list>', description: 'Comma-separated parallel discovery streams alongside DuckDuckGo News: "google-news" (Google News RSS), "tavily", "exa", "firecrawl", "serper" (API search providers, need API keys via `scout-it config`). Example: --source google-news,tavily,serper.' },
     { flag: '--category', arg: '<categories...>', description: 'News RSS categories (ai, startups, security, cloud, all). Multiple allowed, e.g. --category ai startups. Merged with DuckDuckGo News.' },
     { flag: '--no-retry-on-zero', description: 'Disable retries on zero results (retries are on by default).' },
     { flag: '--retry-attempts', arg: '<n>', description: 'Retry attempts on zero results (default: 2).' },
@@ -101,7 +101,7 @@ export const imageSearchFlags: FlagGroup = {
     { flag: '--markdown', description: 'Save results as Markdown (.md) instead of JSON.' },
     { flag: '--sources', arg: '<list>', description: 'Also search source plugins (comma-separated, e.g. internet_archive,openstreetmap) and merge with BM25F+vector re-ranking.' },
     { flag: '--auto-sources', description: 'Let the source-selection bandit pick the best sources for this query type. Overrides --sources.' },
-    { flag: '--source', arg: '<list>', description: 'Comma-separated API image search providers alongside DuckDuckGo Images: "tavily", "firecrawl" (need API keys via `scout-it config`). Example: --source tavily,firecrawl.' },
+    { flag: '--source', arg: '<list>', description: 'Comma-separated API image search providers alongside DuckDuckGo Images: "tavily", "firecrawl", "linkup" (need API keys via `scout-it config`). Example: --source tavily,firecrawl,linkup.' },
     { flag: '--download, -d', description: 'Download images to disk.' },
     { flag: '--download-dir', arg: '<path>', description: 'Download directory (default: .scout-it/downloaded_images).' },
     { flag: '--region', arg: '<region>', description: 'DuckDuckGo region (default: us-en; example: us-en, wt-wt).' },
@@ -143,6 +143,7 @@ export const videoSearchFlags: FlagGroup = {
     { flag: '--resolution', arg: '<res>', description: 'Video resolution filter: high, standard.' },
     { flag: '--duration', arg: '<duration>', description: 'Video duration filter: short, medium, long.' },
     { flag: '--license-videos', arg: '<license>', description: 'Video license filter.' },
+    { flag: '--source', arg: '<list>', description: 'Comma-separated API video search providers alongside DuckDuckGo Videos: "serper" (Google Video SERP, needs SERPER_API_KEY via `scout-it config`). Example: --source serper.' },
     { flag: '--category', arg: '<categories...>', description: 'Video RSS categories to include (e.g. technology science news). Fetches YouTube channel RSS feeds alongside DuckDuckGo and ranks them together.' },
     { flag: '--rss', description: 'Include video RSS discovery even without --category (pulls a default set of YouTube channels).' },
     { flag: '--no-retry-on-zero', description: 'Disable retries when 0 results are found (retries are on by default).' },
@@ -277,7 +278,7 @@ export const sourcesFlags: FlagGroup = {
   id: 'sources',
   label: 'sources',
   usage: 'scout-it sources [--json]',
-  intro: 'List all source plugins available via the --sources flag on web-search, news-search, image-search, video-search, and multi-search. All sources are free or have free tiers (31 plugins: openalex, arxiv, crossref, semantic_scholar, huggingface, zenodo, wikidata, gdelt, internet_archive, and more). Three API search providers (tavily, exa, firecrawl) are separate — they run as parallel discovery streams via --source (singular).',
+  intro: 'List all source plugins available via the --sources flag on web-search, news-search, image-search, video-search, and multi-search. All sources are free or have free tiers (31 plugins: openalex, arxiv, crossref, semantic_scholar, huggingface, zenodo, wikidata, gdelt, internet_archive, and more). Six API search providers (tavily, exa, firecrawl, linkup, langsearch, serper) are separate — they run as parallel discovery streams via --source (singular).',
   flags: [
     { flag: '--json', description: 'Output as JSON instead of a formatted table.' },
   ],
@@ -292,6 +293,7 @@ export interface ApiSourceInfo {
   getKeyNote: string
   sdk: string
   supportsImage: boolean
+  supportsVideo: boolean
   blurb: string
 }
 
@@ -304,7 +306,8 @@ export const apiSourceProviders: ApiSourceInfo[] = [
     getKeyNote: '1,000 free searches / month',
     sdk: 'tavily-python',
     supportsImage: true,
-    blurb: 'AI-optimized web/news/image search with an "answer" summary and content chunks. Uses include_answer="advanced" (web), topic="news" (news), include_images=True (image), and include_images + include_favicon + include_usage (multi).',
+    supportsVideo: false,
+    blurb: 'AI-optimized web/news/image search with an "answer" summary and content chunks. Uses include_answer="advanced" (web), topic="news" (news), include_images=True (image), and include_images + include_favicon + include_usage (multi). The answer and full content chunks are preserved untruncated in the output via api_content + api_metadata.',
   },
   {
     name: 'exa',
@@ -314,7 +317,8 @@ export const apiSourceProviders: ApiSourceInfo[] = [
     getKeyNote: 'free tier available',
     sdk: 'exa-py',
     supportsImage: false,
-    blurb: 'Neural web/news search with highlights. Supports web, news (category="news"), and multi. Does NOT support image-search — exa is silently skipped on image-search even when listed in --source.',
+    supportsVideo: false,
+    blurb: 'Neural web/news search with highlights. Supports web, news (category="news"), and multi. Does NOT support image-search or video-search — exa is silently skipped on those even when listed in --source. Full text + highlights preserved via api_content + api_metadata.',
   },
   {
     name: 'firecrawl',
@@ -324,6 +328,40 @@ export const apiSourceProviders: ApiSourceInfo[] = [
     getKeyNote: 'free tier available',
     sdk: 'requests (Firecrawl v2 REST API)',
     supportsImage: true,
-    blurb: 'Web/news/image search with built-in page scraping. Supports all four search types via POST /v2/search with sources=["web"], ["news"], ["images"], or ["news","web","images"] (multi). No SDK required — uses requests.',
+    supportsVideo: false,
+    blurb: 'Web/news/image search with built-in page scraping. Supports all four search types via POST /v2/search with sources=["web"], ["news"], ["images"], or ["news","web","images"] (multi). No SDK required — uses requests. Full markdown + structured_json preserved via api_content + api_metadata.',
+  },
+  {
+    name: 'linkup',
+    searchTypes: ['web', 'image', 'multi'],
+    envVar: 'LINKUP_API_KEY',
+    getKeyUrl: 'https://linkup.so',
+    getKeyNote: 'free tier available',
+    sdk: 'linkup-sdk',
+    supportsImage: true,
+    supportsVideo: false,
+    blurb: 'AI web/image search via the linkup-sdk. Uses output_type="sourcedAnswer", depth="standard", include_inline_citations=True. Supports web, image (include_images=True), and multi. The sourced answer and full source snippets are preserved untruncated via api_content + api_metadata.',
+  },
+  {
+    name: 'langsearch',
+    searchTypes: ['web', 'multi'],
+    envVar: 'LANGSEARCH_API_KEY',
+    getKeyUrl: 'https://langsearch.com',
+    getKeyNote: 'free tier available',
+    sdk: 'requests (Langsearch REST API)',
+    supportsImage: false,
+    supportsVideo: false,
+    blurb: 'Web/multi search via the Langsearch REST API (POST /v1/web-search). Both web and multi hit the same endpoint. Response includes a rich summary field (preserved as api_content) alongside the standard snippet, so consumers get the full Langsearch content untruncated.',
+  },
+  {
+    name: 'serper',
+    searchTypes: ['web', 'news', 'image', 'video', 'multi'],
+    envVar: 'SERPER_API_KEY',
+    getKeyUrl: 'https://serper.dev',
+    getKeyNote: '2,500 free searches / month',
+    sdk: 'requests (Serper.dev REST API)',
+    supportsImage: true,
+    supportsVideo: true,
+    blurb: 'Google SERP search via the Serper.dev REST API (POST to /search, /news, /images, /videos). The only --source provider that supports video-search. Full snippet + metadata (thumbnail, channel, date) preserved via api_content + api_metadata. Multi uses the batch JSON-array payload form.',
   },
 ]

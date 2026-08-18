@@ -39,7 +39,7 @@ export default function DocsHome() {
         <li><strong>Resilient fetching</strong> — a shared three-tier fallback chain (requests → Playwright → last-resort request) behind every page fetch</li>
         <li><strong>Zero-result retry</strong> — web, image, news, and video search all retry with progressively relaxed filters if the first attempt comes back empty</li>
         <li><strong>Multi-engine search</strong> — DuckDuckGo needs no setup; Brave, Google, Bing, Yahoo, Baidu, and Yandex plug in via API keys</li>
-        <li><strong>API search providers</strong> — Tavily, Exa, and Firecrawl run as parallel discovery streams via <code>--source</code> alongside DuckDuckGo, merging and ranking together (free tiers; skipped cleanly when no key is set)</li>
+        <li><strong>API search providers</strong> — Tavily, Exa, Firecrawl, Linkup, Langsearch, and Serper run as parallel discovery streams via <code>--source</code> alongside DuckDuckGo, merging and ranking together (free tiers; skipped cleanly when no key is set). The full provider content + metadata are preserved untruncated in the output.</li>
         <li><strong>Unified social search</strong> — one <code>social-search</code> command reaches Telegram, Discord, Reddit, and Instagram with capability-based fallback</li>
         <li><strong>GitHub mining without scraping</strong> — official REST + GraphQL, full diffs with structured <code>patch_lines</code>, discussions, code search</li>
         <li><strong>Stored credentials</strong> — an interactive wizard writes secrets once instead of re-exporting env vars every session</li>

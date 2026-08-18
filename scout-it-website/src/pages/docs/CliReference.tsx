@@ -31,7 +31,7 @@ const searchCommands = [
 const discoveryCommands = [
   { usage: '--source wikimedia', href: '/docs/web-search/', description: 'Wikimedia as a parallel discovery stream on web/news/image/multi-search.' },
   { usage: '--source google-news', href: '/docs/web-search/', description: 'Google News RSS as a parallel discovery stream on news-search.' },
-  { usage: '--source tavily,exa,firecrawl', href: '/docs/api-sources/', description: 'API search providers (Tavily, Exa, Firecrawl) as parallel discovery streams on web/news/image/multi-search. Need API keys via scout-it config.' },
+  { usage: '--source tavily,exa,firecrawl,linkup,langsearch,serper', href: '/docs/api-sources/', description: 'Six API search providers (Tavily, Exa, Firecrawl, Linkup, Langsearch, Serper) as parallel discovery streams on web/news/image/video/multi-search. Need API keys via scout-it config. Full provider content + metadata preserved untruncated in the output.' },
   { usage: '--sources openalex,arxiv,...', href: '/docs/wikipedia/', description: 'Free source plugins merged with BM25F+vector re-ranking (31 plugins). Use scout-it sources to list them.' },
   { usage: '--auto-sources', href: '/docs/web-search/', description: 'Let the source-selection bandit pick the best --sources for the query type.' },
 ]
@@ -81,7 +81,7 @@ scout-it web-search --help`}</code></pre>
       </div>
 
       <h2 id="discovery">discovery streams</h2>
-      <p>Two flags add extra results to the search commands. <code>--source</code> (singular) runs parallel discovery streams alongside DuckDuckGo (Wikimedia, Google News RSS, and the API providers). <code>--sources</code> (plural) runs the free source plugins through a BM25F+vector re-ranking pipeline. See <a href="/docs/api-sources/">API search sources</a> for the full Tavily/Exa/Firecrawl reference.</p>
+      <p>Two flags add extra results to the search commands. <code>--source</code> (singular) runs parallel discovery streams alongside DuckDuckGo (Wikimedia, Google News RSS, and the six API providers). <code>--sources</code> (plural) runs the free source plugins through a BM25F+vector re-ranking pipeline. See <a href="/docs/api-sources/">API search sources</a> for the full provider reference.</p>
       <div className="table-wrap">
         <table>
           <thead>

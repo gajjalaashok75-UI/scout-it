@@ -35,7 +35,7 @@ const features = [
   },
   {
     title: 'API search providers in parallel',
-    body: 'Tavily, Exa, and Firecrawl run alongside DuckDuckGo via --source, merging and ranking together. Free tiers, skipped cleanly when no key is set.',
+    body: 'Tavily, Exa, Firecrawl, Linkup, Langsearch, and Serper run alongside DuckDuckGo via --source, merging and ranking together. Free tiers, skipped cleanly when no key is set. Full provider content + metadata preserved untruncated in the output.',
     href: '/docs/api-sources/',
     link: 'API search sources',
   },

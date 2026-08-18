@@ -53,6 +53,7 @@ scout-it web-search --query "x" --markdown --out result.json # ERROR: conflictin
       <h2 id="web-shape">web search output (results.json)</h2>
       <p>Top-level: <code>query</code>, <code>search_type</code> (<code>"web"</code>), <code>parameters</code>, <code>stats</code>, <code>structured_results</code> (list).</p>
       <p>Each item in <code>structured_results</code> includes: <code>title</code>, <code>url</code>, <code>final_url</code>, <code>cleaned_content</code>, <code>paragraphs</code>, <code>content_sections</code>, <code>top_keywords</code>, <code>readability_metrics</code>, <code>quality_signals</code>, <code>content_quality_score</code>. News search shares this same shape with <code>search_type: "news"</code>.</p>
+      <p>When a result came from an API <code>--source</code> provider (tavily, exa, firecrawl, linkup, langsearch, serper), four extra passthrough fields carry the <strong>complete, untruncated</strong> provider payload alongside <code>cleaned_content</code>: <code>api_content</code> (full provider content), <code>api_metadata</code> (full provider metadata dict), <code>api_authority_score</code>, and <code>api_timestamp</code>. These let consumers read the provider's own content without re-fetching the page.</p>
 
       <h2 id="image-shape">image search output (image_search_results.json)</h2>
       <p>Top-level: <code>query</code>, <code>search_type</code> (<code>"image"</code>), <code>parameters</code>, <code>stats</code>, <code>image_results</code>.</p>
