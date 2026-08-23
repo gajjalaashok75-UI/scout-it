@@ -149,9 +149,13 @@ def get_arms(domain: str, db_path: Optional[Path] = None) -> List[Dict[str, Any]
         ).fetchall()
     return [
         {
-            "tier": r[0], "proxy_id": r[1], "fingerprint_profile": r[2],
-            "successes": r[3] or 0, "failures": r[4] or 0,
-            "avg_latency_ms": r[5], "last_seen": r[6],
+            "tier": r[0],
+            "proxy_id": r[1],
+            "fingerprint_profile": r[2],
+            "successes": r[3] or 0,
+            "failures": r[4] or 0,
+            "avg_latency_ms": r[5],
+            "last_seen": r[6],
         }
         for r in rows
     ]
@@ -181,7 +185,8 @@ def get_domain_stats(domain: str, db_path: Optional[Path] = None) -> Dict[str, A
         "overall_success_rate": round(total_success / total_attempts, 3) if total_attempts else 0.0,
         "arm_count": len(arms),
         "best_arm": {
-            "tier": best["tier"], "proxy_id": best["proxy_id"],
+            "tier": best["tier"],
+            "proxy_id": best["proxy_id"],
             "fingerprint_profile": best["fingerprint_profile"],
             "success_rate": round(_rate(best), 3),
             "avg_latency_ms": best["avg_latency_ms"],
@@ -192,7 +197,9 @@ def get_domain_stats(domain: str, db_path: Optional[Path] = None) -> Dict[str, A
 
 def all_known_domains(db_path: Optional[Path] = None) -> List[str]:
     with _connect(db_path) as conn:
-        rows = conn.execute("SELECT DISTINCT domain FROM strategy_outcomes ORDER BY domain").fetchall()
+        rows = conn.execute(
+            "SELECT DISTINCT domain FROM strategy_outcomes ORDER BY domain"
+        ).fetchall()
     return [r[0] for r in rows]
 
 
@@ -209,4 +216,7 @@ def reset_domain(domain: str, db_path: Optional[Path] = None) -> int:
 def export_all(db_path: Optional[Path] = None) -> Dict[str, Any]:
     """Full dump of the strategy cache for `--export-stats json`."""
     domains = all_known_domains(db_path)
-    return {"domain_count": len(domains), "domains": {d: get_domain_stats(d, db_path) for d in domains}}
+    return {
+        "domain_count": len(domains),
+        "domains": {d: get_domain_stats(d, db_path) for d in domains},
+    }

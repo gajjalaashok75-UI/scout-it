@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -70,30 +70,33 @@ class EuropePmcPlugin(SourcePlugin):
                 if name:
                     authors.append(name)
 
-            results.append(make_result(
-                id=pmcid or pmid or doi,
-                source="europe_pmc",
-                url=url_val,
-                title=title,
-                snippet=abstract,
-                content="",
-                content_type="academic",
-                timestamp=item.get("firstPublicationDate", ""),
-                authority_score=authority,
-                lang="en",
-                metadata={
-                    "doi": doi,
-                    "pmid": pmid,
-                    "pmcid": pmcid,
-                    "authors": authors,
-                    "journal": item.get("journalTitle", ""),
-                    "cited_by_count": cited,
-                    "is_open_access": item.get("inEPMC", "N") == "Y",
-                },
-            ))
+            results.append(
+                make_result(
+                    id=pmcid or pmid or doi,
+                    source="europe_pmc",
+                    url=url_val,
+                    title=title,
+                    snippet=abstract,
+                    content="",
+                    content_type="academic",
+                    timestamp=item.get("firstPublicationDate", ""),
+                    authority_score=authority,
+                    lang="en",
+                    metadata={
+                        "doi": doi,
+                        "pmid": pmid,
+                        "pmcid": pmcid,
+                        "authors": authors,
+                        "journal": item.get("journalTitle", ""),
+                        "cited_by_count": cited,
+                        "is_open_access": item.get("inEPMC", "N") == "Y",
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = EuropePmcPlugin()
 register(PLUGIN)

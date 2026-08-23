@@ -16,7 +16,6 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 
-import requests
 from bs4 import BeautifulSoup
 
 from .. import __version__ as _VERSION
@@ -44,6 +43,7 @@ _USER_AGENTS = [
 
 def _ua() -> str:
     import random
+
     return random.choice(_USER_AGENTS)
 
 
@@ -75,6 +75,7 @@ def _normalize_channel(channel: str) -> str:
         channel = channel[1:]
     if channel.startswith("http"):
         from urllib.parse import urlparse
+
         path = urlparse(channel).path or ""
         # /s/durov -> durov ; /durov -> durov ; /durov/123 -> durov
         channel = path.lstrip("/")
@@ -108,6 +109,7 @@ def _looks_like_not_found(html: str, soup: BeautifulSoup) -> bool:
 def _parse_channel_meta(soup: BeautifulSoup) -> Dict[str, Any]:
     """Channel-level metadata (title/description/subscribers/verified/avatar)
     ported from tchan.parse_info + notoken channel_metadata extraction."""
+
     def _meta(prop: str) -> Optional[str]:
         tag = soup.select_one(f"meta[property='{prop}']")
         return tag.get("content") if tag else None
@@ -118,8 +120,11 @@ def _parse_channel_meta(soup: BeautifulSoup) -> Dict[str, Any]:
         "description": _meta("og:description"),
         "image_url": _meta("og:image"),
         "subscribers": None,
-        "verified": bool(soup.select_one(".tgme_channel_info_header i.verified-icon, "
-                                          ".tgme_page_title i.verified-icon")),
+        "verified": bool(
+            soup.select_one(
+                ".tgme_channel_info_header i.verified-icon, " ".tgme_page_title i.verified-icon"
+            )
+        ),
     }
     # Subscriber / photos / videos / links counters.
     for counter in soup.select(".tgme_channel_info_counter"):
@@ -146,6 +151,7 @@ def _parse_channel_meta(soup: BeautifulSoup) -> Dict[str, Any]:
 # Parsers (public t.me/s/<channel> HTML)
 # =====================================================================
 
+
 def _parse_telegram_primary(html: str, max_results: int) -> Dict[str, Any]:
     """Primary parser: fast, covers the common case."""
     soup = BeautifulSoup(html, "html.parser")
@@ -159,16 +165,18 @@ def _parse_telegram_primary(html: str, max_results: int) -> Dict[str, Any]:
         date_el = msg.select_one("time")
         views_el = msg.select_one(".tgme_widget_message_views")
         post_link = msg.get("data-post")
-        posts.append({
-            "id": post_link,
-            "url": f"https://t.me/{post_link}" if post_link else None,
-            "text": text_el.get_text("\n", strip=True) if text_el else "",
-            "date": date_el.get("datetime") if date_el else None,
-            "views": views_el.get_text(strip=True) if views_el else None,
-            "views_count": _convert_count(views_el.get_text(strip=True) if views_el else None),
-            "has_photo": bool(msg.select_one(".tgme_widget_message_photo_wrap")),
-            "has_video": bool(msg.select_one(".tgme_widget_message_video_wrap")),
-        })
+        posts.append(
+            {
+                "id": post_link,
+                "url": f"https://t.me/{post_link}" if post_link else None,
+                "text": text_el.get_text("\n", strip=True) if text_el else "",
+                "date": date_el.get("datetime") if date_el else None,
+                "views": views_el.get_text(strip=True) if views_el else None,
+                "views_count": _convert_count(views_el.get_text(strip=True) if views_el else None),
+                "has_photo": bool(msg.select_one(".tgme_widget_message_photo_wrap")),
+                "has_video": bool(msg.select_one(".tgme_widget_message_video_wrap")),
+            }
+        )
 
     meta = _parse_channel_meta(soup)
 
@@ -197,7 +205,9 @@ def _parse_telegram_enhanced(html: str, max_results: int) -> Dict[str, Any]:
 
     seen_ids = set()
     posts = []
-    candidates = soup.select(".tgme_widget_message_wrap .tgme_widget_message, .tgme_widget_message[data-post]")
+    candidates = soup.select(
+        ".tgme_widget_message_wrap .tgme_widget_message, .tgme_widget_message[data-post]"
+    )
     for msg in candidates:
         post_link = msg.get("data-post")
         if post_link in seen_ids:
@@ -238,21 +248,23 @@ def _parse_telegram_enhanced(html: str, max_results: int) -> Dict[str, Any]:
 
         preview_link_el = msg.select_one(".tgme_widget_message_link_preview")
 
-        posts.append({
-            "id": post_link,
-            "url": f"https://t.me/{post_link}" if post_link else None,
-            "type": msg_type,
-            "text": text,
-            "date": date_el.get("datetime") if date_el else None,
-            "views": views_el.get_text(strip=True) if views_el else None,
-            "views_count": _convert_count(views_el.get_text(strip=True) if views_el else None),
-            "edited": edited,
-            "author": author_el.get_text(strip=True) if author_el else None,
-            "forwarded_from": forwarded_el.get_text(strip=True) if forwarded_el else None,
-            "preview_url": preview_link_el.get("href") if preview_link_el else None,
-            "has_photo": bool(msg.select_one(".tgme_widget_message_photo_wrap")),
-            "has_video": bool(msg.select_one(".tgme_widget_message_video_wrap")),
-        })
+        posts.append(
+            {
+                "id": post_link,
+                "url": f"https://t.me/{post_link}" if post_link else None,
+                "type": msg_type,
+                "text": text,
+                "date": date_el.get("datetime") if date_el else None,
+                "views": views_el.get_text(strip=True) if views_el else None,
+                "views_count": _convert_count(views_el.get_text(strip=True) if views_el else None),
+                "edited": edited,
+                "author": author_el.get_text(strip=True) if author_el else None,
+                "forwarded_from": forwarded_el.get_text(strip=True) if forwarded_el else None,
+                "preview_url": preview_link_el.get("href") if preview_link_el else None,
+                "has_photo": bool(msg.select_one(".tgme_widget_message_photo_wrap")),
+                "has_video": bool(msg.select_one(".tgme_widget_message_video_wrap")),
+            }
+        )
 
     meta = _parse_channel_meta(soup)
 
@@ -270,6 +282,7 @@ def _parse_telegram_enhanced(html: str, max_results: int) -> Dict[str, Any]:
 # =====================================================================
 # Core fetch functions (kept as module-level for backwards compatibility)
 # =====================================================================
+
 
 def telegram_channel(
     channel: str,
@@ -300,7 +313,10 @@ def telegram_channel(
 
     channel = _normalize_channel(channel)
     if not channel:
-        return {"error": "invalid_channel", "error_message": "Provide a channel username, e.g. 'durov' or 't.me/durov'."}
+        return {
+            "error": "invalid_channel",
+            "error_message": "Provide a channel username, e.g. 'durov' or 't.me/durov'.",
+        }
 
     base_url = f"https://t.me/s/{channel}"
     last_html: Optional[str] = None
@@ -315,7 +331,6 @@ def telegram_channel(
 
     pages = max(1, (max_results + 19) // 20) if max_results > 0 else 1
     for attempt in range(max(1, max_fetch_retries)):
-        fetched_any_page = False
         for _page in range(pages):
             if len(collected) >= max_results:
                 break
@@ -329,7 +344,6 @@ def telegram_channel(
                 break
 
             last_html = outcome["html"]
-            fetched_any_page = True
             parsed = _parse_telegram_primary(last_html, max_results)
             soup = parsed.pop("_soup", None)
             channel_meta = parsed.get("_meta", channel_meta) or channel_meta
@@ -348,8 +362,10 @@ def telegram_channel(
                         collected.append(p)
                         existing_ids.add(p["id"])
                 if not channel_meta:
-                    channel_meta = {"title": parsed.get("title"),
-                                    "description": parsed.get("description")}
+                    channel_meta = {
+                        "title": parsed.get("title"),
+                        "description": parsed.get("description"),
+                    }
 
                 # Backwards pagination: fetch posts older than the oldest id
                 # we currently hold (ported from tchan's ?before= logic).
@@ -368,6 +384,7 @@ def telegram_channel(
                     url = f"{base_url}?before={min_id}"
                 elif before_link:
                     from urllib.parse import urljoin
+
                     url = urljoin("https://t.me", before_link)
                     if "?before=" not in url:
                         url = f"{base_url}?before={min_id}" if min_id else None
@@ -386,11 +403,15 @@ def telegram_channel(
         time.sleep(0.5 * (attempt + 1))
 
     if not_found:
-        return {"error": "channel_not_found",
-                "error_message": f"Channel '@{channel}' does not exist, is private, or has no public preview."}
+        return {
+            "error": "channel_not_found",
+            "error_message": f"Channel '@{channel}' does not exist, is private, or has no public preview.",
+        }
     if blocked:
-        return {"error": "blocked",
-                "error_message": f"Telegram returned a block/error page for '@{channel}' (Cloudflare/rate-limit). Try again later."}
+        return {
+            "error": "blocked",
+            "error_message": f"Telegram returned a block/error page for '@{channel}' (Cloudflare/rate-limit). Try again later.",
+        }
 
     if not collected and last_html is not None:
         # Primary parser found 0 posts across every retry -- fall back to the
@@ -402,8 +423,10 @@ def telegram_channel(
         collected = enhanced.get("posts", [])
         parser_used = "enhanced_fallback" if collected else "none_found"
         if not channel_meta:
-            channel_meta = {"title": enhanced.get("title"),
-                            "description": enhanced.get("description")}
+            channel_meta = {
+                "title": enhanced.get("title"),
+                "description": enhanced.get("description"),
+            }
 
     if not collected:
         # A channel that exists (has a preview header) but genuinely has no
@@ -421,8 +444,11 @@ def telegram_channel(
                 "posts": [],
                 "parser_used": "none_found",
             }
-        return {"error": "fetch_failed",
-                "error_message": f"Could not load posts for {base_url} after {max_fetch_retries} attempts: " + "; ".join(last_errors[-3:])}
+        return {
+            "error": "fetch_failed",
+            "error_message": f"Could not load posts for {base_url} after {max_fetch_retries} attempts: "
+            + "; ".join(last_errors[-3:]),
+        }
 
     collected = collected[:max_results] if max_results else collected
     return {
@@ -450,7 +476,7 @@ def _min_post_id(posts: List[Dict[str, Any]]) -> Optional[int]:
     return min(ids) if ids else None
 
 
-_TME_CHANNEL_RE = re.compile(r't\.me/(?:s/)?([A-Za-z0-9_]{5,32})/?$')
+_TME_CHANNEL_RE = re.compile(r"t\.me/(?:s/)?([A-Za-z0-9_]{5,32})/?$")
 
 
 def telegram_search(
@@ -482,31 +508,37 @@ def telegram_search(
         return {"error": "invalid_query", "error_message": "Provide a search query."}
 
     ddg_results, _stats = _ddgs_list_search_with_retry(
-        'text', query=f"site:t.me {query}", max_results=max_channels * 3,
-        options={'region': 'us-en', 'safesearch': 'moderate'},
+        "text",
+        query=f"site:t.me {query}",
+        max_results=max_channels * 3,
+        options={"region": "us-en", "safesearch": "moderate"},
     )
 
     seen_channels = []
     for r in ddg_results:
-        url = r.get('href', '') or r.get('url', '')
+        url = r.get("href", "") or r.get("url", "")
         match = _TME_CHANNEL_RE.search(url)
         if match:
             username = match.group(1)
-            if username not in seen_channels and username.lower() not in ('s', 'joinchat'):
+            if username not in seen_channels and username.lower() not in ("s", "joinchat"):
                 seen_channels.append(username)
         if len(seen_channels) >= max_channels:
             break
 
     if not seen_channels:
         return {
-            "query": query, "channel_count": 0, "channels": [],
+            "query": query,
+            "channel_count": 0,
+            "channels": [],
             "note": "No public t.me channels found matching this query in search results. Try a broader query, "
-                    "or use --channel directly if you already know the channel's username.",
+            "or use --channel directly if you already know the channel's username.",
         }
 
     channels = []
     for username in seen_channels:
-        preview = telegram_channel(username, max_results=posts_per_channel, max_fetch_retries=max_fetch_retries)
+        preview = telegram_channel(
+            username, max_results=posts_per_channel, max_fetch_retries=max_fetch_retries
+        )
         if "error" in preview:
             channels.append({"channel": username, "error": preview["error_message"]})
         else:
@@ -519,6 +551,7 @@ def telegram_search(
 # Provider (capability-aware wrapper)
 # =====================================================================
 
+
 class TelegramProvider(SocialProvider):
     platform = "telegram"
     SUPPORTED_CAPABILITIES = {CAP_QUERY, CAP_CHANNEL}
@@ -529,8 +562,9 @@ class TelegramProvider(SocialProvider):
 
         if capability == CAP_CHANNEL:
             channel = params["channel"]
-            raw = telegram_channel(channel, max_results=max_results,
-                                   max_fetch_retries=max_fetch_retries)
+            raw = telegram_channel(
+                channel, max_results=max_results, max_fetch_retries=max_fetch_retries
+            )
 
             # Channel-failure -> query fallback (user-requested behaviour):
             # if the named channel doesn't exist / is private / blocked /
@@ -541,7 +575,8 @@ class TelegramProvider(SocialProvider):
             if "error" in raw or not raw.get("posts"):
                 fallback_query = params.get("query") or channel
                 fb = telegram_search(
-                    fallback_query, max_channels=max_results,
+                    fallback_query,
+                    max_channels=max_results,
                     posts_per_channel=params.get("posts_per_channel", 3),
                     max_fetch_retries=max_fetch_retries,
                 )
@@ -550,91 +585,131 @@ class TelegramProvider(SocialProvider):
                     if "error" in ch:
                         continue
                     for p in ch.get("posts", []):
-                        fb_items.append(normalize_item(
-                            self.platform,
-                            author=ch.get("channel"),
-                            content=(p.get("text") or "")[:1000],
-                            url=p.get("url"),
-                            timestamp=p.get("date"),
-                            metadata={
-                                "channel": ch.get("channel"),
-                                "title": ch.get("title"),
-                                "subscribers": ch.get("subscribers"),
-                                "views": p.get("views"),
-                                "views_count": p.get("views_count"),
-                                "type": p.get("type"),
-                                "id": p.get("id"),
-                            },
-                        ))
-                note = (f"channel @{channel} not found/empty; fell back to "
-                        f"query search '{fallback_query}'")
+                        fb_items.append(
+                            normalize_item(
+                                self.platform,
+                                author=ch.get("channel"),
+                                content=(p.get("text") or "")[:1000],
+                                url=p.get("url"),
+                                timestamp=p.get("date"),
+                                metadata={
+                                    "channel": ch.get("channel"),
+                                    "title": ch.get("title"),
+                                    "subscribers": ch.get("subscribers"),
+                                    "views": p.get("views"),
+                                    "views_count": p.get("views_count"),
+                                    "type": p.get("type"),
+                                    "id": p.get("id"),
+                                },
+                            )
+                        )
+                note = (
+                    f"channel @{channel} not found/empty; fell back to "
+                    f"query search '{fallback_query}'"
+                )
                 caps = [CAP_CHANNEL, CAP_QUERY]
                 if fb_items:
-                    return provider_result(self.platform, query=fallback_query,
-                                           results=fb_items, capabilities_used=caps,
-                                           raw=fb, note=note)
+                    return provider_result(
+                        self.platform,
+                        query=fallback_query,
+                        results=fb_items,
+                        capabilities_used=caps,
+                        raw=fb,
+                        note=note,
+                    )
                 # Neither channel nor fallback yielded anything.
                 err = raw.get("error", "no_posts") if "error" in raw else "no_posts"
-                errmsg = (raw.get("error_message") if "error" in raw
-                          else f"Channel '@{channel}' returned no posts.")
-                return provider_result(self.platform, query=fallback_query, error=err,
-                                       error_message=errmsg + f" Query fallback for '{fallback_query}' also returned nothing.",
-                                       capabilities_used=caps, raw={"channel_attempt": raw, "query_attempt": fb},
-                                       note=note)
+                errmsg = (
+                    raw.get("error_message")
+                    if "error" in raw
+                    else f"Channel '@{channel}' returned no posts."
+                )
+                return provider_result(
+                    self.platform,
+                    query=fallback_query,
+                    error=err,
+                    error_message=errmsg
+                    + f" Query fallback for '{fallback_query}' also returned nothing.",
+                    capabilities_used=caps,
+                    raw={"channel_attempt": raw, "query_attempt": fb},
+                    note=note,
+                )
 
-            items = [normalize_item(
+            items = [
+                normalize_item(
+                    self.platform,
+                    author=raw.get("channel"),
+                    content=(p.get("text") or "")[:1000],
+                    url=p.get("url"),
+                    timestamp=p.get("date"),
+                    metadata={
+                        "channel": raw.get("channel"),
+                        "title": raw.get("title"),
+                        "subscribers": raw.get("subscribers"),
+                        "verified": raw.get("verified"),
+                        "views": p.get("views"),
+                        "views_count": p.get("views_count"),
+                        "type": p.get("type"),
+                        "has_photo": p.get("has_photo"),
+                        "has_video": p.get("has_video"),
+                        "id": p.get("id"),
+                    },
+                )
+                for p in raw.get("posts", [])
+            ]
+            return provider_result(
                 self.platform,
-                author=raw.get("channel"),
-                content=(p.get("text") or "")[:1000],
-                url=p.get("url"),
-                timestamp=p.get("date"),
-                metadata={
-                    "channel": raw.get("channel"),
-                    "title": raw.get("title"),
-                    "subscribers": raw.get("subscribers"),
-                    "verified": raw.get("verified"),
-                    "views": p.get("views"),
-                    "views_count": p.get("views_count"),
-                    "type": p.get("type"),
-                    "has_photo": p.get("has_photo"),
-                    "has_video": p.get("has_video"),
-                    "id": p.get("id"),
-                },
-            ) for p in raw.get("posts", [])]
-            return provider_result(self.platform, query=None, results=items,
-                                   capabilities_used=[CAP_CHANNEL], raw=raw,
-                                   note=f"channel @{raw.get('channel')}")
+                query=None,
+                results=items,
+                capabilities_used=[CAP_CHANNEL],
+                raw=raw,
+                note=f"channel @{raw.get('channel')}",
+            )
 
         # capability == CAP_QUERY
         posts_per_channel = params.get("posts_per_channel", 3)
         raw = telegram_search(
-            params["query"], max_channels=max_results,
-            posts_per_channel=posts_per_channel, max_fetch_retries=max_fetch_retries,
+            params["query"],
+            max_channels=max_results,
+            posts_per_channel=posts_per_channel,
+            max_fetch_retries=max_fetch_retries,
         )
         if "error" in raw:
-            return provider_result(self.platform, query=params["query"], error=raw["error"],
-                                   error_message=raw["error_message"],
-                                   capabilities_used=[CAP_QUERY], raw=raw)
+            return provider_result(
+                self.platform,
+                query=params["query"],
+                error=raw["error"],
+                error_message=raw["error_message"],
+                capabilities_used=[CAP_QUERY],
+                raw=raw,
+            )
         items: List[Dict[str, Any]] = []
         for ch in raw.get("channels", []):
             if "error" in ch:
                 continue
             for p in ch.get("posts", []):
-                items.append(normalize_item(
-                    self.platform,
-                    author=ch.get("channel"),
-                    content=(p.get("text") or "")[:1000],
-                    url=p.get("url"),
-                    timestamp=p.get("date"),
-                    metadata={
-                        "channel": ch.get("channel"),
-                        "title": ch.get("title"),
-                        "subscribers": ch.get("subscribers"),
-                        "views": p.get("views"),
-                        "views_count": p.get("views_count"),
-                        "type": p.get("type"),
-                        "id": p.get("id"),
-                    },
-                ))
-        return provider_result(self.platform, query=params["query"], results=items,
-                               capabilities_used=[CAP_QUERY], raw=raw)
+                items.append(
+                    normalize_item(
+                        self.platform,
+                        author=ch.get("channel"),
+                        content=(p.get("text") or "")[:1000],
+                        url=p.get("url"),
+                        timestamp=p.get("date"),
+                        metadata={
+                            "channel": ch.get("channel"),
+                            "title": ch.get("title"),
+                            "subscribers": ch.get("subscribers"),
+                            "views": p.get("views"),
+                            "views_count": p.get("views_count"),
+                            "type": p.get("type"),
+                            "id": p.get("id"),
+                        },
+                    )
+                )
+        return provider_result(
+            self.platform,
+            query=params["query"],
+            results=items,
+            capabilities_used=[CAP_QUERY],
+            raw=raw,
+        )

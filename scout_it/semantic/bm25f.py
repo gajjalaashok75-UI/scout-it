@@ -180,9 +180,9 @@ def _levenshtein(a: str, b: str, max_dist: int = 2) -> int:
         for j in range(1, lb + 1):
             cost = 0 if a[i - 1] == b[j - 1] else 1
             curr[j] = min(
-                prev[j] + 1,        # deletion
-                curr[j - 1] + 1,    # insertion
-                prev[j - 1] + cost, # substitution
+                prev[j] + 1,  # deletion
+                curr[j - 1] + 1,  # insertion
+                prev[j - 1] + cost,  # substitution
             )
             if curr[j] < row_min:
                 row_min = curr[j]
@@ -283,9 +283,7 @@ class BM25FIndex:
         # Compute per-field idf (Lucene variant, always positive).
         for name in field_names:
             n = self._N
-            self._avgdl[name] = (
-                sum(self._fields[name]["len"]) / n if n > 0 else 0.0
-            )
+            self._avgdl[name] = sum(self._fields[name]["len"]) / n if n > 0 else 0.0
             self._fields[name]["idf"] = {
                 term: math.log(1.0 + (n - df + 0.5) / (df + 0.5))
                 for term, df in self._df[name].items()
@@ -320,9 +318,7 @@ class BM25FIndex:
                 matched_terms.add(term)
             else:
                 # Fuzzy: typo tolerance + prefix matching.
-                fuzzy_score = self._fuzzy_match(
-                    field_name, doc_idx, term
-                )
+                fuzzy_score = self._fuzzy_match(field_name, doc_idx, term)
                 if fuzzy_score > 0:
                     score += fuzzy_score * 0.5  # discount fuzzy matches
                     matched_terms.add(term)

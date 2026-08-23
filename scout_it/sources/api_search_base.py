@@ -31,7 +31,7 @@ import logging
 import threading
 from typing import Any, Dict, List, Optional
 
-from .base import SourcePlugin, SourceConfig, make_result
+from .base import SourcePlugin
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +174,7 @@ class ApiSearchSource(SourcePlugin):
 
 
 # ── Typed errors so the base class can classify failures ────────────────────
+
 
 class _ApiKeyError(Exception):
     """API rejected the key (401/403)."""

@@ -76,22 +76,24 @@ class DuckDuckGoEngine(SearchEngineBase):
     def search(self, query: str, max_results: int = 10, **kwargs) -> List[Dict[str, Any]]:
         from .extraction import _ddgs_list_search_with_retry
 
-        region = kwargs.get('region', 'us-en')
-        safesearch = kwargs.get('safesearch', 'moderate')
+        region = kwargs.get("region", "us-en")
+        safesearch = kwargs.get("safesearch", "moderate")
         results, _stats = _ddgs_list_search_with_retry(
-            'text',
+            "text",
             query=query,
             max_results=max_results,
-            options={'region': region, 'safesearch': safesearch},
+            options={"region": region, "safesearch": safesearch},
         )
         out = []
         for r in results:
-            out.append({
-                'title': r.get('title', ''),
-                'url': r.get('href', '') or r.get('url', ''),
-                'snippet': r.get('body', '') or r.get('description', ''),
-                'source': self.name,
-            })
+            out.append(
+                {
+                    "title": r.get("title", ""),
+                    "url": r.get("href", "") or r.get("url", ""),
+                    "snippet": r.get("body", "") or r.get("description", ""),
+                    "source": self.name,
+                }
+            )
         return out
 
     def setup_hint(self) -> str:
@@ -106,23 +108,25 @@ class BraveSearchEngine(SearchEngineBase):
     API_URL = "https://api.search.brave.com/res/v1/web/search"
 
     def is_configured(self) -> bool:
-        return bool(os.environ.get('BRAVE_API_KEY'))
+        return bool(os.environ.get("BRAVE_API_KEY"))
 
     def search(self, query: str, max_results: int = 10, **kwargs) -> List[Dict[str, Any]]:
-        api_key = os.environ.get('BRAVE_API_KEY', '')
-        headers = {'Accept': 'application/json', 'X-Subscription-Token': api_key}
-        params = {'q': query, 'count': min(max_results, 20)}
+        api_key = os.environ.get("BRAVE_API_KEY", "")
+        headers = {"Accept": "application/json", "X-Subscription-Token": api_key}
+        params = {"q": query, "count": min(max_results, 20)}
         resp = requests.get(self.API_URL, headers=headers, params=params, timeout=self.timeout)
         resp.raise_for_status()
         data = resp.json()
         out = []
-        for item in (data.get('web', {}) or {}).get('results', [])[:max_results]:
-            out.append({
-                'title': item.get('title', ''),
-                'url': item.get('url', ''),
-                'snippet': item.get('description', ''),
-                'source': self.name,
-            })
+        for item in (data.get("web", {}) or {}).get("results", [])[:max_results]:
+            out.append(
+                {
+                    "title": item.get("title", ""),
+                    "url": item.get("url", ""),
+                    "snippet": item.get("description", ""),
+                    "source": self.name,
+                }
+            )
         return out
 
     def setup_hint(self) -> str:
@@ -140,23 +144,25 @@ class BingSearchEngine(SearchEngineBase):
     API_URL = "https://api.bing.microsoft.com/v7.0/search"
 
     def is_configured(self) -> bool:
-        return bool(os.environ.get('BING_API_KEY'))
+        return bool(os.environ.get("BING_API_KEY"))
 
     def search(self, query: str, max_results: int = 10, **kwargs) -> List[Dict[str, Any]]:
-        api_key = os.environ.get('BING_API_KEY', '')
-        headers = {'Ocp-Apim-Subscription-Key': api_key}
-        params = {'q': query, 'count': min(max_results, 50)}
+        api_key = os.environ.get("BING_API_KEY", "")
+        headers = {"Ocp-Apim-Subscription-Key": api_key}
+        params = {"q": query, "count": min(max_results, 50)}
         resp = requests.get(self.API_URL, headers=headers, params=params, timeout=self.timeout)
         resp.raise_for_status()
         data = resp.json()
         out = []
-        for item in (data.get('webPages', {}) or {}).get('value', [])[:max_results]:
-            out.append({
-                'title': item.get('name', ''),
-                'url': item.get('url', ''),
-                'snippet': item.get('snippet', ''),
-                'source': self.name,
-            })
+        for item in (data.get("webPages", {}) or {}).get("value", [])[:max_results]:
+            out.append(
+                {
+                    "title": item.get("name", ""),
+                    "url": item.get("url", ""),
+                    "snippet": item.get("snippet", ""),
+                    "source": self.name,
+                }
+            )
         return out
 
     def setup_hint(self) -> str:
@@ -174,29 +180,37 @@ class GoogleCSEEngine(SearchEngineBase):
     API_URL = "https://www.googleapis.com/customsearch/v1"
 
     def is_configured(self) -> bool:
-        return bool(os.environ.get('GOOGLE_API_KEY')) and bool(os.environ.get('GOOGLE_CSE_ID'))
+        return bool(os.environ.get("GOOGLE_API_KEY")) and bool(os.environ.get("GOOGLE_CSE_ID"))
 
     def search(self, query: str, max_results: int = 10, **kwargs) -> List[Dict[str, Any]]:
-        api_key = os.environ.get('GOOGLE_API_KEY', '')
-        cse_id = os.environ.get('GOOGLE_CSE_ID', '')
+        api_key = os.environ.get("GOOGLE_API_KEY", "")
+        cse_id = os.environ.get("GOOGLE_CSE_ID", "")
         out: List[Dict[str, Any]] = []
         # Google CSE returns max 10 results per call; page via `start`.
         start = 1
         while len(out) < max_results and start <= 91:
-            params = {'key': api_key, 'cx': cse_id, 'q': query, 'start': start, 'num': min(10, max_results - len(out))}
+            params = {
+                "key": api_key,
+                "cx": cse_id,
+                "q": query,
+                "start": start,
+                "num": min(10, max_results - len(out)),
+            }
             resp = requests.get(self.API_URL, params=params, timeout=self.timeout)
             resp.raise_for_status()
             data = resp.json()
-            items = data.get('items', [])
+            items = data.get("items", [])
             if not items:
                 break
             for item in items:
-                out.append({
-                    'title': item.get('title', ''),
-                    'url': item.get('link', ''),
-                    'snippet': item.get('snippet', ''),
-                    'source': self.name,
-                })
+                out.append(
+                    {
+                        "title": item.get("title", ""),
+                        "url": item.get("link", ""),
+                        "snippet": item.get("snippet", ""),
+                        "source": self.name,
+                    }
+                )
             start += 10
         return out[:max_results]
 
@@ -217,29 +231,38 @@ class SerpApiEngine(SearchEngineBase):
     tier = 1
     API_URL = "https://serpapi.com/search"
     SUPPORTED_UNDERLYING_ENGINES = (
-        "google", "bing", "yahoo", "baidu", "yandex", "duckduckgo", "ecosia", "naver",
+        "google",
+        "bing",
+        "yahoo",
+        "baidu",
+        "yandex",
+        "duckduckgo",
+        "ecosia",
+        "naver",
     )
 
     def is_configured(self) -> bool:
-        return bool(os.environ.get('SERPAPI_KEY'))
+        return bool(os.environ.get("SERPAPI_KEY"))
 
     def search(self, query: str, max_results: int = 10, **kwargs) -> List[Dict[str, Any]]:
-        api_key = os.environ.get('SERPAPI_KEY', '')
-        underlying = kwargs.get('serpapi_engine', 'google')
+        api_key = os.environ.get("SERPAPI_KEY", "")
+        underlying = kwargs.get("serpapi_engine", "google")
         if underlying not in self.SUPPORTED_UNDERLYING_ENGINES:
-            underlying = 'google'
-        params = {'engine': underlying, 'q': query, 'api_key': api_key, 'num': max_results}
+            underlying = "google"
+        params = {"engine": underlying, "q": query, "api_key": api_key, "num": max_results}
         resp = requests.get(self.API_URL, params=params, timeout=self.timeout)
         resp.raise_for_status()
         data = resp.json()
         out = []
-        for item in data.get('organic_results', [])[:max_results]:
-            out.append({
-                'title': item.get('title', ''),
-                'url': item.get('link', ''),
-                'snippet': item.get('snippet', ''),
-                'source': f"serpapi:{underlying}",
-            })
+        for item in data.get("organic_results", [])[:max_results]:
+            out.append(
+                {
+                    "title": item.get("title", ""),
+                    "url": item.get("link", ""),
+                    "snippet": item.get("snippet", ""),
+                    "source": f"serpapi:{underlying}",
+                }
+            )
         return out
 
     def setup_hint(self) -> str:
@@ -266,16 +289,18 @@ class WikimediaEngine(SearchEngineBase):
     def search(self, query: str, max_results: int = 10, **kwargs) -> List[Dict[str, Any]]:
         from .wikimedia_source import wikimedia_search
 
-        project = kwargs.get('project', 'wikipedia')
+        project = kwargs.get("project", "wikipedia")
         results = wikimedia_search(query, max_results=max_results, project=project)
         out = []
         for r in results:
-            out.append({
-                'title': r.get('title', ''),
-                'url': r.get('href', '') or r.get('url', ''),
-                'snippet': r.get('body', ''),
-                'source': f"wikimedia:{project}",
-            })
+            out.append(
+                {
+                    "title": r.get("title", ""),
+                    "url": r.get("href", "") or r.get("url", ""),
+                    "snippet": r.get("body", ""),
+                    "source": f"wikimedia:{project}",
+                }
+            )
         return out
 
     def setup_hint(self) -> str:
@@ -283,12 +308,12 @@ class WikimediaEngine(SearchEngineBase):
 
 
 ENGINE_REGISTRY: Dict[str, type] = {
-    'duckduckgo': DuckDuckGoEngine,
-    'brave': BraveSearchEngine,
-    'bing': BingSearchEngine,
-    'google': GoogleCSEEngine,
-    'serpapi': SerpApiEngine,
-    'wikimedia': WikimediaEngine,
+    "duckduckgo": DuckDuckGoEngine,
+    "brave": BraveSearchEngine,
+    "bing": BingSearchEngine,
+    "google": GoogleCSEEngine,
+    "serpapi": SerpApiEngine,
+    "wikimedia": WikimediaEngine,
 }
 
 
@@ -297,12 +322,14 @@ def list_engines() -> List[Dict[str, Any]]:
     out = []
     for name, cls in ENGINE_REGISTRY.items():
         inst = cls()
-        out.append({
-            'name': name,
-            'tier': inst.tier,
-            'configured': inst.is_configured(),
-            'setup_hint': inst.setup_hint(),
-        })
+        out.append(
+            {
+                "name": name,
+                "tier": inst.tier,
+                "configured": inst.is_configured(),
+                "setup_hint": inst.setup_hint(),
+            }
+        )
     return out
 
 
@@ -320,7 +347,7 @@ def multi_engine_search(
     Unconfigured tier-1 engines are skipped (reported in ``stats['skipped']``,
     not treated as failures). Unknown engine names are reported the same way.
     """
-    engines = engines or ['duckduckgo']
+    engines = engines or ["duckduckgo"]
     start_time = time.time()
 
     runnable = []
@@ -328,11 +355,11 @@ def multi_engine_search(
     for name in engines:
         cls = ENGINE_REGISTRY.get(name)
         if cls is None:
-            skipped.append({'engine': name, 'reason': 'unknown engine'})
+            skipped.append({"engine": name, "reason": "unknown engine"})
             continue
         inst = cls(timeout=timeout)
         if not inst.is_configured():
-            skipped.append({'engine': name, 'reason': f'not configured — {inst.setup_hint()}'})
+            skipped.append({"engine": name, "reason": f"not configured — {inst.setup_hint()}"})
             continue
         runnable.append(inst)
 
@@ -358,7 +385,7 @@ def multi_engine_search(
     seen_urls = set()
     for name in engines:
         for item in per_engine_results.get(name, []):
-            url = (item.get('url') or '').strip().rstrip('/')
+            url = (item.get("url") or "").strip().rstrip("/")
             if dedupe and url and url in seen_urls:
                 continue
             if url:
@@ -366,16 +393,16 @@ def multi_engine_search(
             merged.append(item)
 
     return {
-        'query': query,
-        'merged_results': merged,
-        'per_engine': per_engine_results,
-        'stats': {
-            'engines_requested': engines,
-            'engines_run': [e.name for e in runnable],
-            'skipped': skipped,
-            'errors': per_engine_errors,
-            'total_before_dedupe': sum(len(v) for v in per_engine_results.values()),
-            'total_after_dedupe': len(merged),
-            'execution_time': time.time() - start_time,
+        "query": query,
+        "merged_results": merged,
+        "per_engine": per_engine_results,
+        "stats": {
+            "engines_requested": engines,
+            "engines_run": [e.name for e in runnable],
+            "skipped": skipped,
+            "errors": per_engine_errors,
+            "total_before_dedupe": sum(len(v) for v in per_engine_results.values()),
+            "total_after_dedupe": len(merged),
+            "execution_time": time.time() - start_time,
         },
     }

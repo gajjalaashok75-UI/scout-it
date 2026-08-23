@@ -6,12 +6,10 @@ building.
 """
 
 import hashlib
-import json
 import logging
-import re
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -78,7 +76,9 @@ def build_retry_session(
         allowed_methods=["GET"],
         respect_retry_after_header=True,
     )
-    adapter = HTTPAdapter(max_retries=retry, pool_connections=pool_connections, pool_maxsize=pool_maxsize)
+    adapter = HTTPAdapter(
+        max_retries=retry, pool_connections=pool_connections, pool_maxsize=pool_maxsize
+    )
     s.mount("http://", adapter)
     s.mount("https://", adapter)
     return s
@@ -115,7 +115,9 @@ def cached_request_text(
         rate_limiter.wait()
 
     try:
-        resp = session.get(url, headers=headers, timeout=timeout, proxies=proxy_info["requests_proxies"])
+        resp = session.get(
+            url, headers=headers, timeout=timeout, proxies=proxy_info["requests_proxies"]
+        )
         resp.raise_for_status()
         text = resp.text
         _rc.set(cache_key, text, content_type="rss", ttl_seconds=cache_ttl, extra={"url": url})

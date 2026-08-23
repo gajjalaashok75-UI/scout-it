@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -76,34 +76,37 @@ class JikanPlugin(SourcePlugin):
 
             authority = min(score / 10.0, 1.0) if score else 0.0
 
-            results.append(make_result(
-                id=mal_id,
-                source="jikan",
-                url=url_val,
-                title=title,
-                snippet=snippet,
-                content=synopsis[:500],
-                content_type="media",
-                timestamp=str(year),
-                authority_score=authority,
-                lang="en",
-                metadata={
-                    "title_japanese": title_jp,
-                    "score": score,
-                    "episodes": episodes,
-                    "status": status,
-                    "year": year,
-                    "season": season,
-                    "type": type_val,
-                    "genres": genres,
-                    "studios": studios,
-                    "image_url": image_url,
-                    "mal_id": mal_id,
-                },
-            ))
+            results.append(
+                make_result(
+                    id=mal_id,
+                    source="jikan",
+                    url=url_val,
+                    title=title,
+                    snippet=snippet,
+                    content=synopsis[:500],
+                    content_type="media",
+                    timestamp=str(year),
+                    authority_score=authority,
+                    lang="en",
+                    metadata={
+                        "title_japanese": title_jp,
+                        "score": score,
+                        "episodes": episodes,
+                        "status": status,
+                        "year": year,
+                        "season": season,
+                        "type": type_val,
+                        "genres": genres,
+                        "studios": studios,
+                        "image_url": image_url,
+                        "mal_id": mal_id,
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = JikanPlugin()
 register(PLUGIN)

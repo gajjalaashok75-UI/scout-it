@@ -60,47 +60,77 @@ DB_PATH = CONFIG_DIR / "source_bandit.db"
 
 # Keyword patterns per content type.  Matched case-insensitively.
 _QUERY_PATTERNS: List[Tuple[str, List[str]]] = [
-    ("academic", [
-        r"\b(paper|research|study|arxiv|doi|citation|preprint|journal|thesis)\b",
-        r"\b(algorithm|model|neural|deep learning|machine learning)\b",
-        r"\b(protein|gene|cell|molecule|quantum|physics)\b",
-    ]),
-    ("news", [
-        r"\b(latest|today|breaking|news|update|happened|announced)\b",
-        r"\b(this week|this month|just in)\b",
-    ]),
-    ("event", [
-        r"\b(earthquake|launch|protest|election|disaster|incident|crisis)\b",
-        r"\b(spaceflight|rocket|spacex|nasa launch)\b",
-    ]),
-    ("media", [
-        r"\b(image|photo|picture|video|movie|anime|manga|art|painting)\b",
-        r"\b(music|song|album|artist|recording)\b",
-    ]),
-    ("dataset", [
-        r"\b(dataset|data|csv|statistics|census|demographics)\b",
-        r"\b(kaggle|huggingface|zenodo)\b",
-    ]),
-    ("book", [
-        r"\b(book|ebook|novel|literature|author|isbn)\b",
-        r"\b(gutenberg|library|read)\b",
-    ]),
-    ("geo", [
-        r"\b(map|location|place|city|country|latitude|weather|forecast)\b",
-        r"\b(restaurant|hotel|nearby|directions)\b",
-    ]),
-    ("knowledge", [
-        r"\b(what is|who is|definition|meaning|wiki|encyclopedia|fact)\b",
-        r"\b(wikidata|entity|concept)\b",
-    ]),
-    ("code", [
-        r"\b(code|function|class|api|library|package|github|stackoverflow)\b",
-        r"\b(python|javascript|java|rust|golang|npm|pip)\b",
-        r"\b(bug|error|exception|stack trace)\b",
-    ]),
-    ("podcast", [
-        r"\b(podcast|episode|interview|listennotes)\b",
-    ]),
+    (
+        "academic",
+        [
+            r"\b(paper|research|study|arxiv|doi|citation|preprint|journal|thesis)\b",
+            r"\b(algorithm|model|neural|deep learning|machine learning)\b",
+            r"\b(protein|gene|cell|molecule|quantum|physics)\b",
+        ],
+    ),
+    (
+        "news",
+        [
+            r"\b(latest|today|breaking|news|update|happened|announced)\b",
+            r"\b(this week|this month|just in)\b",
+        ],
+    ),
+    (
+        "event",
+        [
+            r"\b(earthquake|launch|protest|election|disaster|incident|crisis)\b",
+            r"\b(spaceflight|rocket|spacex|nasa launch)\b",
+        ],
+    ),
+    (
+        "media",
+        [
+            r"\b(image|photo|picture|video|movie|anime|manga|art|painting)\b",
+            r"\b(music|song|album|artist|recording)\b",
+        ],
+    ),
+    (
+        "dataset",
+        [
+            r"\b(dataset|data|csv|statistics|census|demographics)\b",
+            r"\b(kaggle|huggingface|zenodo)\b",
+        ],
+    ),
+    (
+        "book",
+        [
+            r"\b(book|ebook|novel|literature|author|isbn)\b",
+            r"\b(gutenberg|library|read)\b",
+        ],
+    ),
+    (
+        "geo",
+        [
+            r"\b(map|location|place|city|country|latitude|weather|forecast)\b",
+            r"\b(restaurant|hotel|nearby|directions)\b",
+        ],
+    ),
+    (
+        "knowledge",
+        [
+            r"\b(what is|who is|definition|meaning|wiki|encyclopedia|fact)\b",
+            r"\b(wikidata|entity|concept)\b",
+        ],
+    ),
+    (
+        "code",
+        [
+            r"\b(code|function|class|api|library|package|github|stackoverflow)\b",
+            r"\b(python|javascript|java|rust|golang|npm|pip)\b",
+            r"\b(bug|error|exception|stack trace)\b",
+        ],
+    ),
+    (
+        "podcast",
+        [
+            r"\b(podcast|episode|interview|listennotes)\b",
+        ],
+    ),
 ]
 
 
@@ -122,7 +152,7 @@ def classify_query(query: str) -> str:
     if not scores:
         return "web"
     # Return the content type with the most keyword matches.
-    return max(scores, key=scores.get)
+    return max(scores, key=lambda ct: scores[ct])
 
 
 # ─── SQLite persistence ─────────────────────────────────────────────────────
@@ -244,7 +274,13 @@ def choose_sources(
     query_type = classify_query(query)
     available = list(available_sources)
     if not available:
-        return {"sources": [], "query_type": query_type, "source": "default", "confidence": 0.0, "samples": {}}
+        return {
+            "sources": [],
+            "query_type": query_type,
+            "source": "default",
+            "confidence": 0.0,
+            "samples": {},
+        }
 
     arms = _get_arms(query_type, db_path)
     total_attempts = sum(a["successes"] + a["failures"] for a in arms.values())
@@ -355,7 +391,9 @@ def record_source_outcomes(
 # ─── Inspection / stats ────────────────────────────────────────────────────
 
 
-def get_source_stats(query_type: Optional[str] = None, db_path: Optional[Path] = None) -> Dict[str, Any]:
+def get_source_stats(
+    query_type: Optional[str] = None, db_path: Optional[Path] = None
+) -> Dict[str, Any]:
     """Return bandit stats for inspection (the `scout-it stats` command).
 
     Args:
@@ -367,15 +405,17 @@ def get_source_stats(query_type: Optional[str] = None, db_path: Optional[Path] =
     """
     if query_type:
         arms = _get_arms(query_type, db_path)
-        return {query_type: {
-            src: {
-                "successes": a["successes"],
-                "failures": a["failures"],
-                "avg_relevance": round(a["avg_relevance"], 4),
-                "total": a["successes"] + a["failures"],
+        return {
+            query_type: {
+                src: {
+                    "successes": a["successes"],
+                    "failures": a["failures"],
+                    "avg_relevance": round(a["avg_relevance"], 4),
+                    "total": a["successes"] + a["failures"],
+                }
+                for src, a in arms.items()
             }
-            for src, a in arms.items()
-        }}
+        }
 
     with _connect(db_path) as conn:
         rows = conn.execute(

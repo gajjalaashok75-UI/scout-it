@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class MetMuseumPlugin(SourcePlugin):
     )
 
     def search(self, query: str, max_results: int = 10, **kwargs) -> List[Dict[str, Any]]:
-        cfg = get_source_config("met_museum")
+        get_source_config("met_museum")
 
         # Step 1: Search for object IDs.
         search_params = {
@@ -46,7 +46,9 @@ class MetMuseumPlugin(SourcePlugin):
 
         # Step 2: Fetch each object (parallel via async would be better, but sequential for simplicity).
         import requests
+
         from ..async_fetch import USER_AGENT
+
         for oid in object_ids:
             try:
                 resp = requests.get(
@@ -82,33 +84,36 @@ class MetMuseumPlugin(SourcePlugin):
                 snippet_parts.append(department)
             snippet = " | ".join(snippet_parts)
 
-            results.append(make_result(
-                id=str(oid),
-                source="met_museum",
-                url=object_url,
-                title=title,
-                snippet=snippet,
-                content="",
-                content_type="media",
-                timestamp=date,
-                authority_score=0.4,
-                lang="en",
-                metadata={
-                    "artist": artist,
-                    "department": department,
-                    "classification": classification,
-                    "culture": culture,
-                    "period": period,
-                    "object_date": date,
-                    "medium": medium,
-                    "image_url": image_url,
-                    "object_id": oid,
-                    "is_public_domain": obj.get("isPublicDomain", False),
-                },
-            ))
+            results.append(
+                make_result(
+                    id=str(oid),
+                    source="met_museum",
+                    url=object_url,
+                    title=title,
+                    snippet=snippet,
+                    content="",
+                    content_type="media",
+                    timestamp=date,
+                    authority_score=0.4,
+                    lang="en",
+                    metadata={
+                        "artist": artist,
+                        "department": department,
+                        "classification": classification,
+                        "culture": culture,
+                        "period": period,
+                        "object_date": date,
+                        "medium": medium,
+                        "image_url": image_url,
+                        "object_id": oid,
+                        "is_public_domain": obj.get("isPublicDomain", False),
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = MetMuseumPlugin()
 register(PLUGIN)

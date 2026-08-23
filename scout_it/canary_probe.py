@@ -16,6 +16,7 @@ skip straight to re-exploring strategies via the bandit instead of wasting
 a full attempt on a now-stale cached one.
 """
 
+import logging
 import time
 from typing import Any, Dict, Optional
 
@@ -38,6 +39,9 @@ _BLOCK_SIGNATURES = [
     "perimeterx",
     "request unsuccessful. incapsula",
 ]
+
+
+logger = logging.getLogger(__name__)
 
 
 def probe(url: str, timeout: int = 6, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
@@ -67,14 +71,20 @@ def probe(url: str, timeout: int = 6, headers: Optional[Dict[str, str]] = None) 
     except Exception:
         try:
             resp = requests.get(
-                url, headers={**default_headers, "Range": "bytes=0-2047"},
-                timeout=timeout, allow_redirects=True, stream=True,
+                url,
+                headers={**default_headers, "Range": "bytes=0-2047"},
+                timeout=timeout,
+                allow_redirects=True,
+                stream=True,
             )
             method = "GET"
         except Exception as exc:
             return {
-                "reachable": False, "status_code": None, "looks_blocked": False,
-                "latency_ms": int((time.time() - start) * 1000), "method": None,
+                "reachable": False,
+                "status_code": None,
+                "looks_blocked": False,
+                "latency_ms": int((time.time() - start) * 1000),
+                "method": None,
                 "error": f"{type(exc).__name__}: {exc}",
             }
 
@@ -87,11 +97,14 @@ def probe(url: str, timeout: int = 6, headers: Optional[Dict[str, str]] = None) 
             snippet = resp.text[:4096].lower()
             looks_blocked = any(sig in snippet for sig in _BLOCK_SIGNATURES)
         except Exception:
-            pass
+            logger.debug("suppressed exception during resilient operation", exc_info=True)
 
     return {
-        "reachable": True, "status_code": status, "looks_blocked": looks_blocked,
-        "latency_ms": latency_ms, "method": method,
+        "reachable": True,
+        "status_code": status,
+        "looks_blocked": looks_blocked,
+        "latency_ms": latency_ms,
+        "method": method,
     }
 
 

@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class OpenMeteoPlugin(SourcePlugin):
     )
 
     def search(self, query: str, max_results: int = 10, **kwargs) -> List[Dict[str, Any]]:
-        cfg = get_source_config("open_meteo")
+        get_source_config("open_meteo")
 
         # Step 1: Geocode the query to lat/lon.
         geocode_params = {
@@ -88,34 +88,37 @@ class OpenMeteoPlugin(SourcePlugin):
                 f"Humidity: {humidity}% | Wind: {wind} km/h"
             )
 
-            results.append(make_result(
-                id=place_id,
-                source="open_meteo",
-                url=f"https://open-meteo.com/en/docs?latitude={lat}&longitude={lon}",
-                title=f"Weather: {full_name}",
-                snippet=snippet,
-                content="",
-                content_type="geo",
-                timestamp=current.get("time", ""),
-                authority_score=0.5,
-                lang="en",
-                metadata={
-                    "location": full_name,
-                    "lat": lat,
-                    "lon": lon,
-                    "current_temp": temp,
-                    "apparent_temp": apparent,
-                    "humidity": humidity,
-                    "wind_speed": wind,
-                    "weather_code": weather_code,
-                    "daily_max": daily_max[:3],
-                    "daily_min": daily_min[:3],
-                    "country": country,
-                },
-            ))
+            results.append(
+                make_result(
+                    id=place_id,
+                    source="open_meteo",
+                    url=f"https://open-meteo.com/en/docs?latitude={lat}&longitude={lon}",
+                    title=f"Weather: {full_name}",
+                    snippet=snippet,
+                    content="",
+                    content_type="geo",
+                    timestamp=current.get("time", ""),
+                    authority_score=0.5,
+                    lang="en",
+                    metadata={
+                        "location": full_name,
+                        "lat": lat,
+                        "lon": lon,
+                        "current_temp": temp,
+                        "apparent_temp": apparent,
+                        "humidity": humidity,
+                        "wind_speed": wind,
+                        "weather_code": weather_code,
+                        "daily_max": daily_max[:3],
+                        "daily_min": daily_min[:3],
+                        "country": country,
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = OpenMeteoPlugin()
 register(PLUGIN)

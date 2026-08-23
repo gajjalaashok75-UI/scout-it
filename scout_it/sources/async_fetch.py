@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 
 # ─── Defaults ────────────────────────────────────────────────────────────────
 
-DEFAULT_TIMEOUT = 15.0       # seconds
+DEFAULT_TIMEOUT = 15.0  # seconds
 DEFAULT_RETRIES = 2
-DEFAULT_RATE_LIMIT = 1.0     # requests per second (polite to free APIs)
+DEFAULT_RATE_LIMIT = 1.0  # requests per second (polite to free APIs)
 USER_AGENT = "scout-it/1.6.0 (https://github.com/gajjalaashok75-UI/scout-it)"
 
 # ─── Rate limiter ──────────────────────────────────────────────────────────
@@ -60,6 +60,7 @@ async def _get_client() -> Any:
     global _client
     if _client is None or _client.is_closed:
         import httpx
+
         _client = httpx.AsyncClient(
             timeout=httpx.Timeout(DEFAULT_TIMEOUT),
             headers={"User-Agent": USER_AGENT},
@@ -95,8 +96,14 @@ async def async_fetch_json(
             return resp.json()
         except Exception as exc:
             if attempt < retries:
-                wait = 0.5 * (2 ** attempt)  # 0.5s, 1s, 2s...
-                logger.debug("Fetch attempt %d failed for %s: %s (retrying in %.1fs)", attempt + 1, url, exc, wait)
+                wait = 0.5 * (2**attempt)  # 0.5s, 1s, 2s...
+                logger.debug(
+                    "Fetch attempt %d failed for %s: %s (retrying in %.1fs)",
+                    attempt + 1,
+                    url,
+                    exc,
+                    wait,
+                )
                 await asyncio.sleep(wait)
             else:
                 logger.warning("Fetch failed for %s after %d attempts: %s", url, retries + 1, exc)
@@ -126,8 +133,14 @@ async def async_fetch_text(
             return resp.text
         except Exception as exc:
             if attempt < retries:
-                wait = 0.5 * (2 ** attempt)
-                logger.debug("Fetch attempt %d failed for %s: %s (retrying in %.1fs)", attempt + 1, url, exc, wait)
+                wait = 0.5 * (2**attempt)
+                logger.debug(
+                    "Fetch attempt %d failed for %s: %s (retrying in %.1fs)",
+                    attempt + 1,
+                    url,
+                    exc,
+                    wait,
+                )
                 await asyncio.sleep(wait)
             else:
                 logger.warning("Fetch failed for %s: %s", url, exc)
@@ -144,10 +157,7 @@ async def async_fetch_all(
     affect others.
     """
     results = await asyncio.gather(*fetch_coros, return_exceptions=True)
-    return [
-        r if not isinstance(r, Exception) else None
-        for r in results
-    ]
+    return [r if not isinstance(r, Exception) else None for r in results]
 
 
 async def close_client() -> None:
@@ -159,6 +169,7 @@ async def close_client() -> None:
 
 
 # ─── Sync wrapper ────────────────────────────────────────────────────────────
+
 
 def sync_fetch_json(
     url: str,
@@ -173,6 +184,7 @@ def sync_fetch_json(
     the CLI's sync dispatch). It uses the requests library directly.
     """
     import requests
+
     merged_headers = {"User-Agent": USER_AGENT}
     if headers:
         merged_headers.update(headers)
@@ -194,6 +206,7 @@ def sync_fetch_text(
 ) -> Optional[str]:
     """Synchronous text fetch using requests."""
     import requests
+
     merged_headers = {"User-Agent": USER_AGENT}
     if headers:
         merged_headers.update(headers)
@@ -213,9 +226,10 @@ def run_async(coro):
     nest_asyncio-style fallback; otherwise creates a new loop.
     """
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         # Already in an event loop — create a task and wait.
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor() as pool:
             return pool.submit(asyncio.run, coro).result()
     except RuntimeError:

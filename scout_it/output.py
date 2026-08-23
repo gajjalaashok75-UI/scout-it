@@ -30,7 +30,7 @@ Three responsibilities, used by every CLI command:
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 DEFAULT_OUTPUT_DIR = ".scout-it"
 MAX_LINE_CHARS = 500
@@ -42,8 +42,8 @@ def parse_size_string(size_str: Optional[str]) -> Optional[int]:
     if not size_str:
         return None
     size_str = size_str.strip().lower()
-    units = {'b': 1, 'kb': 1024, 'mb': 1024 ** 2, 'gb': 1024 ** 3}
-    match = re.match(r'^([0-9.]+)\s*([a-z]+)$', size_str)
+    units = {"b": 1, "kb": 1024, "mb": 1024**2, "gb": 1024**3}
+    match = re.match(r"^([0-9.]+)\s*([a-z]+)$", size_str)
     if not match:
         return None
     try:
@@ -69,11 +69,21 @@ def validate_max_chars_max_size(max_chars: Optional[int], max_size: Optional[str
         )
     return None
 
+
 # Keys whose string content should NOT be mechanically chunked at 500 chars,
 # either because they already have a better structured representation
 # (patch -> patch_lines) or because chunking would break something meant to
 # be copy-pasted/parsed as a single unit (URLs, hashes, raw_html).
-_NO_CHUNK_KEYS = {"patch", "raw_html", "url", "final_url", "href", "download_url", "raw_url", "html_url"}
+_NO_CHUNK_KEYS = {
+    "patch",
+    "raw_html",
+    "url",
+    "final_url",
+    "href",
+    "download_url",
+    "raw_url",
+    "html_url",
+}
 
 # Keys that should render as fenced code blocks in Markdown.
 _CODE_LIKE_KEYS = {"patch", "content", "raw_html"}
@@ -82,6 +92,7 @@ _CODE_LIKE_KEYS = {"patch", "content", "raw_html"}
 # ---------------------------------------------------------------------------
 # 1. Line-length-safe JSON
 # ---------------------------------------------------------------------------
+
 
 def _chunk_text(text: str, max_len: int = MAX_LINE_CHARS) -> List[str]:
     """Break long text into <=max_len chunks at word/paragraph boundaries.
@@ -150,6 +161,7 @@ def write_json_output(out_path: Path, data: Any, max_line: int = MAX_LINE_CHARS)
 # 2. Output path resolution (--out / --markdown)
 # ---------------------------------------------------------------------------
 
+
 def resolve_output_path(out_arg: str, markdown_flag: bool, default_stub: str) -> Dict[str, Any]:
     """Resolve final output path + format from --out/--markdown.
 
@@ -164,7 +176,7 @@ def resolve_output_path(out_arg: str, markdown_flag: bool, default_stub: str) ->
     """
     out_path = Path(out_arg)
     ext = out_path.suffix.lower()
-    is_default_path = (out_arg == f"{DEFAULT_OUTPUT_DIR}/{default_stub}.json")
+    is_default_path = out_arg == f"{DEFAULT_OUTPUT_DIR}/{default_stub}.json"
 
     if markdown_flag and ext == ".json" and not is_default_path:
         return {
@@ -177,7 +189,11 @@ def resolve_output_path(out_arg: str, markdown_flag: bool, default_stub: str) ->
         }
 
     if markdown_flag:
-        final_path = Path(DEFAULT_OUTPUT_DIR) / f"{default_stub}.md" if is_default_path else out_path.with_suffix(".md")
+        final_path = (
+            Path(DEFAULT_OUTPUT_DIR) / f"{default_stub}.md"
+            if is_default_path
+            else out_path.with_suffix(".md")
+        )
         # Bare .md filename with no directory component lands under .scout-it/ too
         if not final_path.is_absolute() and final_path.parent == Path("."):
             final_path = Path(DEFAULT_OUTPUT_DIR) / final_path.name
@@ -200,6 +216,7 @@ def resolve_output_path(out_arg: str, markdown_flag: bool, default_stub: str) ->
 # 3. Markdown rendering
 # ---------------------------------------------------------------------------
 
+
 def _titleize(key: str) -> str:
     return key.replace("_", " ").strip().capitalize()
 
@@ -214,7 +231,11 @@ def _format_scalar(value: Any) -> str:
     if isinstance(value, bool):
         return "yes" if value else "no"
     if isinstance(value, str):
-        return value.replace("\n", " ").replace("|", "\\|") if len(value) < 300 else value[:297].replace("\n", " ") + "..."
+        return (
+            value.replace("\n", " ").replace("|", "\\|")
+            if len(value) < 300
+            else value[:297].replace("\n", " ") + "..."
+        )
     return str(value)
 
 
@@ -238,8 +259,8 @@ def _render_patch_lines(patch_lines: List[Dict[str, Any]]) -> str:
     for line in patch_lines:
         t = line.get("type")
         text = line.get("text", "")
-        old_ln = line.get("old_line")
-        new_ln = line.get("new_line")
+        line.get("old_line")
+        line.get("new_line")
         if t == "added":
             out.append(f"+{text}")
         elif t == "removed":
@@ -297,8 +318,17 @@ def _render_value(value: Any, key: Optional[str], level: int) -> str:
         parts = []
         for i, item in enumerate(value, 1):
             if isinstance(item, (dict, list)):
-                label = item.get("title") or item.get("name") or item.get("filename") or item.get("path") if isinstance(item, dict) else None
-                parts.append(f"{heading} {i}. {label or ''}\n\n{_render_value(item, key, level + 1)}")
+                label = (
+                    item.get("title")
+                    or item.get("name")
+                    or item.get("filename")
+                    or item.get("path")
+                    if isinstance(item, dict)
+                    else None
+                )
+                parts.append(
+                    f"{heading} {i}. {label or ''}\n\n{_render_value(item, key, level + 1)}"
+                )
             else:
                 parts.append(f"- {_format_scalar(item)}")
         return "\n\n".join(parts)
@@ -314,3 +344,75 @@ def render_markdown(data: Any, title: str) -> str:
     body = _render_value(data, None, level=2)
     return f"# {title}\n\n{body}\n"
 
+
+# ---------------------------------------------------------------------------
+# 4. Tabular / line-oriented formats + content-length capping (B3)
+# ---------------------------------------------------------------------------
+
+_CONTENT_KEYS = ("cleaned_content", "api_content")
+
+
+def cap_content_length(data: Any, max_len: Optional[int]) -> Any:
+    """Return *data* with ``cleaned_content``/``api_content`` strings capped
+    at *max_len* characters (B3.2). Recurses into dicts and lists. A
+    ``<key>_truncated: true`` marker is added next to capped fields."""
+    if not max_len or max_len <= 0:
+        return data
+    if isinstance(data, dict):
+        out = {}
+        for key, value in data.items():
+            if key in _CONTENT_KEYS and isinstance(value, str) and len(value) > max_len:
+                out[key] = value[:max_len]
+                out[f"{key}_truncated"] = True
+            else:
+                out[key] = cap_content_length(value, max_len)
+        return out
+    if isinstance(data, list):
+        return [cap_content_length(item, max_len) for item in data]
+    return data
+
+
+def extract_rows(data: Any) -> List[Dict[str, Any]]:
+    """Pull the flat result rows out of a command payload for CSV/JSONL."""
+    if isinstance(data, list):
+        rows = data
+    elif isinstance(data, dict):
+        rows = data.get("results") or data.get("items") or []
+    else:
+        rows = []
+    return [row if isinstance(row, dict) else {"value": row} for row in rows]
+
+
+def _csv_cell(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return json.dumps(value, ensure_ascii=False)
+
+
+def write_csv_output(out_path: Path, data: Any) -> None:
+    """Write the flat result rows of *data* as CSV (B3.1). Column order is
+    the union of keys in first-seen order; nested values become JSON cells."""
+    import csv
+
+    rows = extract_rows(data)
+    fieldnames: List[str] = []
+    for row in rows:
+        for key in row:
+            if key not in fieldnames:
+                fieldnames.append(key)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: _csv_cell(value) for key, value in row.items()})
+
+
+def write_jsonl_output(out_path: Path, data: Any) -> None:
+    """Write the result rows of *data* as JSON Lines — one result per line
+    (B3.1), ready for agent pipelines and ``pandas.read_json(lines=True)``."""
+    rows = extract_rows(data)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8") as fh:
+        for row in rows:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")

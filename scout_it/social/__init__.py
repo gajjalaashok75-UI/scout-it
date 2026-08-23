@@ -34,14 +34,17 @@ import requests  # re-exported so legacy mock.patch("scout_it.social.requests.*"
 from .base import (
     CAP_CHANNEL,
     CAP_CHANNEL_ID,
+    CAP_PROFILE,
     CAP_QUERY,
     CAP_SUBREDDIT,
-    CAP_PROFILE,
     CAP_USER,
     SocialProvider,
     normalize_item,
     provider_result,
 )
+from .discord import DiscordProvider, discord_channel_messages
+from .instagram import InstagramProvider, instagram_profile_search
+from .reddit import RedditProvider, reddit_search
 from .registry import (
     all_providers,
     available_platforms,
@@ -56,10 +59,6 @@ from .telegram import (
     telegram_channel,
     telegram_search,
 )
-from .reddit import RedditProvider, reddit_search
-from .discord import DiscordProvider, discord_channel_messages
-from .instagram import InstagramProvider, instagram_profile_search
-
 
 # Re-export the public API names this module has always exposed (backwards
 # compatibility for ``from scout_it import social`` consumers + tests).
@@ -67,20 +66,32 @@ __all__ = [
     # orchestrator
     "social_search",
     # registry
-    "register", "get", "all_providers", "available_platforms", "resolve_platforms",
-    "TelegramProvider", "RedditProvider", "DiscordProvider", "InstagramProvider",
+    "register",
+    "get",
+    "all_providers",
+    "available_platforms",
+    "resolve_platforms",
+    "TelegramProvider",
+    "RedditProvider",
+    "DiscordProvider",
+    "InstagramProvider",
     "SocialProvider",
     # legacy flat functions (still the real implementations)
-    "telegram_channel", "telegram_search",
-    "discord_channel_messages", "reddit_search", "instagram_profile_search",
+    "telegram_channel",
+    "telegram_search",
+    "discord_channel_messages",
+    "reddit_search",
+    "instagram_profile_search",
     # parsers
-    "_parse_telegram_primary", "_parse_telegram_enhanced",
+    "_parse_telegram_primary",
+    "_parse_telegram_enhanced",
 ]
 
 
 def _ensure_registered() -> None:
     """Lazily register the built-in providers exactly once."""
     from .registry import _register_builtins
+
     _register_builtins()
 
 
@@ -122,7 +133,7 @@ def social_search(
     """
     _ensure_registered()
     requested = resolve_platforms(platform)
-    registry_names = set(available_platforms())
+    set(available_platforms())
 
     targets: List[SocialProvider] = []
     unknown: List[str] = []
@@ -135,10 +146,17 @@ def social_search(
 
     def _run(prov: SocialProvider) -> Dict[str, Any]:
         return prov.search(
-            query=query, channel=channel, channel_id=channel_id,
-            subreddit=subreddit, profile=profile, user=user, max_results=max_results,
-            sort=sort, posts_per_channel=posts_per_channel,
-            max_fetch_retries=max_fetch_retries, before=before,
+            query=query,
+            channel=channel,
+            channel_id=channel_id,
+            subreddit=subreddit,
+            profile=profile,
+            user=user,
+            max_results=max_results,
+            sort=sort,
+            posts_per_channel=posts_per_channel,
+            max_fetch_retries=max_fetch_retries,
+            before=before,
             extract_full=extract_full,
         )
 
@@ -153,9 +171,12 @@ def social_search(
                 try:
                     res = fut.result()
                 except Exception as e:  # defensive — _run already wraps errors
-                    res = provider_result(prov.platform, query=query,
-                                          error="provider_error",
-                                          error_message=f"{type(e).__name__}: {e}")
+                    res = provider_result(
+                        prov.platform,
+                        query=query,
+                        error="provider_error",
+                        error_message=f"{type(e).__name__}: {e}",
+                    )
                 by_platform[prov.platform] = res
     else:
         for prov in targets:
@@ -164,25 +185,29 @@ def social_search(
     all_results: List[Dict[str, Any]] = []
     for name, res in by_platform.items():
         if res.get("error"):
-            failures.append({
-                "platform": name,
-                "error": res["error"],
-                "error_message": res.get("error_message"),
-                "capabilities_used": res.get("capabilities_used", []),
-            })
+            failures.append(
+                {
+                    "platform": name,
+                    "error": res["error"],
+                    "error_message": res.get("error_message"),
+                    "capabilities_used": res.get("capabilities_used", []),
+                }
+            )
         else:
             all_results.extend(res.get("results", []))
 
     for name in unknown:
-        failures.append({
-            "platform": name,
-            "error": "unknown_platform",
-            "error_message": (
-                f"No provider registered for platform '{name}'. "
-                f"Available: {available_platforms()}."
-            ),
-            "capabilities_used": [],
-        })
+        failures.append(
+            {
+                "platform": name,
+                "error": "unknown_platform",
+                "error_message": (
+                    f"No provider registered for platform '{name}'. "
+                    f"Available: {available_platforms()}."
+                ),
+                "capabilities_used": [],
+            }
+        )
 
     return {
         "query": query,

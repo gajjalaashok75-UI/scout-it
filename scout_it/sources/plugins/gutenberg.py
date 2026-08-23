@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -66,32 +66,35 @@ class GutenbergPlugin(SourcePlugin):
             download_count = book.get("download_count", 0) or 0
             authority = min(download_count / 10000.0, 1.0)
 
-            results.append(make_result(
-                id=book_id,
-                source="gutenberg",
-                url=url_val,
-                title=title,
-                snippet=snippet,
-                content="",
-                content_type="book",
-                timestamp="",
-                authority_score=authority,
-                lang="en",
-                metadata={
-                    "authors": authors,
-                    "subjects": subjects,
-                    "bookshelves": book.get("bookshelves", [])[:5],
-                    "languages": book.get("languages", []),
-                    "copyright": book.get("copyright"),
-                    "download_count": download_count,
-                    "media_type": book.get("media_type", ""),
-                    "text_url": text_url,
-                    "formats": {k: v for k, v in list(formats.items())[:5]},
-                },
-            ))
+            results.append(
+                make_result(
+                    id=book_id,
+                    source="gutenberg",
+                    url=url_val,
+                    title=title,
+                    snippet=snippet,
+                    content="",
+                    content_type="book",
+                    timestamp="",
+                    authority_score=authority,
+                    lang="en",
+                    metadata={
+                        "authors": authors,
+                        "subjects": subjects,
+                        "bookshelves": book.get("bookshelves", [])[:5],
+                        "languages": book.get("languages", []),
+                        "copyright": book.get("copyright"),
+                        "download_count": download_count,
+                        "media_type": book.get("media_type", ""),
+                        "text_url": text_url,
+                        "formats": {k: v for k, v in list(formats.items())[:5]},
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = GutenbergPlugin()
 register(PLUGIN)

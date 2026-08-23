@@ -1,18 +1,18 @@
 """Extraction module - content extraction and search engines."""
 
 # Import from new modular structure
-from .types import EnterpriseResult, ImageSearchResult
 from .engine import ExtractionEngine
 from .fetcher import fetch_resilient
 from .search import (
     EnterpriseSearchEngine,
     ImageSearchEngine,
+    _build_list_attempt_options,
     _compact_options,
     _ddg_html_lite_fallback_search,
     _ddgs_list_search,
     _ddgs_list_search_with_retry,
-    _build_list_attempt_options,
 )
+from .types import EnterpriseResult, ImageSearchResult
 
 # Re-export DDGS for backward compatibility
 try:

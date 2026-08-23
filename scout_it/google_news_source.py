@@ -31,24 +31,19 @@ Usage:
 
 import functools
 import hashlib
-import json
 import logging
-import random
 import re
-import time
 import xml.etree.ElementTree as ET
 from html import unescape
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus, unquote
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 from . import header_profiles as _hp
 from . import proxy_pool as _pp
 from . import response_cache as _rc
-from ._utils import SimpleRateLimiter, prune_empty, build_retry_session
+from ._utils import SimpleRateLimiter, build_retry_session, prune_empty
 
 logger = logging.getLogger(__name__)
 
@@ -138,10 +133,7 @@ def build_google_news_url(
     """
     if ceid is None:
         ceid = f"{gl}:{hl}"
-    return (
-        f"{GOOGLE_NEWS_RSS}?q={quote_plus(query)}"
-        f"&hl={hl}&gl={gl}&ceid={ceid}"
-    )
+    return f"{GOOGLE_NEWS_RSS}?q={quote_plus(query)}" f"&hl={hl}&gl={gl}&ceid={ceid}"
 
 
 # ── Text / metadata helpers ─────────────────────────────────────────────────
@@ -212,7 +204,9 @@ def _resolve_google_news_articles_url(url: str, timeout: int = 10) -> str:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
         resp = requests.get(
-            url, headers=headers, timeout=timeout,
+            url,
+            headers=headers,
+            timeout=timeout,
             allow_redirects=True,
             stream=True,
         )
@@ -227,14 +221,12 @@ def _resolve_google_news_articles_url(url: str, timeout: int = 10) -> str:
 def _parse_rss_date(date_str: str) -> str:
     """Parse RSS date string into ISO format, or return as-is."""
     try:
-        from datetime import datetime
         from email.utils import parsedate_to_datetime
 
         dt = parsedate_to_datetime(date_str)
         return dt.isoformat() if dt else date_str
     except Exception:
         return date_str
-
 
 
 # ── Title cleaning ──────────────────────────────────────────────────────────
@@ -265,10 +257,9 @@ def _clean_title(
             title = title.rsplit(" - ", 1)[0].strip()
 
     # Apply publisher-specific and profile patterns
-    patterns = (
-        PUBLISHER_CLEANUP_PATTERNS.get(publisher.lower(), [])
-        + PUBLISHER_CLEANUP_PATTERNS.get(cleanup_profile.lower(), [])
-    )
+    patterns = PUBLISHER_CLEANUP_PATTERNS.get(
+        publisher.lower(), []
+    ) + PUBLISHER_CLEANUP_PATTERNS.get(cleanup_profile.lower(), [])
     for pat in patterns:
         title = re.sub(pat, "", title, flags=re.I).strip()
 
@@ -294,9 +285,7 @@ def _extract_description_parts(html_desc: str) -> Dict[str, Any]:
         return {}
 
     # Anchor tag → link + display text
-    match_anchor = re.search(
-        r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html_desc, flags=re.I | re.S
-    )
+    match_anchor = re.search(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html_desc, flags=re.I | re.S)
     # <source> tag (non-standard but some feeds use it)
     match_source_tag = re.search(
         r'<source[^>]*url="([^"]+)"[^>]*>(.*?)</source>',
@@ -304,23 +293,17 @@ def _extract_description_parts(html_desc: str) -> Dict[str, Any]:
         flags=re.I | re.S,
     )
     # <font> tag (Google News uses this for publisher name)
-    match_font = re.search(
-        r"<font[^>]*>(.*?)</font>", html_desc, flags=re.I | re.S
-    )
+    match_font = re.search(r"<font[^>]*>(.*?)</font>", html_desc, flags=re.I | re.S)
 
     return {
         "description_link": match_anchor.group(1) if match_anchor else None,
-        "description_text": _normalize_text(
-            match_anchor.group(2) if match_anchor else html_desc
-        ),
+        "description_text": _normalize_text(match_anchor.group(2) if match_anchor else html_desc),
         "description_source": _normalize_text(
             match_source_tag.group(2)
             if match_source_tag
             else (match_font.group(1) if match_font else "")
         ),
-        "description_source_url": match_source_tag.group(1)
-        if match_source_tag
-        else None,
+        "description_source_url": match_source_tag.group(1) if match_source_tag else None,
     }
 
 
@@ -373,9 +356,7 @@ def _parse_rss_items(
         # ── source (publisher) from <source> tag ─────────────────────────
         source_tag = item_elem.find("source")
         source_name = (
-            _normalize_text(source_tag.text)
-            if source_tag is not None and source_tag.text
-            else ""
+            _normalize_text(source_tag.text) if source_tag is not None and source_tag.text else ""
         )
         source_url = source_tag.attrib.get("url") if source_tag is not None else None
 

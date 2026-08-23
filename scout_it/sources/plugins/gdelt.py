@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -60,29 +60,32 @@ class GdeltPlugin(SourcePlugin):
             except (ValueError, TypeError):
                 tone_val = 0.0
 
-            results.append(make_result(
-                id=url_val or f"gdelt-{seen_date}-{title[:20]}",
-                source="gdelt",
-                url=url_val,
-                title=title,
-                snippet=article.get("title", "") or f"News article from {domain}",
-                content="",
-                content_type="event",
-                timestamp=seen_date,
-                authority_score=0.3,  # News articles: moderate authority
-                lang=language,
-                metadata={
-                    "domain": domain,
-                    "language": language,
-                    "social_image": socialimage,
-                    "tone": tone,
-                    "tone_val": tone_val,
-                    "source_country": article.get("sourcecountry", ""),
-                },
-            ))
+            results.append(
+                make_result(
+                    id=url_val or f"gdelt-{seen_date}-{title[:20]}",
+                    source="gdelt",
+                    url=url_val,
+                    title=title,
+                    snippet=article.get("title", "") or f"News article from {domain}",
+                    content="",
+                    content_type="event",
+                    timestamp=seen_date,
+                    authority_score=0.3,  # News articles: moderate authority
+                    lang=language,
+                    metadata={
+                        "domain": domain,
+                        "language": language,
+                        "social_image": socialimage,
+                        "tone": tone,
+                        "tone_val": tone_val,
+                        "source_country": article.get("sourcecountry", ""),
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = GdeltPlugin()
 register(PLUGIN)

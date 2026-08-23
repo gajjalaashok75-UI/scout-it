@@ -84,7 +84,10 @@ class LangsearchPlugin(ApiSearchSource):
             raise _NetworkError(f"HTTP {status}: server error — {resp.text[:200]}")
         if status >= 400:
             body = resp.text[:300].lower()
-            if any(k in body for k in ("credit", "quota", "limit", "billing", "payment", "insufficient")):
+            if any(
+                k in body
+                for k in ("credit", "quota", "limit", "billing", "payment", "insufficient")
+            ):
                 raise _RateLimitError(f"HTTP {status}: {resp.text[:200]}")
             raise _ApiKeyError(f"HTTP {status}: {resp.text[:200]}")
 
@@ -140,5 +143,6 @@ class LangsearchPlugin(ApiSearchSource):
 
 
 from ..registry import register
+
 PLUGIN = LangsearchPlugin()
 register(PLUGIN)

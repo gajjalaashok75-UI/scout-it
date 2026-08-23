@@ -1,10 +1,39 @@
 """Resilient fetching with multi-tier fallback strategy."""
 
+import logging
 import random
 import time
 from typing import Any, Dict, List, Optional
 
 import requests
+
+logger = logging.getLogger(__name__)
+
+
+def looks_blocked(resp_text: str, status: int) -> bool:
+    """Pure tier-ladder decision (D3.1): does this response look blocked?
+
+    Shared by the sync ladder (``fetch_resilient``) and the async ladder
+    (``async_fetcher.fetch_resilient_async``) so both make identical
+    escalation decisions.
+    """
+    if status in (403, 429, 503):
+        return True
+    if resp_text and len(resp_text.strip()) < 200:
+        lowered = resp_text.lower()
+        if any(
+            marker in lowered
+            for marker in (
+                "enable javascript",
+                "captcha",
+                "access denied",
+                "are you a robot",
+                "cloudflare",
+                "just a moment",
+            )
+        ):
+            return True
+    return False
 
 
 def fetch_resilient(
@@ -60,8 +89,8 @@ def fetch_resilient(
         }
     """
     from .. import header_profiles as _hp
-    from .. import retry_classifier as _rc
     from .. import proxy_pool as _pp
+    from .. import retry_classifier as _rc
     from ..extraction.engine import ExtractionEngine
 
     errs: List[str] = []
@@ -76,9 +105,12 @@ def fetch_resilient(
             return
         try:
             from .. import strategy_cache as _sc
-            _sc.record_outcome(url, tier, success, proxy_id=proxy_info["proxy_id"], latency_ms=latency_ms)
+
+            _sc.record_outcome(
+                url, tier, success, proxy_id=proxy_info["proxy_id"], latency_ms=latency_ms
+            )
         except Exception:
-            pass
+            logger.debug("suppressed exception during resilient operation", exc_info=True)
 
     # ── Disk response cache: short-circuit a re-fetch of a page we already
     # successfully fetched recently. Skipped for force_js (JS-rendered pages
@@ -86,14 +118,11 @@ def fetch_resilient(
     # This is the single biggest fetch-path optimization: every search
     # command goes through fetch_resilient, so caching here eliminates
     # redundant network round-trips for repeated URLs across a session.
-    _use_response_cache = (
-        enable_strategy_cache
-        and not force_js
-        and not browser_pool
-    )
+    _use_response_cache = enable_strategy_cache and not force_js and not browser_pool
     if _use_response_cache:
         try:
             from .. import response_cache as _resp_cache
+
             cached = _resp_cache.get(url)
             if cached and cached.get("content"):
                 # A cache hit means the *original* fetch succeeded with the
@@ -120,29 +149,28 @@ def fetch_resilient(
         try:
             _resp_cache.set(url, html, content_type="web")
         except Exception:
-            pass
+            logger.debug("suppressed exception during resilient operation", exc_info=True)
 
     if enable_bandit and not force_js:
         try:
             from .. import strategy_bandit as _bandit
-            choice = _bandit.choose_strategy(url, available_tiers=["requests", "playwright", "basic-fallback"])
-            if choice["source"] == "bandit" and choice["tier"] == "playwright" and choice["confidence"] >= 0.7:
-                force_js = True
-                errs.append(f"bandit: skipping tier 1 -- playwright has a {choice['confidence']:.0%} recorded success rate for this domain")
-        except Exception:
-            pass
 
-    def _looks_blocked(resp_text: str, status: int) -> bool:
-        if status in (403, 429, 503):
-            return True
-        if resp_text and len(resp_text.strip()) < 200:
-            lowered = resp_text.lower()
-            if any(marker in lowered for marker in (
-                "enable javascript", "captcha", "access denied", "are you a robot",
-                "cloudflare", "just a moment",
-            )):
-                return True
-        return False
+            choice = _bandit.choose_strategy(
+                url, available_tiers=["requests", "playwright", "basic-fallback"]
+            )
+            if (
+                choice["source"] == "bandit"
+                and choice["tier"] == "playwright"
+                and choice["confidence"] >= 0.7
+            ):
+                force_js = True
+                errs.append(
+                    f"bandit: skipping tier 1 -- playwright has a {choice['confidence']:.0%} recorded success rate for this domain"
+                )
+        except Exception:
+            logger.debug("suppressed exception during resilient operation", exc_info=True)
+
+    _looks_blocked = looks_blocked
 
     # ---------------- Tier 1: requests ----------------
     if not force_js:
@@ -152,8 +180,12 @@ def fetch_resilient(
             try:
                 headers = _hp.get_profile()
                 resp = sess.get(
-                    url, headers=headers, timeout=timeout, allow_redirects=True,
-                    stream=True, proxies=proxy_info["requests_proxies"],
+                    url,
+                    headers=headers,
+                    timeout=timeout,
+                    allow_redirects=True,
+                    stream=True,
+                    proxies=proxy_info["requests_proxies"],
                 )
                 got_any_http_response = True
                 status = resp.status_code
@@ -171,13 +203,23 @@ def fetch_resilient(
                         "attempts": total_attempts,
                         "errors": errs,
                     }
-                errs.append(f"requests attempt {attempt + 1}: HTTP {status} (blocked-looking response)")
-                classification = _rc.classify_attempt(status_code=status, headers=dict(resp.headers))
+                errs.append(
+                    f"requests attempt {attempt + 1}: HTTP {status} (blocked-looking response)"
+                )
+                classification = _rc.classify_attempt(
+                    status_code=status, headers=dict(resp.headers)
+                )
                 _record("requests", False, latency_ms)
                 if not classification["should_retry"]:
-                    errs.append(f"requests attempt {attempt + 1}: HTTP {status} classified as permanent -- stopping tier 1 early")
+                    errs.append(
+                        f"requests attempt {attempt + 1}: HTTP {status} classified as permanent -- stopping tier 1 early"
+                    )
                     break
-                wait = classification["wait_seconds"] if classification["wait_seconds"] is not None else retry_backoff * (attempt + 1)
+                wait = (
+                    classification["wait_seconds"]
+                    if classification["wait_seconds"] is not None
+                    else retry_backoff * (attempt + 1)
+                )
             except Exception as e:
                 errs.append(f"requests attempt {attempt + 1}: {type(e).__name__}: {e}")
                 _pp.get_default_pool().mark_failed(proxy_info["proxy_id"])
@@ -186,19 +228,27 @@ def fetch_resilient(
                 if enable_dns_fallback:
                     try:
                         from .. import dns_resilience as _dns
+
                         if _dns.looks_like_dns_error(e):
                             resolved = _dns.build_resolved_url_and_host_header(url, timeout=5)
                             if resolved:
-                                errs.append(f"requests attempt {attempt + 1}: DNS-looking failure -- retrying via DNS-over-HTTPS resolution")
+                                errs.append(
+                                    f"requests attempt {attempt + 1}: DNS-looking failure -- retrying via DNS-over-HTTPS resolution"
+                                )
                                 try:
                                     dns_headers = dict(_hp.get_profile())
                                     dns_headers["Host"] = resolved["host_header"]
                                     dns_resp = sess.get(
-                                        resolved["resolved_url"], headers=dns_headers, timeout=timeout,
+                                        resolved["resolved_url"],
+                                        headers=dns_headers,
+                                        timeout=timeout,
                                         allow_redirects=False,
-                                        stream=True, verify=False,
+                                        stream=True,
+                                        verify=False,
                                     )
-                                    if dns_resp.status_code < 400 and not _looks_blocked(dns_resp.text, dns_resp.status_code):
+                                    if dns_resp.status_code < 400 and not _looks_blocked(
+                                        dns_resp.text, dns_resp.status_code
+                                    ):
                                         _record("requests-dns-fallback", True)
                                         return {
                                             "html": dns_resp.text,
@@ -208,11 +258,17 @@ def fetch_resilient(
                                             "attempts": total_attempts,
                                             "errors": errs,
                                         }
-                                    errs.append(f"DNS-over-HTTPS retry: HTTP {dns_resp.status_code}")
+                                    errs.append(
+                                        f"DNS-over-HTTPS retry: HTTP {dns_resp.status_code}"
+                                    )
                                 except Exception as dns_exc:
-                                    errs.append(f"DNS-over-HTTPS retry: {type(dns_exc).__name__}: {dns_exc}")
+                                    errs.append(
+                                        f"DNS-over-HTTPS retry: {type(dns_exc).__name__}: {dns_exc}"
+                                    )
                     except Exception:
-                        pass
+                        logger.debug(
+                            "suppressed exception during resilient operation", exc_info=True
+                        )
 
                 classification = _rc.classify_attempt(exception=e)
                 if not classification["should_retry"]:
@@ -228,13 +284,18 @@ def fetch_resilient(
     if enable_tls_impersonate and not force_js:
         try:
             from .. import tls_fingerprint as _tls
+
             if _tls.is_available():
                 for attempt in range(max(1, max_retries)):
                     total_attempts += 1
                     attempt_start = time.time()
-                    result = _tls.fetch(url, timeout=timeout, proxies=proxy_info["requests_proxies"])
+                    result = _tls.fetch(
+                        url, timeout=timeout, proxies=proxy_info["requests_proxies"]
+                    )
                     latency_ms = int((time.time() - attempt_start) * 1000)
-                    if result["status"] == "success" and not _looks_blocked(result["html"], result.get("status_code") or 200):
+                    if result["status"] == "success" and not _looks_blocked(
+                        result["html"], result.get("status_code") or 200
+                    ):
                         _record("tls-impersonate", True, latency_ms)
                         return {
                             "html": result["html"],
@@ -244,29 +305,37 @@ def fetch_resilient(
                             "attempts": total_attempts,
                             "errors": errs,
                         }
-                    errs.append(f"tls-impersonate attempt {attempt + 1}: {result.get('error') or 'blocked-looking response'}")
+                    errs.append(
+                        f"tls-impersonate attempt {attempt + 1}: {result.get('error') or 'blocked-looking response'}"
+                    )
                     _record("tls-impersonate", False, latency_ms)
                     if attempt < max_retries - 1:
                         time.sleep(retry_backoff * (attempt + 1))
             else:
-                errs.append("tls-impersonate: curl_cffi not installed, skipping (pip install scout-it[tls-impersonate])")
+                errs.append(
+                    "tls-impersonate: curl_cffi not installed, skipping (pip install scout-it[tls-impersonate])"
+                )
         except Exception as e:
             errs.append(f"tls-impersonate: {type(e).__name__}: {e}")
 
     # ---------------- Tier 2: Playwright ----------------
     should_try_js = enable_js_fallback and (force_js or got_any_http_response)
     if enable_js_fallback and not should_try_js:
-        errs.append("skipping Playwright tier: no tier-1 attempt reached the server (pure connection/DNS-level failure)")
+        errs.append(
+            "skipping Playwright tier: no tier-1 attempt reached the server (pure connection/DNS-level failure)"
+        )
 
     if should_try_js:
         try:
             from playwright.sync_api import sync_playwright
+
             playwright_available = True
         except ImportError:
             playwright_available = False
             errs.append("playwright not installed; skipping JS-render fallback")
 
         if playwright_available:
+
             def _playwright_navigate(page, url, timeout, force_js):
                 """Navigate page with optimized wait strategy for news sites."""
                 page.add_init_script("""
@@ -275,15 +344,19 @@ def fetch_resilient(
                     Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
                     Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
                 """)
-                
+
                 page.goto(url, wait_until="domcontentloaded", timeout=10000)
-                
+
                 if not force_js:
                     article_selectors = [
-                        "article", "[role='main']", ".article-body",
-                        ".story-body", ".entry-content", "main",
+                        "article",
+                        "[role='main']",
+                        ".article-body",
+                        ".story-body",
+                        ".entry-content",
+                        "main",
                     ]
-                    
+
                     article_found = False
                     for selector in article_selectors:
                         try:
@@ -291,28 +364,41 @@ def fetch_resilient(
                             article_found = True
                             break
                         except Exception:
+                            logger.debug(
+                                "suppressed exception during resilient operation", exc_info=True
+                            )
                             continue
-                    
+
                     if not article_found:
                         try:
                             page.wait_for_timeout(2000)
                         except Exception:
-                            pass
+                            logger.debug(
+                                "suppressed exception during resilient operation", exc_info=True
+                            )
                 else:
                     _orig_url = page.url
                     try:
-                        page.wait_for_function(f"window.location.href !== '{_orig_url}'", timeout=10000)
+                        page.wait_for_function(
+                            f"window.location.href !== '{_orig_url}'", timeout=10000
+                        )
                     except Exception:
-                        pass
-                    
+                        logger.debug(
+                            "suppressed exception during resilient operation", exc_info=True
+                        )
+
                     try:
-                        page.wait_for_selector("article, [role='main'], main", timeout=5000, state="attached")
+                        page.wait_for_selector(
+                            "article, [role='main'], main", timeout=5000, state="attached"
+                        )
                     except Exception:
                         try:
                             page.wait_for_timeout(2000)
                         except Exception:
-                            pass
-                
+                            logger.debug(
+                                "suppressed exception during resilient operation", exc_info=True
+                            )
+
                 html = page.content()
                 final_url = page.url
                 rendered_text = page.evaluate("document.body.innerText") or ""
@@ -324,16 +410,26 @@ def fetch_resilient(
                 try:
                     if browser_pool and browser_pool.is_available():
                         with browser_pool.get_page() as page:
-                            html, final_url, rendered_text = _playwright_navigate(page, url, timeout, force_js)
+                            html, final_url, rendered_text = _playwright_navigate(
+                                page, url, timeout, force_js
+                            )
                     else:
                         with sync_playwright() as pw:
                             if enable_persistent_profile:
                                 _ua = random.choice(ExtractionEngine.USER_AGENTS)
                                 from .. import browser_profile as _bp
-                                context = _bp.launch_persistent(pw, profile_name=browser_profile_name, headless=True, user_agent=_ua)
+
+                                context = _bp.launch_persistent(
+                                    pw,
+                                    profile_name=browser_profile_name,
+                                    headless=True,
+                                    user_agent=_ua,
+                                )
                                 try:
                                     page = context.new_page()
-                                    html, final_url, rendered_text = _playwright_navigate(page, url, timeout, force_js)
+                                    html, final_url, rendered_text = _playwright_navigate(
+                                        page, url, timeout, force_js
+                                    )
                                 finally:
                                     context.close()
                             else:
@@ -341,7 +437,9 @@ def fetch_resilient(
                                 browser = pw.chromium.launch(headless=True)
                                 try:
                                     page = browser.new_page(user_agent=_ua)
-                                    html, final_url, rendered_text = _playwright_navigate(page, url, timeout, force_js)
+                                    html, final_url, rendered_text = _playwright_navigate(
+                                        page, url, timeout, force_js
+                                    )
                                 finally:
                                     browser.close()
                     if html and len(html.strip()) > 200:
@@ -355,7 +453,9 @@ def fetch_resilient(
                             "attempts": total_attempts,
                             "errors": errs,
                         }
-                    errs.append(f"playwright attempt {attempt + 1}: page rendered but content too small")
+                    errs.append(
+                        f"playwright attempt {attempt + 1}: page rendered but content too small"
+                    )
                     _record("playwright", False)
                 except Exception as e:
                     errs.append(f"playwright attempt {attempt + 1}: {type(e).__name__}: {e}")
@@ -368,7 +468,7 @@ def fetch_resilient(
     total_attempts += 1
     attempt_start = time.time()
     try:
-        basic_headers = {'User-Agent': 'curl/8.0', 'Accept': '*/*'}
+        basic_headers = {"User-Agent": "curl/8.0", "Accept": "*/*"}
         resp = sess.get(url, headers=basic_headers, timeout=timeout, allow_redirects=True)
         if resp.status_code < 400 and resp.text:
             _record("basic-fallback", True, int((time.time() - attempt_start) * 1000))
@@ -394,9 +494,15 @@ def fetch_resilient(
 
             def _ladder_fetch(candidate_url: str) -> Dict[str, Any]:
                 return fetch_resilient(
-                    candidate_url, session=session, timeout=timeout, max_retries=1,
-                    enable_js_fallback=False, retry_backoff=retry_backoff, console=console,
-                    enable_alternate_source=False, enable_strategy_cache=False,
+                    candidate_url,
+                    session=session,
+                    timeout=timeout,
+                    max_retries=1,
+                    enable_js_fallback=False,
+                    retry_backoff=retry_backoff,
+                    console=console,
+                    enable_alternate_source=False,
+                    enable_strategy_cache=False,
                 )
 
             ladder_result = _alt.try_ladder(url, _ladder_fetch, include_wayback=True)
@@ -406,15 +512,19 @@ def fetch_resilient(
                 ladder_result["errors"] = errs
                 ladder_result["tier"] = "alternate-source"
                 return ladder_result
-            errs.append(f"alternate-source ladder exhausted: tried {ladder_result.get('rungs_tried', [])}")
+            errs.append(
+                f"alternate-source ladder exhausted: tried {ladder_result.get('rungs_tried', [])}"
+            )
         except Exception as e:
             errs.append(f"alternate-source ladder: {type(e).__name__}: {e}")
 
     if console is not None:
         try:
-            console.print(f"[red]fetch_resilient exhausted all tiers for {url}:[/red] {errs[-1] if errs else ''}")
+            console.print(
+                f"[red]fetch_resilient exhausted all tiers for {url}:[/red] {errs[-1] if errs else ''}"
+            )
         except Exception:
-            pass
+            logger.debug("suppressed exception during resilient operation", exc_info=True)
 
     return {
         "html": "",

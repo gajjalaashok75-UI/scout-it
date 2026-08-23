@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -66,37 +66,42 @@ class UsgsEarthquakesPlugin(SourcePlugin):
 
             coords = geom.get("coordinates", [0, 0, 0])
 
-            snippet = f"Magnitude: {mag} | Location: {place} | Tsunami: {'Yes' if tsunami else 'No'}"
+            snippet = (
+                f"Magnitude: {mag} | Location: {place} | Tsunami: {'Yes' if tsunami else 'No'}"
+            )
             if alert:
                 snippet += f" | Alert: {alert}"
 
             authority = min(mag / 10.0, 1.0)
 
-            results.append(make_result(
-                id=event_id,
-                source="usgs_earthquakes",
-                url=url_val,
-                title=title,
-                snippet=snippet,
-                content="",
-                content_type="event",
-                timestamp=str(time_ms),
-                authority_score=authority,
-                lang="en",
-                metadata={
-                    "magnitude": mag,
-                    "place": place,
-                    "time": time_ms,
-                    "tsunami": bool(tsunami),
-                    "alert": alert,
-                    "coordinates": coords,
-                    "depth_km": coords[2] if len(coords) > 2 else 0,
-                    "event_id": event_id,
-                },
-            ))
+            results.append(
+                make_result(
+                    id=event_id,
+                    source="usgs_earthquakes",
+                    url=url_val,
+                    title=title,
+                    snippet=snippet,
+                    content="",
+                    content_type="event",
+                    timestamp=str(time_ms),
+                    authority_score=authority,
+                    lang="en",
+                    metadata={
+                        "magnitude": mag,
+                        "place": place,
+                        "time": time_ms,
+                        "tsunami": bool(tsunami),
+                        "alert": alert,
+                        "coordinates": coords,
+                        "depth_km": coords[2] if len(coords) > 2 else 0,
+                        "event_id": event_id,
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = UsgsEarthquakesPlugin()
 register(PLUGIN)

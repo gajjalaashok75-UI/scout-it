@@ -28,18 +28,14 @@ __version__ = "2.1.0"
 __author__ = "Ashok-gakr"
 __license__ = "MIT"
 
+# Import tech_crunch_rss from news-search folder using importlib (hyphenated folder name)
+import importlib
+
 from .cleaner import advanced_clean_text, process_results
-from .extraction import (
-    DDGS,
-    EnterpriseResult,
-    EnterpriseSearchEngine,
-    ExtractionEngine,
-    ImageSearchEngine,
-    ImageSearchResult,
-    fetch_resilient,
-)
+
 # Import from CLI for web_search and news_search (in hyphenated folders)
 from .cli import news_search, web_search
+
 # Import from command modules
 from .commands import (
     fetch_url,
@@ -49,7 +45,22 @@ from .commands import (
     video_search,
     wikipedia_search,
 )
+from .config import (
+    clear_all_credentials,
+    clear_credential,
+    credential_status,
+    run_config_wizard,
+)
 from .engines import list_engines, multi_engine_search
+from .extraction import (
+    DDGS,
+    EnterpriseResult,
+    EnterpriseSearchEngine,
+    ExtractionEngine,
+    ImageSearchEngine,
+    ImageSearchResult,
+    fetch_resilient,
+)
 from .github_extract import (
     github_commit,
     github_commits,
@@ -65,20 +76,18 @@ from .github_extract import (
     github_search_code,
     github_search_repos,
 )
-from .social import discord_channel_messages, reddit_search, social_search, telegram_channel, telegram_search
-from .config import (
-    clear_all_credentials,
-    clear_credential,
-    credential_status,
-    run_config_wizard,
-)
+from .google_news_source import Deduplicator, build_google_news_url, google_news_search
 from .output import render_markdown, resolve_output_path, write_json_output
-from .wikimedia_source import SITE_MAP, wikimedia_search, WikimediaExtractor
-from .google_news_source import google_news_search, Deduplicator, build_google_news_url
+from .social import (
+    discord_channel_messages,
+    reddit_search,
+    social_search,
+    telegram_channel,
+    telegram_search,
+)
+from .wikimedia_source import SITE_MAP, WikimediaExtractor, wikimedia_search
 
-# Import tech_crunch_rss from news-search folder using importlib (hyphenated folder name)
-import importlib
-_news_search_tech_crunch_rss = importlib.import_module('.tech_crunch_rss', 'scout_it.news-search')
+_news_search_tech_crunch_rss = importlib.import_module(".tech_crunch_rss", "scout_it.newssearch")
 
 # Re-export the imported items
 get_available_domains = _news_search_tech_crunch_rss.get_available_domains
@@ -90,7 +99,7 @@ search_entries = _news_search_tech_crunch_rss.search_entries
 search_feeds = _news_search_tech_crunch_rss.search_feeds
 sort_entries = _news_search_tech_crunch_rss.sort_entries
 
-from .toi_rss_source import fetch_toi_news, LOCATION_FEEDS
+from .toi_rss_source import LOCATION_FEEDS, fetch_toi_news
 
 __all__ = [
     "EnterpriseSearchEngine",

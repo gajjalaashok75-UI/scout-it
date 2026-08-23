@@ -9,9 +9,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config, SOURCE_BY_NAME
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -71,31 +71,34 @@ class SemanticScholarPlugin(SourcePlugin):
             if not url_val and doi:
                 url_val = f"https://doi.org/{doi}"
 
-            results.append(make_result(
-                id=paper.get("paperId", ""),
-                source="semantic_scholar",
-                url=url_val,
-                title=paper.get("title", "") or "",
-                snippet=abstract,
-                content="",
-                content_type="academic",
-                timestamp=paper.get("publicationDate") or str(paper.get("year", "")),
-                authority_score=authority,
-                lang="en",
-                metadata={
-                    "doi": doi,
-                    "authors": authors,
-                    "year": paper.get("year"),
-                    "citation_count": cited,
-                    "influential_citations": influential,
-                    "tldr": tldr.get("text", ""),
-                    "oa_pdf_url": oa_pdf.get("url", ""),
-                    "paper_id": paper.get("paperId", ""),
-                },
-            ))
+            results.append(
+                make_result(
+                    id=paper.get("paperId", ""),
+                    source="semantic_scholar",
+                    url=url_val,
+                    title=paper.get("title", "") or "",
+                    snippet=abstract,
+                    content="",
+                    content_type="academic",
+                    timestamp=paper.get("publicationDate") or str(paper.get("year", "")),
+                    authority_score=authority,
+                    lang="en",
+                    metadata={
+                        "doi": doi,
+                        "authors": authors,
+                        "year": paper.get("year"),
+                        "citation_count": cited,
+                        "influential_citations": influential,
+                        "tldr": tldr.get("text", ""),
+                        "oa_pdf_url": oa_pdf.get("url", ""),
+                        "paper_id": paper.get("paperId", ""),
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = SemanticScholarPlugin()
 register(PLUGIN)

@@ -17,16 +17,20 @@ import importlib
 import logging
 from typing import Any, Dict, List, Optional, Sequence
 
-from .base import SourcePlugin, SearchResult, make_result
-from .source_config import is_source_enabled, get_source_config, SOURCE_BY_NAME
+from .base import SourcePlugin
+from .source_config import SOURCE_BY_NAME, get_source_config
 
 logger = logging.getLogger(__name__)
 
 # API search sources loaded via ``--source`` (singular) only — excluded from the
 # ``--sources`` (plural) augmentation pipeline and from ``scout-it sources``.
 API_SEARCH_SOURCE_NAMES = {
-    "tavily", "exa", "firecrawl",
-    "linkup", "langsearch", "serper",
+    "tavily",
+    "exa",
+    "firecrawl",
+    "linkup",
+    "langsearch",
+    "serper",
 }
 
 # ─── Registry ────────────────────────────────────────────────────────────────
@@ -127,16 +131,18 @@ def list_plugins() -> List[Dict[str, Any]]:
             continue
         cfg = get_source_config(name)
         meta = SOURCE_BY_NAME.get(name, {})
-        out.append({
-            "name": name,
-            "display_name": getattr(plugin, "display_name", name),
-            "content_type": getattr(plugin, "content_type", "academic"),
-            "requires_key": meta.get("requires_key", False),
-            "available": plugin.is_available(),
-            "enabled": cfg.get("enabled", True),
-            "configured": True if not meta.get("requires_key") else bool(cfg.get("api_key")),
-            "description": meta.get("description", ""),
-        })
+        out.append(
+            {
+                "name": name,
+                "display_name": getattr(plugin, "display_name", name),
+                "content_type": getattr(plugin, "content_type", "academic"),
+                "requires_key": meta.get("requires_key", False),
+                "available": plugin.is_available(),
+                "enabled": cfg.get("enabled", True),
+                "configured": True if not meta.get("requires_key") else bool(cfg.get("api_key")),
+                "description": meta.get("description", ""),
+            }
+        )
     return out
 
 
@@ -197,7 +203,9 @@ async def _search_all_async(
         # API search sources (Tavily/Exa/Firecrawl) are --source (singular)
         # only — never queried via the --sources (plural) augmentation path.
         if name in API_SEARCH_SOURCE_NAMES:
-            logger.debug("API search source %s not available via --sources; use --source instead", name)
+            logger.debug(
+                "API search source %s not available via --sources; use --source instead", name
+            )
             continue
         plugin = _plugins.get(name)
         if not plugin:
@@ -214,9 +222,9 @@ async def _search_all_async(
         active_sources.append(name)
 
     results_lists = await asyncio.gather(*coros, return_exceptions=True)
-    out = {}
+    out: Dict[str, List[Dict[str, Any]]] = {}
     for name, results in zip(active_sources, results_lists):
-        if isinstance(results, Exception):
+        if isinstance(results, BaseException):
             logger.warning("Source %s raised: %s", name, results)
             out[name] = []
         else:
@@ -317,10 +325,12 @@ def source_search(
     if semantic_rerank:
         try:
             from ..semantic import semantic_rerank as _rerank
+
             ranked = _rerank(all_results, query, enable_reranker=enable_reranker)
 
             # 3b. Composite re-rank (Phase 3: relevance + authority + freshness + diversity).
             from ..semantic import composite_rerank as _composite
+
             ranked = _composite(ranked, query, max_final=max_final_results)
 
             return ranked
@@ -338,8 +348,9 @@ def source_search(
 def run_async_helper(coro):
     """Run an async coroutine from sync code."""
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor() as pool:
             return pool.submit(asyncio.run, coro).result()
     except RuntimeError:

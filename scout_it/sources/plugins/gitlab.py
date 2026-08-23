@@ -12,9 +12,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
+from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
 from ..source_config import get_source_config
-from ..async_fetch import sync_fetch_json, USER_AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -67,30 +67,34 @@ class GitLabPlugin(SourcePlugin):
 
             last_activity = proj.get("last_activity_at", "") or proj.get("created_at", "")
 
-            results.append(make_result(
-                id=str(project_id),
-                source="gitlab",
-                url=web_url,
-                title=name,
-                snippet=description or f"GitLab project {full_path} — {stars} stars, {forks} forks",
-                content="",
-                content_type="code",
-                timestamp=last_activity,
-                authority_score=authority,
-                lang="en",
-                metadata={
-                    "full_path": full_path,
-                    "stars": stars,
-                    "forks": forks,
-                    "open_issues": proj.get("open_issues_count", 0),
-                    "default_branch": proj.get("default_branch", ""),
-                    "visibility": proj.get("visibility", "public"),
-                    "namespace": proj.get("namespace", {}).get("full_path", ""),
-                },
-            ))
+            results.append(
+                make_result(
+                    id=str(project_id),
+                    source="gitlab",
+                    url=web_url,
+                    title=name,
+                    snippet=description
+                    or f"GitLab project {full_path} — {stars} stars, {forks} forks",
+                    content="",
+                    content_type="code",
+                    timestamp=last_activity,
+                    authority_score=authority,
+                    lang="en",
+                    metadata={
+                        "full_path": full_path,
+                        "stars": stars,
+                        "forks": forks,
+                        "open_issues": proj.get("open_issues_count", 0),
+                        "default_branch": proj.get("default_branch", ""),
+                        "visibility": proj.get("visibility", "public"),
+                        "namespace": proj.get("namespace", {}).get("full_path", ""),
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = GitLabPlugin()
 register(PLUGIN)

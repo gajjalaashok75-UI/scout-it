@@ -13,32 +13,66 @@ Used as an *additional* fallback inside ``ExtractionEngine``, tried after
 the existing engines rather than replacing any of them.
 """
 
+import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Tuple
 
 from bs4 import BeautifulSoup, Tag
 
 # Tags whose text should never count toward a candidate's content score.
-_NOISE_TAGS = {"script", "style", "nav", "footer", "header", "aside", "form",
-               "button", "iframe", "noscript", "svg", "figure"}
+_NOISE_TAGS = {
+    "script",
+    "style",
+    "nav",
+    "footer",
+    "header",
+    "aside",
+    "form",
+    "button",
+    "iframe",
+    "noscript",
+    "svg",
+    "figure",
+}
 
 # Class/id substrings strongly associated with non-content chrome. Checked
 # case-insensitively as a substring match against the node's class+id.
 _NOISE_HINTS = (
-    "nav", "menu", "sidebar", "footer", "header", "advert", "banner",
-    "cookie", "popup", "modal", "share", "social", "comment", "related",
-    "widget", "breadcrumb", "pagination", "newsletter", "subscribe",
+    "nav",
+    "menu",
+    "sidebar",
+    "footer",
+    "header",
+    "advert",
+    "banner",
+    "cookie",
+    "popup",
+    "modal",
+    "share",
+    "social",
+    "comment",
+    "related",
+    "widget",
+    "breadcrumb",
+    "pagination",
+    "newsletter",
+    "subscribe",
 )
 
 _CONTENT_HINTS = ("article", "content", "post", "story", "entry", "main", "body-text")
 
 
+logger = logging.getLogger(__name__)
+
+
 def _node_hint_score(tag: Tag) -> float:
     """Bonus/penalty based on class/id naming conventions."""
-    attrs_text = " ".join([
-        " ".join(tag.get("class", []) or []),
-        tag.get("id", "") or "",
-    ]).lower()
+    attrs_text = " ".join(
+        [
+            " ".join(tag.get("class", []) or []),
+            tag.get("id", "") or "",
+        ]
+    ).lower()
     score = 0.0
     for hint in _CONTENT_HINTS:
         if hint in attrs_text:
@@ -105,6 +139,7 @@ def extract(html: str, min_score: float = 10.0) -> Tuple[str, float]:
         try:
             score = _text_density_score(tag)
         except Exception:
+            logger.debug("suppressed exception during resilient operation", exc_info=True)
             continue
         if score > -1e9:
             scored.append((score, tag))
@@ -125,6 +160,8 @@ def extract(html: str, min_score: float = 10.0) -> Tuple[str, float]:
     margin_confidence = min(margin / 200.0, 0.4)
     length_confidence = min(len(text) / 3000.0, 0.4)
     confidence = round(0.2 + margin_confidence + length_confidence, 3)
-    confidence = max(0.0, min(confidence, 0.95))  # never claim higher than the "real" engines' best case
+    confidence = max(
+        0.0, min(confidence, 0.95)
+    )  # never claim higher than the "real" engines' best case
 
     return text, confidence

@@ -36,6 +36,7 @@ datavorous/yars (https://github.com/datavorous/yars).
 from __future__ import annotations
 
 import html as _html
+import logging
 import os
 import re
 import time
@@ -70,8 +71,12 @@ _USER_AGENTS = [
 _ATOM_NS = "{http://www.w3.org/2005/Atom}"
 
 
+logger = logging.getLogger(__name__)
+
+
 def _ua() -> str:
     import random
+
     return random.choice(_USER_AGENTS)
 
 
@@ -142,16 +147,18 @@ def _parse_reddit_feed(xml_text: str, max_results: int) -> List[Dict[str, Any]]:
                 name_el = author_el.find(f"{_ATOM_NS}name")
                 author = (name_el.text or "").strip() if name_el is not None else ""
 
-            items.append({
-                "title": (title_el.text or "").strip() if title_el is not None else "",
-                "author": author.lstrip("/u/"),
-                "url": link,
-                "external_url": _extract_link_from_content(content_html, link),
-                "published": pub_el.text if pub_el is not None else None,
-                "content_html": content_html or "",
-                "selftext": _strip_html(content_html),
-                "id": id_el.text if id_el is not None else None,
-            })
+            items.append(
+                {
+                    "title": (title_el.text or "").strip() if title_el is not None else "",
+                    "author": author.lstrip("/u/"),
+                    "url": link,
+                    "external_url": _extract_link_from_content(content_html, link),
+                    "published": pub_el.text if pub_el is not None else None,
+                    "content_html": content_html or "",
+                    "selftext": _strip_html(content_html),
+                    "id": id_el.text if id_el is not None else None,
+                }
+            )
         return items
 
     # RSS 2.0: <item> elements (root could be <rss> or <rdf:RDF>).
@@ -178,21 +185,24 @@ def _parse_reddit_feed(xml_text: str, max_results: int) -> List[Dict[str, Any]]:
         author = _text("dc:creator") or _text("author")
         pub = _text("pubDate")
         guid = _text("guid")
-        items.append({
-            "title": title,
-            "author": author.lstrip("/u/"),
-            "url": link,
-            "external_url": link,
-            "published": pub,
-            "content_html": desc,
-            "selftext": _strip_html(desc),
-            "id": guid,
-        })
+        items.append(
+            {
+                "title": title,
+                "author": author.lstrip("/u/"),
+                "url": link,
+                "external_url": link,
+                "published": pub,
+                "content_html": desc,
+                "selftext": _strip_html(desc),
+                "id": guid,
+            }
+        )
     return items
 
 
-def _rank_posts(posts: List[Dict[str, Any]], query: Optional[str],
-                max_results: int) -> List[Dict[str, Any]]:
+def _rank_posts(
+    posts: List[Dict[str, Any]], query: Optional[str], max_results: int
+) -> List[Dict[str, Any]]:
     """Rank posts by query relevance (title > selftext) with a small recency
     boost, then cap at ``max_results``. Mirrors the top-ranking step of the
     web/news search flow."""
@@ -217,12 +227,14 @@ def _rank_posts(posts: List[Dict[str, Any]], query: Optional[str],
             score += 5.0
         return score
 
-    scored = sorted(posts, key=lambda p: (-_score(p), p.get("published") or ""), )
+    scored = sorted(
+        posts,
+        key=lambda p: (-_score(p), p.get("published") or ""),
+    )
     return scored[:max_results]
 
 
-def _fetch_feed(url: str, timeout: int = 15,
-                max_retries: int = 3) -> Dict[str, Any]:
+def _fetch_feed(url: str, timeout: int = 15, max_retries: int = 3) -> Dict[str, Any]:
     """Fetch a Reddit RSS feed with retry/backoff (ported from yars's Retry
     adapter). Returns ``{xml, status, status_code, errors}``."""
     errs: List[str] = []
@@ -236,8 +248,7 @@ def _fetch_feed(url: str, timeout: int = 15,
             continue
         last_status = resp.status_code
         if resp.status_code == 200 and resp.text:
-            return {"xml": resp.text, "status": "success",
-                    "status_code": 200, "errors": errs}
+            return {"xml": resp.text, "status": "success", "status_code": 200, "errors": errs}
         if resp.status_code in (429, 503):
             # Rate-limited -- back off and retry.
             errs.append(f"HTTP {resp.status_code} (rate-limited)")
@@ -252,8 +263,13 @@ def _fetch_feed(url: str, timeout: int = 15,
     return {"xml": "", "status": "failed", "status_code": last_status, "errors": errs}
 
 
-def _build_feed_url(*, query: Optional[str] = None, subreddit: Optional[str] = None,
-                    user: Optional[str] = None, sort: str = "relevance") -> Optional[str]:
+def _build_feed_url(
+    *,
+    query: Optional[str] = None,
+    subreddit: Optional[str] = None,
+    user: Optional[str] = None,
+    sort: str = "relevance",
+) -> Optional[str]:
     """Build the Reddit RSS feed URL for the given source args.
 
     Only one of query/subreddit/user is used (subreddit > user > query), to
@@ -275,6 +291,7 @@ def _build_feed_url(*, query: Optional[str] = None, subreddit: Optional[str] = N
 # =====================================================================
 # Core fetch functions (module-level for backwards compatibility)
 # =====================================================================
+
 
 def reddit_search(
     query: str,
@@ -306,8 +323,10 @@ def reddit_search(
     relied on it.
     """
     if not any([query, subreddit, user]):
-        return {"error": "no_input",
-                "error_message": "Provide a --query, --subreddit, or --user for Reddit."}
+        return {
+            "error": "no_input",
+            "error_message": "Provide a --query, --subreddit, or --user for Reddit.",
+        }
 
     feed_url = _build_feed_url(query=query, subreddit=subreddit, user=user, sort=sort)
     feed_outcome = _fetch_feed(feed_url) if feed_url else None
@@ -330,31 +349,53 @@ def reddit_search(
         if feed_outcome and feed_outcome.get("status") != "success":
             feed_errors = feed_outcome.get("errors", [])
         source_used = "json_fallback"
-        json_res = _reddit_json_search(query, subreddit=subreddit,
-                                       max_results=max_results, sort=sort)
+        json_res = _reddit_json_search(
+            query, subreddit=subreddit, max_results=max_results, sort=sort
+        )
         if "error" in json_res:
-            return {**json_res,
-                    "query": query, "subreddit": subreddit, "user": user,
-                    "source_used": source_used,
-                    "feed_errors": feed_errors}
+            return {
+                **json_res,
+                "query": query,
+                "subreddit": subreddit,
+                "user": user,
+                "source_used": source_used,
+                "feed_errors": feed_errors,
+            }
         posts = json_res.get("posts", [])
 
     if not posts:
-        return {"query": query, "subreddit": subreddit, "user": user,
-                "result_count": 0, "posts": [], "source_used": source_used,
-                "note": ("RSS feed returned no entries. Reddit may be rate-limiting this IP "
-                         "(429) or the subreddit/user does not exist.") if source_used == "rss"
-                        else "No results found via the .json fallback either.",
-                "feed_errors": feed_errors}
+        return {
+            "query": query,
+            "subreddit": subreddit,
+            "user": user,
+            "result_count": 0,
+            "posts": [],
+            "source_used": source_used,
+            "note": (
+                (
+                    "RSS feed returned no entries. Reddit may be rate-limiting this IP "
+                    "(429) or the subreddit/user does not exist."
+                )
+                if source_used == "rss"
+                else "No results found via the .json fallback either."
+            ),
+            "feed_errors": feed_errors,
+        }
 
     # Optional full-content extraction for the top results (the "extract full
     # page content and clean" step from the web/news-search flow).
     if extract_full and posts:
         posts = _enrich_with_full_content(posts, max_results)
 
-    return {"query": query, "subreddit": subreddit, "user": user,
-            "result_count": len(posts), "posts": posts, "source_used": source_used,
-            "feed_errors": feed_errors}
+    return {
+        "query": query,
+        "subreddit": subreddit,
+        "user": user,
+        "result_count": len(posts),
+        "posts": posts,
+        "source_used": source_used,
+        "feed_errors": feed_errors,
+    }
 
 
 def _reddit_json_search(
@@ -378,11 +419,15 @@ def _reddit_json_search(
         return {"error": "network_error", "error_message": f"{type(e).__name__}: {e}"}
 
     if resp.status_code == 403:
-        return {"error": "blocked",
-                "error_message": ("Reddit returned 403 for both RSS and .json (anonymous access "
-                                  "blocked from this IP). Options: (1) set REDDIT_COOKIE to a "
-                                  "logged-in session's Cookie header, (2) retry later, or "
-                                  "(3) apply for official API access at https://www.reddit.com/prefs/apps.")}
+        return {
+            "error": "blocked",
+            "error_message": (
+                "Reddit returned 403 for both RSS and .json (anonymous access "
+                "blocked from this IP). Options: (1) set REDDIT_COOKIE to a "
+                "logged-in session's Cookie header, (2) retry later, or "
+                "(3) apply for official API access at https://www.reddit.com/prefs/apps."
+            ),
+        }
     if resp.status_code >= 400:
         return {"error": "api_error", "error_message": f"HTTP {resp.status_code}"}
 
@@ -396,29 +441,32 @@ def _reddit_json_search(
     for c in children[:max_results]:
         p = c.get("data", {})
         permalink = p.get("permalink")
-        posts.append({
-            "title": p.get("title"),
-            "author": p.get("author"),
-            "subreddit": p.get("subreddit"),
-            "url": f"https://www.reddit.com{permalink}" if permalink else p.get("url"),
-            "external_url": p.get("url"),
-            "score": p.get("score"),
-            "num_comments": p.get("num_comments"),
-            "published": p.get("created_utc"),
-            "selftext": (p.get("selftext") or "")[:2000],
-            "id": p.get("id"),
-        })
+        posts.append(
+            {
+                "title": p.get("title"),
+                "author": p.get("author"),
+                "subreddit": p.get("subreddit"),
+                "url": f"https://www.reddit.com{permalink}" if permalink else p.get("url"),
+                "external_url": p.get("url"),
+                "score": p.get("score"),
+                "num_comments": p.get("num_comments"),
+                "published": p.get("created_utc"),
+                "selftext": (p.get("selftext") or "")[:2000],
+                "id": p.get("id"),
+            }
+        )
     return {"query": query, "subreddit": subreddit, "result_count": len(posts), "posts": posts}
 
 
-def _enrich_with_full_content(posts: List[Dict[str, Any]],
-                              max_results: int) -> List[Dict[str, Any]]:
+def _enrich_with_full_content(
+    posts: List[Dict[str, Any]], max_results: int
+) -> List[Dict[str, Any]]:
     """Best-effort full-page extraction for the top Reddit posts (the
     "extract full page content and clean" step). Uses the project's resilient
     fetcher + cleaner on each permalink."""
     try:
-        from ..extraction import fetch_resilient
         from ..cleaner import advanced_clean_text
+        from ..extraction import fetch_resilient
     except Exception:
         return posts  # extraction optional; never block on missing imports
 
@@ -433,6 +481,7 @@ def _enrich_with_full_content(posts: List[Dict[str, Any]],
                 if cleaned:
                     p["full_content"] = cleaned[:5000]
         except Exception:
+            logger.debug("suppressed exception during resilient operation", exc_info=True)
             continue
     return posts
 
@@ -440,6 +489,7 @@ def _enrich_with_full_content(posts: List[Dict[str, Any]],
 # =====================================================================
 # Provider (capability-aware wrapper)
 # =====================================================================
+
 
 class RedditProvider(SocialProvider):
     platform = "reddit"
@@ -457,50 +507,67 @@ class RedditProvider(SocialProvider):
         # the listing); only the query capability needs a query term.
         if capability == CAP_QUERY and not query:
             return provider_result(
-                self.platform, error="no_input",
+                self.platform,
+                error="no_input",
                 error_message="Reddit query search requires a --query.",
                 capabilities_used=[CAP_QUERY],
             )
         if capability == CAP_SUBREDDIT and not subreddit:
             return provider_result(
-                self.platform, error="no_input",
+                self.platform,
+                error="no_input",
                 error_message="Reddit subreddit listing requires a --subreddit.",
                 capabilities_used=[CAP_SUBREDDIT],
             )
         if capability == CAP_USER and not user:
             return provider_result(
-                self.platform, error="no_input",
+                self.platform,
+                error="no_input",
                 error_message="Reddit user listing requires a --user.",
                 capabilities_used=[CAP_USER],
             )
 
-        raw = reddit_search(query, subreddit=subreddit, max_results=max_results,
-                            sort=sort, user=user, extract_full=extract_full)
+        raw = reddit_search(
+            query,
+            subreddit=subreddit,
+            max_results=max_results,
+            sort=sort,
+            user=user,
+            extract_full=extract_full,
+        )
         cap_used = {CAP_SUBREDDIT: CAP_SUBREDDIT, CAP_USER: CAP_USER}.get(capability, CAP_QUERY)
         if "error" in raw:
-            return provider_result(self.platform, query=query, error=raw["error"],
-                                   error_message=raw["error_message"],
-                                   capabilities_used=[cap_used], raw=raw)
+            return provider_result(
+                self.platform,
+                query=query,
+                error=raw["error"],
+                error_message=raw["error_message"],
+                capabilities_used=[cap_used],
+                raw=raw,
+            )
 
-        items: List[Dict[str, Any]] = [normalize_item(
-            self.platform,
-            author=p.get("author"),
-            content=(p.get("title") or "") + (
-                f"\n\n{p.get('selftext')}" if p.get("selftext") else ""),
-            url=p.get("url"),
-            timestamp=str(p.get("published")) if p.get("published") else None,
-            metadata={
-                "title": p.get("title"),
-                "subreddit": p.get("subreddit") or subreddit,
-                "user": user,
-                "external_url": p.get("external_url"),
-                "score": p.get("score"),
-                "num_comments": p.get("num_comments"),
-                "published": p.get("published"),
-                "id": p.get("id"),
-                "source": raw.get("source_used"),
-            },
-        ) for p in raw.get("posts", [])]
+        items: List[Dict[str, Any]] = [
+            normalize_item(
+                self.platform,
+                author=p.get("author"),
+                content=(p.get("title") or "")
+                + (f"\n\n{p.get('selftext')}" if p.get("selftext") else ""),
+                url=p.get("url"),
+                timestamp=str(p.get("published")) if p.get("published") else None,
+                metadata={
+                    "title": p.get("title"),
+                    "subreddit": p.get("subreddit") or subreddit,
+                    "user": user,
+                    "external_url": p.get("external_url"),
+                    "score": p.get("score"),
+                    "num_comments": p.get("num_comments"),
+                    "published": p.get("published"),
+                    "id": p.get("id"),
+                    "source": raw.get("source_used"),
+                },
+            )
+            for p in raw.get("posts", [])
+        ]
 
         note = None
         if raw.get("source_used") == "json_fallback":
@@ -508,5 +575,11 @@ class RedditProvider(SocialProvider):
         elif raw.get("note"):
             note = raw["note"]
 
-        return provider_result(self.platform, query=query, results=items,
-                               capabilities_used=[cap_used], raw=raw, note=note)
+        return provider_result(
+            self.platform,
+            query=query,
+            results=items,
+            capabilities_used=[cap_used],
+            raw=raw,
+            note=note,
+        )

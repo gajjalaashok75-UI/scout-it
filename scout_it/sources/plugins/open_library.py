@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -63,30 +63,33 @@ class OpenLibraryPlugin(SourcePlugin):
             edition_count = doc.get("edition_count", 0) or 0
             authority = min(edition_count / 50.0, 1.0)
 
-            results.append(make_result(
-                id=ol_key,
-                source="open_library",
-                url=url_val,
-                title=title,
-                snippet=snippet,
-                content="",
-                content_type="book",
-                timestamp=str(doc.get("first_publish_year", "")),
-                authority_score=authority,
-                lang="en",
-                metadata={
-                    "authors": authors,
-                    "first_publish_year": doc.get("first_publish_year"),
-                    "isbn": (doc.get("isbn") or [])[:3],
-                    "subjects": subjects,
-                    "edition_count": edition_count,
-                    "cover_url": cover_url,
-                    "languages": doc.get("language", []),
-                },
-            ))
+            results.append(
+                make_result(
+                    id=ol_key,
+                    source="open_library",
+                    url=url_val,
+                    title=title,
+                    snippet=snippet,
+                    content="",
+                    content_type="book",
+                    timestamp=str(doc.get("first_publish_year", "")),
+                    authority_score=authority,
+                    lang="en",
+                    metadata={
+                        "authors": authors,
+                        "first_publish_year": doc.get("first_publish_year"),
+                        "isbn": (doc.get("isbn") or [])[:3],
+                        "subjects": subjects,
+                        "edition_count": edition_count,
+                        "cover_url": cover_url,
+                        "languages": doc.get("language", []),
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = OpenLibraryPlugin()
 register(PLUGIN)

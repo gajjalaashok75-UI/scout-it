@@ -33,7 +33,7 @@ from __future__ import annotations
 import logging
 import math
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 try:
     import numpy as np  # only needed for the optional dense-vector path
@@ -41,7 +41,7 @@ except ImportError:  # pragma: no cover - graceful degradation, see module docst
     np = None
 
 from . import config, dedup, embeddings
-from .bm25f import BM25FIndex, build_index as build_bm25f_index
+from .bm25f import build_index as build_bm25f_index
 from .facets import compute_facets
 
 logger = logging.getLogger(__name__)
@@ -92,8 +92,7 @@ class _BM25:
                 self._tf.setdefault(term, {})[i] = freq
         # Lucene idf: always positive
         self._idf = {
-            term: math.log(1.0 + (self._N - n + 0.5) / (n + 0.5))
-            for term, n in df.items()
+            term: math.log(1.0 + (self._N - n + 0.5) / (n + 0.5)) for term, n in df.items()
         }
 
     def get_scores(self, query_terms: List[str]) -> List[float]:
@@ -233,9 +232,7 @@ def semantic_rerank(
             candidate_docs = [_result_text(results[i]) for i in candidate_idx]
             ce_scores = embeddings.cross_encoder_scores(query, candidate_docs)
             # Re-sort just the candidates by cross-encoder score.
-            cand_sorted = sorted(
-                range(top_k), key=lambda j: -ce_scores[j]
-            )
+            cand_sorted = sorted(range(top_k), key=lambda j: -ce_scores[j])
             candidate_idx = [candidate_idx[j] for j in cand_sorted]
             reranker_used = True
         except Exception as exc:

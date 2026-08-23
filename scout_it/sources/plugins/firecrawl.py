@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-from ..api_search_base import ApiSearchSource, _ApiKeyError, _RateLimitError, _NetworkError
+from ..api_search_base import ApiSearchSource, _ApiKeyError, _NetworkError, _RateLimitError
 from ..base import SourceConfig, make_result
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,9 @@ class FirecrawlPlugin(ApiSearchSource):
         if status in (401, 403):
             raise _ApiKeyError(f"HTTP {status}: {resp.text[:200]}")
         if status == 429:
-            raise _RateLimitError(f"HTTP 429: rate limited or credits exhausted — {resp.text[:200]}")
+            raise _RateLimitError(
+                f"HTTP 429: rate limited or credits exhausted — {resp.text[:200]}"
+            )
         if status >= 500:
             raise _NetworkError(f"HTTP {status}: server error — {resp.text[:200]}")
         if status >= 400:
@@ -139,7 +141,11 @@ class FirecrawlPlugin(ApiSearchSource):
         # Firecrawl returns 'markdown' (full extracted text), 'html', 'json',
         # 'description', and 'summary'. Preserve the richest content untruncated.
         content = raw.get("markdown", "") or raw.get("html", "") or ""
-        snippet = raw.get("description", "") or raw.get("summary", "") or (content[:500] if content else "")
+        snippet = (
+            raw.get("description", "")
+            or raw.get("summary", "")
+            or (content[:500] if content else "")
+        )
 
         # Image-specific: Firecrawl image results may have 'image' or 'thumbnail'.
         is_image = search_type == "image" or bool(raw.get("image") or raw.get("thumbnail"))
@@ -168,5 +174,6 @@ class FirecrawlPlugin(ApiSearchSource):
 
 
 from ..registry import register
+
 PLUGIN = FirecrawlPlugin()
 register(PLUGIN)

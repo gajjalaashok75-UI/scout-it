@@ -31,7 +31,9 @@ def _extract_domain(url: str) -> str:
         return "unknown"
     try:
         parsed = urlparse(url)
-        host = parsed.hostname or parsed.path.split("/")[0] if not parsed.hostname else parsed.hostname
+        host = (
+            parsed.hostname or parsed.path.split("/")[0] if not parsed.hostname else parsed.hostname
+        )
         if not host:
             return "unknown"
         # Strip "www." prefix.
@@ -99,10 +101,7 @@ def compute_facets(
                 facets[f][_extract_language(r)] += 1
 
     # Convert Counters to sorted dicts (most frequent first).
-    return {
-        f: dict(facets[f].most_common(50))
-        for f in facet_fields
-    }
+    return {f: dict(facets[f].most_common(50)) for f in facet_fields}
 
 
 def filter_by_facet(

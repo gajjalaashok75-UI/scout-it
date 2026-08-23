@@ -38,13 +38,14 @@ Public API:
     - ``compute_facets``           — facet aggregations over result sets
 """
 
-from .retrieval import semantic_rerank, semantic_search_with_facets
-from .composite_score import composite_score, composite_rerank, DEFAULT_WEIGHTS, GENERAL_WEIGHTS
-from .store import SemanticIndex, QueryCache
-from .embeddings import is_available, get_embedding_dim
-from .bm25f import BM25FIndex, build_index as build_bm25f_index
-from .facets import compute_facets, filter_by_facet
 from . import config
+from .bm25f import BM25FIndex
+from .bm25f import build_index as build_bm25f_index
+from .composite_score import DEFAULT_WEIGHTS, GENERAL_WEIGHTS, composite_rerank, composite_score
+from .embeddings import get_embedding_dim, is_available
+from .facets import compute_facets, filter_by_facet
+from .retrieval import semantic_rerank, semantic_search_with_facets
+from .store import QueryCache, SemanticIndex
 
 __all__ = [
     "semantic_rerank",

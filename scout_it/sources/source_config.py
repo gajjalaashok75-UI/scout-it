@@ -484,6 +484,7 @@ def save_sources_config(config: Dict[str, Dict[str, Any]]) -> None:
     SOURCES_FILE.write_text(json.dumps(config, indent=2), encoding="utf-8")
     try:
         import stat
+
         os.chmod(SOURCES_FILE, stat.S_IRUSR | stat.S_IWUSR)
     except (OSError, NotImplementedError):
         pass
@@ -507,7 +508,7 @@ def get_source_config(source_name: str) -> Dict[str, Any]:
     cfg.update(stored)
 
     # Environment variable override for API key.
-    env_var = defaults.get("api_key_env", "")
+    env_var = str(defaults.get("api_key_env", "") or "")
     if env_var and os.environ.get(env_var):
         cfg["api_key"] = os.environ[env_var]
 
@@ -557,19 +558,23 @@ def source_status() -> List[Dict[str, Any]]:
         stored_cfg = stored.get(name, {})
         stored_key = stored_cfg.get("api_key")
         configured = bool(env_key or stored_key) if src["requires_key"] else True
-        source = "environment variable" if env_key else (
-            f"stored config ({SOURCES_FILE})" if stored_key else None
+        source = (
+            "environment variable"
+            if env_key
+            else (f"stored config ({SOURCES_FILE})" if stored_key else None)
         )
-        out.append({
-            "name": name,
-            "display_name": src["display_name"],
-            "content_type": src["content_type"],
-            "requires_key": src["requires_key"],
-            "configured": configured,
-            "source": source,
-            "enabled": is_source_enabled(name),
-            "free_tier": src.get("free_tier", True),
-            "description": src["description"],
-            "get_it": src["get_it"],
-        })
+        out.append(
+            {
+                "name": name,
+                "display_name": src["display_name"],
+                "content_type": src["content_type"],
+                "requires_key": src["requires_key"],
+                "configured": configured,
+                "source": source,
+                "enabled": is_source_enabled(name),
+                "free_tier": src.get("free_tier", True),
+                "description": src["description"],
+                "get_it": src["get_it"],
+            }
+        )
     return out

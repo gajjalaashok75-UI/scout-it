@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -65,32 +65,37 @@ class HuggingFacePlugin(SourcePlugin):
             authority = min((downloads / 100000.0 + likes / 1000.0), 1.0)
 
             tags = item.get("tags") or []
-            task_categories = [t.replace("task_categories:", "") for t in tags if "task_categories:" in t]
+            task_categories = [
+                t.replace("task_categories:", "") for t in tags if "task_categories:" in t
+            ]
 
-            results.append(make_result(
-                id=ds_id,
-                source="huggingface",
-                url=url_val,
-                title=ds_id,
-                snippet=desc[:500] if desc else f"Dataset {ds_id}",
-                content="",
-                content_type="dataset",
-                timestamp=item.get("lastModified", ""),
-                authority_score=authority,
-                lang="en",
-                metadata={
-                    "downloads": downloads,
-                    "likes": likes,
-                    "tags": [t for t in tags if ":" not in t][:10],
-                    "task_categories": task_categories,
-                    "size": card.get("size_categories"),
-                    "papers": card.get("papers", []),
-                    "download_url": f"https://huggingface.co/datasets/{ds_id}/resolve/main/",
-                },
-            ))
+            results.append(
+                make_result(
+                    id=ds_id,
+                    source="huggingface",
+                    url=url_val,
+                    title=ds_id,
+                    snippet=desc[:500] if desc else f"Dataset {ds_id}",
+                    content="",
+                    content_type="dataset",
+                    timestamp=item.get("lastModified", ""),
+                    authority_score=authority,
+                    lang="en",
+                    metadata={
+                        "downloads": downloads,
+                        "likes": likes,
+                        "tags": [t for t in tags if ":" not in t][:10],
+                        "task_categories": task_categories,
+                        "size": card.get("size_categories"),
+                        "papers": card.get("papers", []),
+                        "download_url": f"https://huggingface.co/datasets/{ds_id}/resolve/main/",
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = HuggingFacePlugin()
 register(PLUGIN)

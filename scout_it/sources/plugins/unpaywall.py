@@ -9,9 +9,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -70,30 +70,34 @@ class UnpaywallPlugin(SourcePlugin):
             # Journal/venue.
             venue = item.get("journal_name", "") or (item.get("z_authors") and "journal") or ""
 
-            results.append(make_result(
-                id=doi,
-                source="unpaywall",
-                url=oa_url or f"https://doi.org/{doi}" if doi else "",
-                title=title,
-                snippet=item.get("abstract", "") or f"Open access article (status: {oa_status})",
-                content="",
-                content_type="academic",
-                timestamp=item.get("published_date", ""),
-                authority_score=0.6 if is_oa else 0.3,
-                lang="en",
-                metadata={
-                    "doi": doi,
-                    "is_oa": is_oa,
-                    "oa_status": oa_status,
-                    "oa_pdf_url": oa_url,
-                    "host_type": host_type,
-                    "venue": venue,
-                    "genre": item.get("genre", ""),
-                },
-            ))
+            results.append(
+                make_result(
+                    id=doi,
+                    source="unpaywall",
+                    url=oa_url or f"https://doi.org/{doi}" if doi else "",
+                    title=title,
+                    snippet=item.get("abstract", "")
+                    or f"Open access article (status: {oa_status})",
+                    content="",
+                    content_type="academic",
+                    timestamp=item.get("published_date", ""),
+                    authority_score=0.6 if is_oa else 0.3,
+                    lang="en",
+                    metadata={
+                        "doi": doi,
+                        "is_oa": is_oa,
+                        "oa_status": oa_status,
+                        "oa_pdf_url": oa_url,
+                        "host_type": host_type,
+                        "venue": venue,
+                        "genre": item.get("genre", ""),
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = UnpaywallPlugin()
 register(PLUGIN)

@@ -42,9 +42,8 @@ import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from enum import Enum
 from html import unescape
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import quote, urljoin
 
 import requests
@@ -52,7 +51,7 @@ import requests
 from . import header_profiles as _hp
 from . import proxy_pool as _pp
 from . import response_cache as _rc
-from ._utils import SimpleRateLimiter, prune_empty, build_retry_session
+from ._utils import SimpleRateLimiter, build_retry_session, prune_empty
 
 logger = logging.getLogger(__name__)
 
@@ -92,14 +91,29 @@ SITE_HOME = {
 }
 
 BLOCKED_PREFIXES = (
-    "File:", "Category:", "Template:", "Help:", "Portal:",
-    "Special:", "Talk:", "User:", "Module:", "Draft:",
+    "File:",
+    "Category:",
+    "Template:",
+    "Help:",
+    "Portal:",
+    "Special:",
+    "Talk:",
+    "User:",
+    "Module:",
+    "Draft:",
 )
 
 NOISE_PATTERNS = [
-    r"\bNavigation menu\b", r"\bContents\b", r"\bSee also\b", r"\bReferences\b",
-    r"\bExternal links\b", r"\bFurther reading\b", r"\bNotes\b", r"\bFootnotes\b",
-    r"\bJump to navigation\b", r"\bJump to search\b",
+    r"\bNavigation menu\b",
+    r"\bContents\b",
+    r"\bSee also\b",
+    r"\bReferences\b",
+    r"\bExternal links\b",
+    r"\bFurther reading\b",
+    r"\bNotes\b",
+    r"\bFootnotes\b",
+    r"\bJump to navigation\b",
+    r"\bJump to search\b",
 ]
 
 TIMEOUT = 25
@@ -109,8 +123,11 @@ RATE_PER_SEC = 2.0
 ALL_PROJECTS = sorted(SITE_MAP.keys())
 
 __all__ = [
-    "wikimedia_search", "WikimediaExtractor",
-    "SITE_MAP", "SITE_HOME", "ALL_PROJECTS",
+    "wikimedia_search",
+    "WikimediaExtractor",
+    "SITE_MAP",
+    "SITE_HOME",
+    "ALL_PROJECTS",
     "WIKIFUNCTIONS_API",
 ]
 
@@ -121,6 +138,7 @@ __all__ = [
 @dataclass
 class RequestResult:
     """Structured result from a Wikimedia API request."""
+
     ok: bool
     endpoint: str
     status_code: Optional[int] = None
@@ -228,8 +246,14 @@ class WikimediaExtractor:
         """
         if project == "wikipedia":
             return f"https://{self.language}.wikipedia.org/w/api.php"
-        if project in {"wikivoyage", "wiktionary", "wikibooks",
-                        "wikiversity", "wikiquote", "wikisource"}:
+        if project in {
+            "wikivoyage",
+            "wiktionary",
+            "wikibooks",
+            "wikiversity",
+            "wikiquote",
+            "wikisource",
+        }:
             return f"https://{self.language}.{project}.org/w/api.php"
         return SITE_MAP[project]
 
@@ -245,8 +269,11 @@ class WikimediaExtractor:
         return params
 
     def _request_json(
-        self, url: str, params: Optional[Dict] = None,
-        endpoint: str = "", timeout: Optional[int] = None,
+        self,
+        url: str,
+        params: Optional[Dict] = None,
+        endpoint: str = "",
+        timeout: Optional[int] = None,
     ) -> RequestResult:
         """Make a rate-limited, retried, cached request.
 
@@ -263,11 +290,14 @@ class WikimediaExtractor:
             try:
                 data = json.loads(cached["content"])
                 return RequestResult(
-                    ok=True, endpoint=endpoint or url,
-                    status_code=200, data=data, from_cache=True,
+                    ok=True,
+                    endpoint=endpoint or url,
+                    status_code=200,
+                    data=data,
+                    from_cache=True,
                 )
             except Exception:
-                pass
+                logger.debug("suppressed exception during resilient operation", exc_info=True)
 
         proxy_info = _pp.get_default_pool().get()
         headers = _hp.get_profile()
@@ -280,8 +310,11 @@ class WikimediaExtractor:
             try:
                 self.rate_limiter.wait()
                 resp = self.session.get(
-                    url, params=params, headers=headers,
-                    timeout=timeout, proxies=proxy_info["requests_proxies"],
+                    url,
+                    params=params,
+                    headers=headers,
+                    timeout=timeout,
+                    proxies=proxy_info["requests_proxies"],
                 )
                 # Transient errors → retry with backoff
                 if resp.status_code == 429 or 500 <= resp.status_code < 600:
@@ -295,7 +328,9 @@ class WikimediaExtractor:
                 if isinstance(data, dict) and data.get("error", {}).get("code") == "maxlag":
                     if attempts <= self.retries:
                         lag = data.get("error", {}).get("lag", 5)
-                        delay = max(5, int(float(lag)) if str(lag).replace(".", "", 1).isdigit() else 5)
+                        delay = max(
+                            5, int(float(lag)) if str(lag).replace(".", "", 1).isdigit() else 5
+                        )
                         time.sleep(delay)
                     continue
 
@@ -303,15 +338,18 @@ class WikimediaExtractor:
 
                 # Cache success
                 _rc.set(
-                    key, json.dumps(data, ensure_ascii=False),
+                    key,
+                    json.dumps(data, ensure_ascii=False),
                     content_type="wikimedia",
                     ttl_seconds=60 * 60 * 24,  # 24h
                     extra={"url": url, "params": params},
                 )
 
                 return RequestResult(
-                    ok=True, endpoint=endpoint or url,
-                    status_code=resp.status_code, data=data,
+                    ok=True,
+                    endpoint=endpoint or url,
+                    status_code=resp.status_code,
+                    data=data,
                     elapsed_ms=int((time.time() - started) * 1000),
                     attempts=attempts,
                 )
@@ -324,7 +362,8 @@ class WikimediaExtractor:
                     break
 
         return RequestResult(
-            ok=False, endpoint=endpoint or url,
+            ok=False,
+            endpoint=endpoint or url,
             error=last_error,
             elapsed_ms=int((time.time() - started) * 1000),
             attempts=attempts,
@@ -360,15 +399,21 @@ class WikimediaExtractor:
         seen: Set[str] = set()
         out: List[Dict] = []
         for row in rows:
-            key = json.dumps({
-                "title": row.get("title"),
-                "id": row.get("id"),
-                "url": row.get("fullurl") or row.get("url"),
-                "extract": (
-                    row.get("extract_clean") or row.get("extract")
-                    or row.get("snippet_clean") or row.get("snippet")
-                ),
-            }, sort_keys=True, ensure_ascii=False)
+            key = json.dumps(
+                {
+                    "title": row.get("title"),
+                    "id": row.get("id"),
+                    "url": row.get("fullurl") or row.get("url"),
+                    "extract": (
+                        row.get("extract_clean")
+                        or row.get("extract")
+                        or row.get("snippet_clean")
+                        or row.get("snippet")
+                    ),
+                },
+                sort_keys=True,
+                ensure_ascii=False,
+            )
             h = hashlib.sha256(key.encode("utf-8")).hexdigest()
             if h not in seen:
                 seen.add(h)
@@ -379,19 +424,21 @@ class WikimediaExtractor:
 
     def clean_summary_result(self, data: Dict) -> Dict:
         """Clean and structure a Wikipedia page summary response."""
-        return prune_empty({
-            "source_project": "wikipedia",
-            "title": data.get("title"),
-            "description": normalize_text(data.get("description", "")),
-            "extract": clean_noise_text(data.get("extract", "")),
-            "lang": data.get("lang"),
-            "dir": data.get("dir"),
-            "type": data.get("type"),
-            "content_urls": data.get("content_urls", {}),
-            "thumbnail": data.get("thumbnail", {}),
-            "originalimage": data.get("originalimage", {}),
-            "timestamp": data.get("timestamp"),
-        })
+        return prune_empty(
+            {
+                "source_project": "wikipedia",
+                "title": data.get("title"),
+                "description": normalize_text(data.get("description", "")),
+                "extract": clean_noise_text(data.get("extract", "")),
+                "lang": data.get("lang"),
+                "dir": data.get("dir"),
+                "type": data.get("type"),
+                "content_urls": data.get("content_urls", {}),
+                "thumbnail": data.get("thumbnail", {}),
+                "originalimage": data.get("originalimage", {}),
+                "timestamp": data.get("timestamp"),
+            }
+        )
 
     def wikipedia_summary(self, title: str) -> RequestResult:
         """Fetch a Wikipedia summary via REST API (page/summary/{title})."""
@@ -429,34 +476,44 @@ class WikimediaExtractor:
             if t and t not in seen_cat:
                 seen_cat.add(t)
                 categories.append(t)
-        return prune_empty({
-            "source_project": project,
-            "requested_title": title,
-            "title": page.get("title", title),
-            "pageid": page.get("pageid"),
-            "fullurl": page.get("fullurl"),
-            "extract": clean_noise_text(
-                page.get("extract", "") if isinstance(page.get("extract", ""), str) else ""
-            ),
-            "links": links,
-            "categories": categories,
-        })
+        return prune_empty(
+            {
+                "source_project": project,
+                "requested_title": title,
+                "title": page.get("title", title),
+                "pageid": page.get("pageid"),
+                "fullurl": page.get("fullurl"),
+                "extract": clean_noise_text(
+                    page.get("extract", "") if isinstance(page.get("extract", ""), str) else ""
+                ),
+                "links": links,
+                "categories": categories,
+            }
+        )
 
     def action_query_extract(
-        self, project: str, title: str,
-        plain_text: bool = True, intro_only: bool = False,
+        self,
+        project: str,
+        title: str,
+        plain_text: bool = True,
+        intro_only: bool = False,
     ) -> RequestResult:
         """Fetch a cleaned page extract via the Action API."""
         params = {
-            "action": "query", "prop": "extracts|info|categories|links",
-            "inprop": "url", "titles": title,
+            "action": "query",
+            "prop": "extracts|info|categories|links",
+            "inprop": "url",
+            "titles": title,
             "explaintext": 1 if plain_text else 0,
             "exintro": 1 if intro_only else 0,
-            "cllimit": 100, "pllimit": 100,
-            "format": "json", "redirects": 1,
+            "cllimit": 100,
+            "pllimit": 100,
+            "format": "json",
+            "redirects": 1,
         }
         r = self._request_json(
-            self.action_api_for_project(project), params=params,
+            self.action_api_for_project(project),
+            params=params,
             endpoint=f"{project}_page_extract",
         )
         if r.ok:
@@ -466,12 +523,17 @@ class WikimediaExtractor:
     def batch_page_extract(self, project: str, titles: List[str]) -> RequestResult:
         """Batch extract up to 50 page titles."""
         params = {
-            "action": "query", "prop": "extracts|info",
-            "inprop": "url", "titles": "|".join(titles[:50]),
-            "explaintext": 1, "format": "json", "redirects": 1,
+            "action": "query",
+            "prop": "extracts|info",
+            "inprop": "url",
+            "titles": "|".join(titles[:50]),
+            "explaintext": 1,
+            "format": "json",
+            "redirects": 1,
         }
         r = self._request_json(
-            self.action_api_for_project(project), params=params,
+            self.action_api_for_project(project),
+            params=params,
             endpoint=f"{project}_batch_page_extract",
         )
         if not r.ok:
@@ -483,27 +545,32 @@ class WikimediaExtractor:
             title = p.get("title")
             if title and title not in seen:
                 seen.add(title)
-                out.append(prune_empty({
-                    "source_project": project,
-                    "title": title,
-                    "pageid": p.get("pageid"),
-                    "fullurl": p.get("fullurl"),
-                    "extract": clean_noise_text(p.get("extract", "")),
-                }))
+                out.append(
+                    prune_empty(
+                        {
+                            "source_project": project,
+                            "title": title,
+                            "pageid": p.get("pageid"),
+                            "fullurl": p.get("fullurl"),
+                            "extract": clean_noise_text(p.get("extract", "")),
+                        }
+                    )
+                )
         r.data = out
         return r
 
-    def search_pages(
-        self, project: str, query: str, limit: int = 10
-    ) -> RequestResult:
+    def search_pages(self, project: str, query: str, limit: int = 10) -> RequestResult:
         """Search a Wikimedia project via the Action API ``srsearch``."""
         params = {
-            "action": "query", "list": "search",
-            "srsearch": query, "srlimit": min(limit, 50),
+            "action": "query",
+            "list": "search",
+            "srsearch": query,
+            "srlimit": min(limit, 50),
             "format": "json",
         }
         r = self._request_json(
-            self.action_api_for_project(project), params=params,
+            self.action_api_for_project(project),
+            params=params,
             endpoint=f"{project}_search",
         )
         if not r.ok:
@@ -514,20 +581,22 @@ class WikimediaExtractor:
             title = item.get("title")
             if title and title not in seen:
                 seen.add(title)
-                out.append(prune_empty({
-                    "source_project": project,
-                    "title": title,
-                    "pageid": item.get("pageid"),
-                    "size": item.get("size"),
-                    "timestamp": item.get("timestamp"),
-                    "snippet": strip_html(item.get("snippet", "")),
-                }))
+                out.append(
+                    prune_empty(
+                        {
+                            "source_project": project,
+                            "title": title,
+                            "pageid": item.get("pageid"),
+                            "size": item.get("size"),
+                            "timestamp": item.get("timestamp"),
+                            "snippet": strip_html(item.get("snippet", "")),
+                        }
+                    )
+                )
         r.data = out
         return r
 
-    def search_pages_paginated(
-        self, project: str, query: str, limit: int = 100
-    ) -> RequestResult:
+    def search_pages_paginated(self, project: str, query: str, limit: int = 100) -> RequestResult:
         """Paginated search with loop bounds."""
         collected: List[Dict] = []
         seen: Set[str] = set()
@@ -536,13 +605,16 @@ class WikimediaExtractor:
         while len(collected) < limit and loops < 100:
             loops += 1
             params = {
-                "action": "query", "list": "search",
+                "action": "query",
+                "list": "search",
                 "srsearch": query,
                 "srlimit": min(50, limit - len(collected)),
-                "sroffset": sroffset, "format": "json",
+                "sroffset": sroffset,
+                "format": "json",
             }
             r = self._request_json(
-                self.action_api_for_project(project), params=params,
+                self.action_api_for_project(project),
+                params=params,
                 endpoint=f"{project}_search_paginated",
             )
             if not r.ok:
@@ -554,12 +626,16 @@ class WikimediaExtractor:
                 title = item.get("title")
                 if title and title not in seen:
                     seen.add(title)
-                    collected.append(prune_empty({
-                        "source_project": project,
-                        "title": title,
-                        "pageid": item.get("pageid"),
-                        "snippet": strip_html(item.get("snippet", "")),
-                    }))
+                    collected.append(
+                        prune_empty(
+                            {
+                                "source_project": project,
+                                "title": title,
+                                "pageid": item.get("pageid"),
+                                "snippet": strip_html(item.get("snippet", "")),
+                            }
+                        )
+                    )
                     if len(collected) >= limit:
                         break
             cont = r.data.get("continue", {})
@@ -567,19 +643,23 @@ class WikimediaExtractor:
                 break
             sroffset = cont["sroffset"]
         return RequestResult(
-            ok=True, endpoint=f"{project}_search_paginated",
+            ok=True,
+            endpoint=f"{project}_search_paginated",
             data=collected,
         )
 
     def parse_page_html(self, project: str, title: str) -> RequestResult:
         """Parse page HTML via Action API ``parse`` action."""
         params = {
-            "action": "parse", "page": title,
+            "action": "parse",
+            "page": title,
             "prop": "text|sections|wikitext|displaytitle",
-            "format": "json", "redirects": 1,
+            "format": "json",
+            "redirects": 1,
         }
         r = self._request_json(
-            self.action_api_for_project(project), params=params,
+            self.action_api_for_project(project),
+            params=params,
             endpoint=f"{project}_parse_page",
         )
         if not r.ok:
@@ -592,19 +672,23 @@ class WikimediaExtractor:
             line = normalize_text(s.get("line", ""))
             if line and line not in seen:
                 seen.add(line)
-                sections.append({
-                    "index": s.get("index"),
-                    "line": line,
-                    "anchor": s.get("anchor"),
-                    "number": s.get("number"),
-                })
-        r.data = prune_empty({
-            "source_project": project,
-            "title": parse.get("displaytitle") or title,
-            "text": strip_html(html),
-            "sections": sections,
-            "wikitext": parse.get("wikitext", {}).get("*", ""),
-        })
+                sections.append(
+                    {
+                        "index": s.get("index"),
+                        "line": line,
+                        "anchor": s.get("anchor"),
+                        "number": s.get("number"),
+                    }
+                )
+        r.data = prune_empty(
+            {
+                "source_project": project,
+                "title": parse.get("displaytitle") or title,
+                "text": strip_html(html),
+                "sections": sections,
+                "wikitext": parse.get("wikitext", {}).get("*", ""),
+            }
+        )
         return r
 
     def export_sections(self, project: str, title: str) -> RequestResult:
@@ -621,12 +705,16 @@ class WikimediaExtractor:
             if str(idx) == "0":
                 continue
             params = {
-                "action": "parse", "page": title,
-                "prop": "text", "section": idx,
-                "format": "json", "redirects": 1,
+                "action": "parse",
+                "page": title,
+                "prop": "text",
+                "section": idx,
+                "format": "json",
+                "redirects": 1,
             }
             r = self._request_json(
-                self.action_api_for_project(project), params=params,
+                self.action_api_for_project(project),
+                params=params,
                 endpoint=f"{project}_section_parse",
             )
             if not r.ok:
@@ -634,14 +722,18 @@ class WikimediaExtractor:
             html = r.data.get("parse", {}).get("text", {}).get("*", "")
             cleaned = clean_noise_text(strip_html(html))
             if cleaned:
-                out.append(prune_empty({
-                    "source_project": project,
-                    "title": title,
-                    "section_index": idx,
-                    "section_title": sec.get("line"),
-                    "section_anchor": sec.get("anchor"),
-                    "text": cleaned,
-                }))
+                out.append(
+                    prune_empty(
+                        {
+                            "source_project": project,
+                            "title": title,
+                            "section_index": idx,
+                            "section_title": sec.get("line"),
+                            "section_anchor": sec.get("anchor"),
+                            "text": cleaned,
+                        }
+                    )
+                )
         return RequestResult(ok=True, endpoint="export_sections", data=out)
 
     # ── Project-specific searches ───────────────────────────────────
@@ -653,12 +745,15 @@ class WikimediaExtractor:
     def wikidata_search(self, query: str, limit: int = 10) -> RequestResult:
         """Search Wikidata entities via ``wbsearchentities``."""
         params = {
-            "action": "wbsearchentities", "search": query,
-            "language": self.language, "limit": min(limit, 50),
+            "action": "wbsearchentities",
+            "search": query,
+            "language": self.language,
+            "limit": min(limit, 50),
             "format": "json",
         }
         r = self._request_json(
-            SITE_MAP["wikidata"], params=params,
+            SITE_MAP["wikidata"],
+            params=params,
             endpoint="wikidata_search",
         )
         if not r.ok:
@@ -669,39 +764,48 @@ class WikimediaExtractor:
             qid = item.get("id")
             if qid and qid not in seen:
                 seen.add(qid)
-                out.append(prune_empty({
-                    "source_project": "wikidata",
-                    "id": qid,
-                    "label": item.get("label"),
-                    "description": normalize_text(item.get("description", "")),
-                    "match": item.get("match", {}),
-                    "url": item.get("concepturi"),
-                }))
+                out.append(
+                    prune_empty(
+                        {
+                            "source_project": "wikidata",
+                            "id": qid,
+                            "label": item.get("label"),
+                            "description": normalize_text(item.get("description", "")),
+                            "match": item.get("match", {}),
+                            "url": item.get("concepturi"),
+                        }
+                    )
+                )
         r.data = out
         return r
 
     def wikidata_entity(self, entity_id: str) -> RequestResult:
         """Fetch a Wikidata entity by ID."""
         params = {
-            "action": "wbgetentities", "ids": entity_id,
-            "languages": self.language, "format": "json",
+            "action": "wbgetentities",
+            "ids": entity_id,
+            "languages": self.language,
+            "format": "json",
         }
         r = self._request_json(
-            SITE_MAP["wikidata"], params=params,
+            SITE_MAP["wikidata"],
+            params=params,
             endpoint="wikidata_entity",
         )
         if not r.ok:
             return r
         e = r.data.get("entities", {}).get(entity_id, {})
-        r.data = prune_empty({
-            "source_project": "wikidata",
-            "id": entity_id,
-            "label": e.get("labels", {}).get(self.language, {}).get("value"),
-            "description": e.get("descriptions", {}).get(self.language, {}).get("value"),
-            "aliases": [x.get("value") for x in e.get("aliases", {}).get(self.language, [])],
-            "claims_count": len(e.get("claims", {})),
-            "sitelinks_count": len(e.get("sitelinks", {})),
-        })
+        r.data = prune_empty(
+            {
+                "source_project": "wikidata",
+                "id": entity_id,
+                "label": e.get("labels", {}).get(self.language, {}).get("value"),
+                "description": e.get("descriptions", {}).get(self.language, {}).get("value"),
+                "aliases": [x.get("value") for x in e.get("aliases", {}).get(self.language, [])],
+                "claims_count": len(e.get("claims", {})),
+                "sitelinks_count": len(e.get("sitelinks", {})),
+            }
+        )
         return r
 
     def wikifunctions_fetch(self, zid: str) -> RequestResult:
@@ -712,9 +816,13 @@ class WikimediaExtractor:
             endpoint="wikifunctions_fetch",
         )
         if r.ok:
-            r.data = prune_empty({
-                "source_project": "wikifunctions", "zid": zid, "data": r.data,
-            })
+            r.data = prune_empty(
+                {
+                    "source_project": "wikifunctions",
+                    "zid": zid,
+                    "data": r.data,
+                }
+            )
         return r
 
     # ── Robots check ────────────────────────────────────────────────
@@ -722,6 +830,7 @@ class WikimediaExtractor:
     def check_robots(self, project: str, path: str = "/w/api.php") -> RequestResult:
         """Check robots.txt allowance and crawl delay for a project."""
         from urllib import robotparser
+
         home = SITE_HOME[project]
         rp = robotparser.RobotFileParser()
         rp.set_url(urljoin(home, "/robots.txt"))
@@ -730,7 +839,8 @@ class WikimediaExtractor:
             allowed = rp.can_fetch(self.user_agent, urljoin(home, path))
             crawl_delay = rp.crawl_delay(self.user_agent)
             return RequestResult(
-                ok=True, endpoint="robots_check",
+                ok=True,
+                endpoint="robots_check",
                 data={
                     "project": project,
                     "robots_url": urljoin(home, "/robots.txt"),
@@ -751,9 +861,12 @@ class WikimediaExtractor:
         r = self._request_json(
             self.action_api_for_project(project),
             params={
-                "action": "query", "prop": "links",
-                "titles": title, "pllimit": min(per_page_links, 500),
-                "format": "json", "redirects": 1,
+                "action": "query",
+                "prop": "links",
+                "titles": title,
+                "pllimit": min(per_page_links, 500),
+                "format": "json",
+                "redirects": 1,
             },
             endpoint=f"{project}_links",
         )
@@ -783,8 +896,11 @@ class WikimediaExtractor:
         return RequestResult(ok=True, endpoint="parallel_titles", data=out)
 
     def recursive_crawl(
-        self, project: str, seed_title: str,
-        depth: int = 2, per_page_links: int = 20,
+        self,
+        project: str,
+        seed_title: str,
+        depth: int = 2,
+        per_page_links: int = 20,
         max_pages: int = 100,
     ) -> RequestResult:
         """Recursive crawl with BFS, extracting page data at each node."""
@@ -811,7 +927,8 @@ class WikimediaExtractor:
                         queue.append((nxt, d + 1))
 
         return RequestResult(
-            ok=True, endpoint="recursive_crawl",
+            ok=True,
+            endpoint="recursive_crawl",
             data={
                 "seed": seed_title,
                 "project": project,
@@ -824,9 +941,13 @@ class WikimediaExtractor:
         )
 
     def spider_from_search(
-        self, project: str, query: str,
-        seed_limit: int = 10, depth: int = 1,
-        per_page_links: int = 15, max_pages: int = 50,
+        self,
+        project: str,
+        query: str,
+        seed_limit: int = 10,
+        depth: int = 1,
+        per_page_links: int = 15,
+        max_pages: int = 50,
     ) -> RequestResult:
         """Spider from search seeds with recursive crawl and graph data."""
         seed_res = self.search_pages(project, query, seed_limit)
@@ -840,8 +961,11 @@ class WikimediaExtractor:
             if not title or title in visited_global:
                 continue
             crawl = self.recursive_crawl(
-                project, title, depth=depth,
-                per_page_links=per_page_links, max_pages=max_pages,
+                project,
+                title,
+                depth=depth,
+                per_page_links=per_page_links,
+                max_pages=max_pages,
             )
             if crawl.ok:
                 for rec in crawl.data.get("results", []):
@@ -851,7 +975,8 @@ class WikimediaExtractor:
                         all_results.append(rec)
                 all_edges.extend(crawl.data.get("edges", []))
         return RequestResult(
-            ok=True, endpoint="spider_from_search",
+            ok=True,
+            endpoint="spider_from_search",
             data={
                 "project": project,
                 "query": query,
@@ -864,8 +989,11 @@ class WikimediaExtractor:
     # ── Combined & Bundle ───────────────────────────────────────────
 
     def combined_ai_ready_export(
-        self, project: str, topic: str,
-        include_sections: bool = False, include_search: bool = True,
+        self,
+        project: str,
+        topic: str,
+        include_sections: bool = False,
+        include_search: bool = True,
         search_limit: int = 10,
     ) -> RequestResult:
         """Build one AI-ready cleaned dataset for a topic."""
@@ -891,7 +1019,8 @@ class WikimediaExtractor:
                 records.extend(self.ai_ready_record(x) for x in sr.data)
         records = self.dedupe_records(records)
         return RequestResult(
-            ok=True, endpoint="combined_ai_ready_export",
+            ok=True,
+            endpoint="combined_ai_ready_export",
             data={
                 "project": project,
                 "topic": topic,
@@ -903,23 +1032,26 @@ class WikimediaExtractor:
     def bundle_topic(self, topic: str) -> RequestResult:
         """Run a broad multi-project topic bundle."""
         return RequestResult(
-            ok=True, endpoint="topic_bundle",
-            data=prune_empty({
-                "topic": topic,
-                "wikipedia_summary": self.wikipedia_summary(topic).data,
-                "wikipedia_extract": self.action_query_extract("wikipedia", topic).data,
-                "wikipedia_parse": self.parse_page_html("wikipedia", topic).data,
-                "wikidata_search": self.wikidata_search(topic, 5).data,
-                "commons_search": self.commons_search(topic, 5).data,
-                "wiktionary_search": self.search_pages("wiktionary", topic, 5).data,
-                "wikivoyage_search": self.search_pages("wikivoyage", topic, 5).data,
-                "wikibooks_search": self.search_pages("wikibooks", topic, 5).data,
-                "wikiversity_search": self.search_pages("wikiversity", topic, 5).data,
-                "wikiquote_search": self.search_pages("wikiquote", topic, 5).data,
-                "mediawiki_search": self.search_pages("mediawiki", topic, 5).data,
-                "wikisource_search": self.search_pages("wikisource", topic, 5).data,
-                "wikispecies_search": self.search_pages("wikispecies", topic, 5).data,
-            }),
+            ok=True,
+            endpoint="topic_bundle",
+            data=prune_empty(
+                {
+                    "topic": topic,
+                    "wikipedia_summary": self.wikipedia_summary(topic).data,
+                    "wikipedia_extract": self.action_query_extract("wikipedia", topic).data,
+                    "wikipedia_parse": self.parse_page_html("wikipedia", topic).data,
+                    "wikidata_search": self.wikidata_search(topic, 5).data,
+                    "commons_search": self.commons_search(topic, 5).data,
+                    "wiktionary_search": self.search_pages("wiktionary", topic, 5).data,
+                    "wikivoyage_search": self.search_pages("wikivoyage", topic, 5).data,
+                    "wikibooks_search": self.search_pages("wikibooks", topic, 5).data,
+                    "wikiversity_search": self.search_pages("wikiversity", topic, 5).data,
+                    "wikiquote_search": self.search_pages("wikiquote", topic, 5).data,
+                    "mediawiki_search": self.search_pages("mediawiki", topic, 5).data,
+                    "wikisource_search": self.search_pages("wikisource", topic, 5).data,
+                    "wikispecies_search": self.search_pages("wikispecies", topic, 5).data,
+                }
+            ),
         )
 
 
@@ -957,14 +1089,16 @@ def wikimedia_search(
         for item in rr.data:
             title = item.get("title", "")
             url_safe = quote(title.replace(" ", "_"))
-            results.append({
-                "title": title,
-                "href": f"{base_url}wiki/{url_safe}",
-                "body": item.get("snippet", ""),
-                "source": f"wikimedia:{project}",
-                "pageid": item.get("pageid"),
-                "timestamp": item.get("timestamp"),
-            })
+            results.append(
+                {
+                    "title": title,
+                    "href": f"{base_url}wiki/{url_safe}",
+                    "body": item.get("snippet", ""),
+                    "source": f"wikimedia:{project}",
+                    "pageid": item.get("pageid"),
+                    "timestamp": item.get("timestamp"),
+                }
+            )
         return results
     except Exception as e:
         logger.warning(f"wikimedia_search failed: {e}")

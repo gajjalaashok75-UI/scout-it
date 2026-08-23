@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -66,30 +66,33 @@ class ArtInstitutePlugin(SourcePlugin):
                 snippet_parts.append(medium)
             snippet = " | ".join(snippet_parts)
 
-            results.append(make_result(
-                id=art_id,
-                source="art_institute_chicago",
-                url=url_val,
-                title=title,
-                snippet=snippet,
-                content="",
-                content_type="media",
-                timestamp=date_display,
-                authority_score=0.4,
-                lang="en",
-                metadata={
-                    "artist": artist,
-                    "date_display": date_display,
-                    "medium": medium,
-                    "department": department,
-                    "artwork_type": art_type,
-                    "image_url": image_url,
-                    "image_id": image_id,
-                },
-            ))
+            results.append(
+                make_result(
+                    id=art_id,
+                    source="art_institute_chicago",
+                    url=url_val,
+                    title=title,
+                    snippet=snippet,
+                    content="",
+                    content_type="media",
+                    timestamp=date_display,
+                    authority_score=0.4,
+                    lang="en",
+                    metadata={
+                        "artist": artist,
+                        "date_display": date_display,
+                        "medium": medium,
+                        "department": department,
+                        "artwork_type": art_type,
+                        "image_url": image_url,
+                        "image_id": image_id,
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = ArtInstitutePlugin()
 register(PLUGIN)

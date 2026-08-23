@@ -21,7 +21,7 @@ no AI/model API of any kind.
 """
 
 import random
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from . import strategy_cache as cache
 
@@ -73,7 +73,8 @@ def choose_strategy(
     # Only consider arms that are still actually usable right now (e.g. a
     # proxy that's since been removed from config shouldn't win a sample).
     usable_arms = [
-        a for a in arms
+        a
+        for a in arms
         if a["tier"] in available_tiers
         and a["proxy_id"] in available_proxies
         and a["fingerprint_profile"] in available_fingerprints

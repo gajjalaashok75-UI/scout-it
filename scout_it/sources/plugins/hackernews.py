@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -59,31 +59,35 @@ class HackerNewsPlugin(SourcePlugin):
             story_text = hit.get("story_text", "")
             if story_text:
                 import re
+
                 snippet = re.sub(r"<[^>]+>", "", story_text).strip()[:300]
 
-            results.append(make_result(
-                id=object_id,
-                source="hackernews",
-                url=url_val,
-                title=title,
-                snippet=snippet,
-                content="",
-                content_type="event",
-                timestamp=created_at,
-                authority_score=authority,
-                lang="en",
-                metadata={
-                    "points": points,
-                    "num_comments": num_comments,
-                    "author": author,
-                    "created_at": created_at,
-                    "tags": hit.get("_tags", []),
-                    "hn_url": f"https://news.ycombinator.com/item?id={object_id}",
-                },
-            ))
+            results.append(
+                make_result(
+                    id=object_id,
+                    source="hackernews",
+                    url=url_val,
+                    title=title,
+                    snippet=snippet,
+                    content="",
+                    content_type="event",
+                    timestamp=created_at,
+                    authority_score=authority,
+                    lang="en",
+                    metadata={
+                        "points": points,
+                        "num_comments": num_comments,
+                        "author": author,
+                        "created_at": created_at,
+                        "tags": hit.get("_tags", []),
+                        "hn_url": f"https://news.ycombinator.com/item?id={object_id}",
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = HackerNewsPlugin()
 register(PLUGIN)

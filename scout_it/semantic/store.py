@@ -30,8 +30,7 @@ try:
 except ImportError:  # pragma: no cover - graceful degradation
     np = None
 
-from . import config
-from . import embeddings
+from . import config, embeddings
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +67,7 @@ class SemanticIndex:
     def __init__(self, table_name: str = "documents"):
         self._table_name = table_name
         self._db = None
-        self._table = None
+        self._table: Any = None
         self._dim = None
 
     def _ensure_db(self):
@@ -85,24 +84,28 @@ class SemanticIndex:
         config.ensure_dirs()
         self._db = lancedb.connect(str(config.LANCEDB_DIR))
         self._dim = embeddings.get_embedding_dim()
-        existing = self._db.list_tables() if hasattr(self._db, "list_tables") else self._db.table_names()
+        existing = (
+            self._db.list_tables() if hasattr(self._db, "list_tables") else self._db.table_names()
+        )
         if self._table_name in existing:
             self._table = self._db.open_table(self._table_name)
         else:
             # Create with a single empty row to set the schema.
             import pyarrow as pa
 
-            schema = pa.schema([
-                pa.field("id", pa.string()),
-                pa.field("chunk_idx", pa.int32()),
-                pa.field("vector", pa.list_(pa.float32(), self._dim)),
-                pa.field("text", pa.string()),
-                pa.field("title", pa.string()),
-                pa.field("url", pa.string()),
-                pa.field("source", pa.string()),
-                pa.field("content_hash", pa.string()),
-                pa.field("indexed_at", pa.float64()),
-            ])
+            schema = pa.schema(
+                [
+                    pa.field("id", pa.string()),
+                    pa.field("chunk_idx", pa.int32()),
+                    pa.field("vector", pa.list_(pa.float32(), self._dim)),
+                    pa.field("text", pa.string()),
+                    pa.field("title", pa.string()),
+                    pa.field("url", pa.string()),
+                    pa.field("source", pa.string()),
+                    pa.field("content_hash", pa.string()),
+                    pa.field("indexed_at", pa.float64()),
+                ]
+            )
             self._table = self._db.create_table(self._table_name, schema=schema)
 
     def add_documents(self, docs: List[Dict[str, Any]], source: str = "unknown") -> int:
@@ -123,17 +126,19 @@ class SemanticIndex:
                 continue
             vecs = embeddings.embed_texts(chunks)
             for ci, (chunk, vec) in enumerate(zip(chunks, vecs)):
-                rows.append({
-                    "id": hashlib.md5(f"{url}:{ci}".encode()).hexdigest(),
-                    "chunk_idx": ci,
-                    "vector": vec.tolist(),
-                    "text": chunk,
-                    "title": title,
-                    "url": url,
-                    "source": doc.get("source", source),
-                    "content_hash": content_hash,
-                    "indexed_at": time.time(),
-                })
+                rows.append(
+                    {
+                        "id": hashlib.md5(f"{url}:{ci}".encode()).hexdigest(),
+                        "chunk_idx": ci,
+                        "vector": vec.tolist(),
+                        "text": chunk,
+                        "title": title,
+                        "url": url,
+                        "source": doc.get("source", source),
+                        "content_hash": content_hash,
+                        "indexed_at": time.time(),
+                    }
+                )
         if rows:
             self._table.add(rows)
         logger.info("Indexed %d chunks from %d documents.", len(rows), len(docs))
@@ -153,11 +158,7 @@ class SemanticIndex:
 
         # Vector search via LanceDB.
         try:
-            vec_results = (
-                self._table.search(query_vec.tolist())
-                .limit(top_k * 3)
-                .to_list()
-            )
+            vec_results = self._table.search(query_vec.tolist()).limit(top_k * 3).to_list()
         except Exception as exc:
             logger.warning("Vector search failed (%s); returning empty.", exc)
             return []
@@ -167,8 +168,8 @@ class SemanticIndex:
 
         # BM25F over the retrieved candidate chunks (re-rank candidates).
         from .bm25f import build_index as build_bm25f_index
-        from .retrieval import _argsort_desc, _rrf_fuse
         from .facets import compute_facets
+        from .retrieval import _argsort_desc, _rrf_fuse
 
         # Build field-mapped docs for BM25F.
         bm25f_docs = [
@@ -209,14 +210,16 @@ class SemanticIndex:
             if url in seen_urls:
                 continue
             seen_urls.add(url)
-            out.append({
-                "url": url,
-                "title": c.get("title") or "",
-                "snippet": c.get("text") or "",
-                "content": c.get("text") or "",
-                "source": c.get("source") or "",
-                "score": c.get("_distance", 0.0),
-            })
+            out.append(
+                {
+                    "url": url,
+                    "title": c.get("title") or "",
+                    "snippet": c.get("text") or "",
+                    "content": c.get("text") or "",
+                    "source": c.get("source") or "",
+                    "score": c.get("_distance", 0.0),
+                }
+            )
         return out
 
     def count(self) -> int:
@@ -229,6 +232,7 @@ class SemanticIndex:
 
 
 # ── Semantic query cache ───────────────────────────────────────────────────
+
 
 class QueryCache:
     """SQLite-backed semantic query cache.
@@ -272,6 +276,7 @@ class QueryCache:
                 sim = float(np.dot(cached_vec.flatten(), np.asarray(query_vec).flatten()))
                 if sim >= config.QUERY_CACHE_THRESHOLD:
                     import json
+
                     logger.info("Semantic cache hit (sim=%.3f).", sim)
                     return json.loads(results_json)
         except Exception as exc:
@@ -282,7 +287,8 @@ class QueryCache:
 
     def store(self, query: str, query_vec, results: List[Dict]) -> None:
         """Persist a query + its result set for future semantic reuse."""
-        import pickle, json
+        import json
+        import pickle
 
         conn = sqlite3.connect(self._path)
         try:

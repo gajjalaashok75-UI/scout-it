@@ -32,14 +32,12 @@ the same story.  Uses the existing :mod:`dedup` clustering but, instead of
 from __future__ import annotations
 
 import logging
-import math
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Sequence, Tuple
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional, Tuple
 
 from .authority_table import get_authority_score
-from .dedup import _minhash_for, _shingles, _result_fingerprint, THRESHOLD
+from .dedup import THRESHOLD, _minhash_for, _result_fingerprint, _shingles
 
 logger = logging.getLogger(__name__)
 
@@ -53,30 +51,30 @@ DEFAULT_WEIGHTS: Dict[str, Tuple[float, float, float, float]] = {
     # Academic: authority matters most (is this a reputable source?),
     # then relevance. Freshness barely matters (papers are timeless).
     # Diversity matters to avoid 5 papers from the same author/group.
-    "academic":  (0.35, 0.40, 0.05, 0.20),
+    "academic": (0.35, 0.40, 0.05, 0.20),
     # News: freshness is king, then relevance. Authority matters (is this
     # Reuters or a random blog?). Diversity prevents 5 copies of the same
     # syndicated story.
-    "news":      (0.30, 0.20, 0.35, 0.15),
-    "event":     (0.25, 0.15, 0.40, 0.20),
+    "news": (0.30, 0.20, 0.35, 0.15),
+    "event": (0.25, 0.15, 0.40, 0.20),
     # Datasets: authority (is this a trusted repository?) and relevance.
     # Freshness matters for "latest data" but less than news.
-    "dataset":   (0.35, 0.35, 0.10, 0.20),
+    "dataset": (0.35, 0.35, 0.10, 0.20),
     # Books/literature: authority and relevance. Freshness irrelevant.
-    "book":      (0.40, 0.35, 0.05, 0.20),
+    "book": (0.40, 0.35, 0.05, 0.20),
     # Media (images/video/audio): relevance and diversity. Authority less
     # critical (museums are trusted, but so are many archives).
-    "media":     (0.35, 0.20, 0.10, 0.35),
+    "media": (0.35, 0.20, 0.10, 0.35),
     # Geo: relevance and authority (official sources matter).
-    "geo":       (0.40, 0.35, 0.10, 0.15),
+    "geo": (0.40, 0.35, 0.10, 0.15),
     # Knowledge (Wikidata etc.): authority and relevance.
     "knowledge": (0.35, 0.40, 0.05, 0.20),
     # Podcast: relevance and freshness (new episodes).
-    "podcast":   (0.35, 0.20, 0.25, 0.20),
+    "podcast": (0.35, 0.20, 0.25, 0.20),
     # Code: authority (is this the official repo?) and relevance.
-    "code":      (0.30, 0.40, 0.10, 0.20),
+    "code": (0.30, 0.40, 0.10, 0.20),
     # General/web (default): balanced, slight relevance emphasis.
-    "web":       (0.40, 0.25, 0.15, 0.20),
+    "web": (0.40, 0.25, 0.15, 0.20),
 }
 
 # Default weights when no content-type hint is given.
@@ -136,17 +134,17 @@ def _authority_scores(results: List[Dict[str, Any]]) -> List[float]:
 # drops to 0.5.  Academic papers have a half-life of ~years (we use a large
 # number so time-decay is negligible); news has a half-life of ~2 days.
 _FRESHNESS_HALFLIFE_HOURS: Dict[str, float] = {
-    "academic":  87600.0,   # 10 years — papers are timeless
-    "book":      87600.0,   # 10 years
-    "dataset":   43800.0,   # 5 years
-    "code":      17520.0,   # 2 years
-    "knowledge": 43800.0,   # 5 years
-    "geo":       87600.0,   # 10 years (places don't change often)
-    "media":     8760.0,    # 1 year
-    "podcast":   720.0,     # 30 days
-    "news":      48.0,      # 2 days
-    "event":     24.0,      # 1 day
-    "web":       720.0,     # 30 days (general web content)
+    "academic": 87600.0,  # 10 years — papers are timeless
+    "book": 87600.0,  # 10 years
+    "dataset": 43800.0,  # 5 years
+    "code": 17520.0,  # 2 years
+    "knowledge": 43800.0,  # 5 years
+    "geo": 87600.0,  # 10 years (places don't change often)
+    "media": 8760.0,  # 1 year
+    "podcast": 720.0,  # 30 days
+    "news": 48.0,  # 2 days
+    "event": 24.0,  # 1 day
+    "web": 720.0,  # 30 days (general web content)
 }
 
 _DEFAULT_HALFLIFE = 720.0  # 30 days
@@ -165,7 +163,7 @@ def _parse_timestamp(ts: str) -> Optional[datetime]:
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d",
         "%Y/%m/%d",
-        "%Y%m%d",           # compact (openFDA: "20240115")
+        "%Y%m%d",  # compact (openFDA: "20240115")
     ):
         try:
             dt = datetime.strptime(ts[:26], fmt)

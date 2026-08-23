@@ -41,11 +41,11 @@ SUPPORTED = ("web", "image", "multi")
 # ``scout_it.sources.plugins.linkup.LinkupClient``. The method checks for None
 # so the plugin degrades gracefully when linkup-sdk isn't installed.
 try:
-    from linkup import LinkupClient  # type: ignore[import]
     from linkup import (
         AuthenticationError,
         BudgetLimitExceededError,
         InsufficientCreditError,
+        LinkupClient,  # type: ignore[import]
         LinkupTimeoutError,
         TooManyRequestsError,
     )  # type: ignore[import]
@@ -79,9 +79,7 @@ class LinkupPlugin(ApiSearchSource):
     ) -> List[Dict[str, Any]]:
         if LinkupClient is None:
             logger.info("linkup-sdk not installed; skipping Linkup source")
-            source_messages.error(
-                self.name, "linkup-sdk not installed (pip install linkup-sdk)"
-            )
+            source_messages.error(self.name, "linkup-sdk not installed (pip install linkup-sdk)")
             return []
 
         client = LinkupClient(api_key)
@@ -197,9 +195,30 @@ def _classify_linkup_error(exc: Exception) -> None:
     # Fall back to message inspection for untyped errors / SDK versions where
     # the typed exception classes aren't importable.
     msg = str(exc).lower()
-    if any(k in msg for k in ("401", "403", "unauthorized", "forbidden", "invalid api key", "ip not whitelisted")):
+    if any(
+        k in msg
+        for k in (
+            "401",
+            "403",
+            "unauthorized",
+            "forbidden",
+            "invalid api key",
+            "ip not whitelisted",
+        )
+    ):
         raise _ApiKeyError(str(exc)) from exc
-    if any(k in msg for k in ("429", "rate limit", "quota", "credit", "insufficient", "budget", "payment required")):
+    if any(
+        k in msg
+        for k in (
+            "429",
+            "rate limit",
+            "quota",
+            "credit",
+            "insufficient",
+            "budget",
+            "payment required",
+        )
+    ):
         raise _RateLimitError(str(exc)) from exc
     if any(k in msg for k in ("timeout", "connection", "network", "dns", "unreachable", "refused")):
         raise _NetworkError(str(exc)) from exc
@@ -207,5 +226,6 @@ def _classify_linkup_error(exc: Exception) -> None:
 
 
 from ..registry import register
+
 PLUGIN = LinkupPlugin()
 register(PLUGIN)

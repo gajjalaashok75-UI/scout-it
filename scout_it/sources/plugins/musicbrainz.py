@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,9 @@ class MusicBrainzPlugin(SourcePlugin):
             length_ms = rec.get("length", 0) or 0
 
             # Artists.
-            artists = [a.get("name", "") for a in rec.get("artist-credit", []) if isinstance(a, dict)]
+            artists = [
+                a.get("name", "") for a in rec.get("artist-credit", []) if isinstance(a, dict)
+            ]
             # Releases (albums).
             releases = rec.get("releases", [])[:3]
             release_titles = [r.get("title", "") for r in releases if isinstance(r, dict)]
@@ -65,28 +67,31 @@ class MusicBrainzPlugin(SourcePlugin):
 
             url_val = f"https://musicbrainz.org/recording/{mbid}"
 
-            results.append(make_result(
-                id=mbid,
-                source="musicbrainz",
-                url=url_val,
-                title=title,
-                snippet=snippet,
-                content="",
-                content_type="media",
-                timestamp=first_release,
-                authority_score=0.3,
-                lang="en",
-                metadata={
-                    "artists": artists,
-                    "releases": release_titles,
-                    "first_release_date": first_release,
-                    "length_ms": length_ms,
-                    "mbid": mbid,
-                },
-            ))
+            results.append(
+                make_result(
+                    id=mbid,
+                    source="musicbrainz",
+                    url=url_val,
+                    title=title,
+                    snippet=snippet,
+                    content="",
+                    content_type="media",
+                    timestamp=first_release,
+                    authority_score=0.3,
+                    lang="en",
+                    metadata={
+                        "artists": artists,
+                        "releases": release_titles,
+                        "first_release_date": first_release,
+                        "length_ms": length_ms,
+                        "mbid": mbid,
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = MusicBrainzPlugin()
 register(PLUGIN)

@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -76,37 +76,40 @@ class OpenFoodFactsPlugin(SourcePlugin):
             image_url = product.get("image_front_url", "") or product.get("image_url", "")
             url_val = f"https://world.openfoodfacts.org/product/{barcode}" if barcode else ""
 
-            results.append(make_result(
-                id=barcode or product_name,
-                source="open_food_facts",
-                url=url_val,
-                title=product_name,
-                snippet=snippet,
-                content=ingredients,
-                content_type="knowledge",
-                timestamp="",
-                authority_score=0.3,
-                lang="en",
-                metadata={
-                    "barcode": barcode,
-                    "brands": brands,
-                    "categories": categories,
-                    "quantity": quantity,
-                    "ingredients": ingredients,
-                    "nutrition": {
-                        "energy_kcal": energy,
-                        "fat_g": fat,
-                        "carbs_g": carbs,
-                        "proteins_g": proteins,
+            results.append(
+                make_result(
+                    id=barcode or product_name,
+                    source="open_food_facts",
+                    url=url_val,
+                    title=product_name,
+                    snippet=snippet,
+                    content=ingredients,
+                    content_type="knowledge",
+                    timestamp="",
+                    authority_score=0.3,
+                    lang="en",
+                    metadata={
+                        "barcode": barcode,
+                        "brands": brands,
+                        "categories": categories,
+                        "quantity": quantity,
+                        "ingredients": ingredients,
+                        "nutrition": {
+                            "energy_kcal": energy,
+                            "fat_g": fat,
+                            "carbs_g": carbs,
+                            "proteins_g": proteins,
+                        },
+                        "image_url": image_url,
+                        "nutriscore": product.get("nutriscore_grade", ""),
+                        "nova_group": product.get("nova_group", ""),
                     },
-                    "image_url": image_url,
-                    "nutriscore": product.get("nutriscore_grade", ""),
-                    "nova_group": product.get("nova_group", ""),
-                },
-            ))
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = OpenFoodFactsPlugin()
 register(PLUGIN)

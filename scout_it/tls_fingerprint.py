@@ -32,8 +32,14 @@ from typing import Any, Dict, List, Optional
 # actually silently downgraded to no impersonation would be worse than an
 # honest error.
 IMPERSONATE_PROFILES = [
-    "chrome124", "chrome123", "chrome120", "chrome110", "chrome99",
-    "edge101", "safari17_0", "safari15_5",
+    "chrome124",
+    "chrome123",
+    "chrome120",
+    "chrome110",
+    "chrome99",
+    "edge101",
+    "safari17_0",
+    "safari15_5",
 ]
 DEFAULT_PROFILE = "chrome124"
 
@@ -41,6 +47,7 @@ DEFAULT_PROFILE = "chrome124"
 def is_available() -> bool:
     try:
         import curl_cffi  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -64,14 +71,23 @@ def fetch(
     """
     if not is_available():
         return {
-            "html": "", "final_url": url, "status": "failed", "status_code": None,
+            "html": "",
+            "final_url": url,
+            "status": "failed",
+            "status_code": None,
             "error": "curl_cffi not installed -- run: pip install scout-it[tls-impersonate]",
         }
 
     try:
         from curl_cffi import requests as cffi_requests
     except ImportError as e:
-        return {"html": "", "final_url": url, "status": "failed", "status_code": None, "error": str(e)}
+        return {
+            "html": "",
+            "final_url": url,
+            "status": "failed",
+            "status_code": None,
+            "error": str(e),
+        }
 
     profile = impersonate if impersonate in IMPERSONATE_PROFILES else DEFAULT_PROFILE
 
@@ -90,16 +106,26 @@ def fetch(
         status_code = resp.status_code
         if status_code < 400:
             return {
-                "html": resp.text, "final_url": str(resp.url), "status": "success",
-                "status_code": status_code, "error": None, "impersonate_profile": profile,
+                "html": resp.text,
+                "final_url": str(resp.url),
+                "status": "success",
+                "status_code": status_code,
+                "error": None,
+                "impersonate_profile": profile,
             }
         return {
-            "html": "", "final_url": url, "status": "failed", "status_code": status_code,
+            "html": "",
+            "final_url": url,
+            "status": "failed",
+            "status_code": status_code,
             "error": f"HTTP {status_code}",
         }
     except Exception as e:
         return {
-            "html": "", "final_url": url, "status": "failed", "status_code": None,
+            "html": "",
+            "final_url": url,
+            "status": "failed",
+            "status_code": None,
             "error": f"{type(e).__name__}: {e}",
         }
 

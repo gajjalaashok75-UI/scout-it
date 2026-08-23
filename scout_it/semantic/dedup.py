@@ -21,10 +21,11 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set
 
 try:
     from datasketch import MinHash
+
     _HAS_DATASKETCH = True
 except ImportError:  # graceful fallback — see _MinHash below
     MinHash = None
@@ -54,7 +55,7 @@ class _MinHash:
         self.num_perm = num_perm
         self._seed = seed
         # Start every permutation's minimum at the largest 64-bit value.
-        self._signature = [(2**64 - 1)] * num_perm
+        self._signature = [2**64 - 1] * num_perm
 
     def update(self, b: bytes) -> None:
         # Hash the bytes once, then derive `num_perm` independent hashes with a
@@ -65,9 +66,9 @@ class _MinHash:
         for i in range(self.num_perm):
             # Mix the permutation index into the base hash.
             h = base_int ^ (self._seed + i * 0x9E3779B97F4A7C15)
-            h ^= (h >> 29)
+            h ^= h >> 29
             h = (h * 0xBF58476D1CE4E5B9) & (2**64 - 1)
-            h ^= (h >> 32)
+            h ^= h >> 32
             if h < self._signature[i]:
                 self._signature[i] = h
 
@@ -85,10 +86,7 @@ def _shingles(text: str) -> Set[str]:
     words = _WORD_RE.findall(text.lower())
     if len(words) < SHINGLE_SIZE:
         return set(words) if words else set()
-    return {
-        " ".join(words[i : i + SHINGLE_SIZE])
-        for i in range(len(words) - SHINGLE_SIZE + 1)
-    }
+    return {" ".join(words[i : i + SHINGLE_SIZE]) for i in range(len(words) - SHINGLE_SIZE + 1)}
 
 
 def _minhash_for(shingles: Set[str]):

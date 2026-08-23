@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,7 @@ class CrossrefPlugin(SourcePlugin):
             abstract = item.get("abstract", "") or ""
             # Strip JATS XML tags from abstract.
             import re
+
             abstract = re.sub(r"<[^>]+>", "", abstract).strip()
 
             doi = item.get("DOI", "")
@@ -73,28 +74,31 @@ class CrossrefPlugin(SourcePlugin):
                 parts = date_parts[0]
                 timestamp = "-".join(str(p) for p in parts)
 
-            results.append(make_result(
-                id=doi,
-                source="crossref",
-                url=url_val,
-                title=title,
-                snippet=abstract,
-                content="",
-                content_type="academic",
-                timestamp=timestamp,
-                authority_score=authority,
-                lang="en",
-                metadata={
-                    "doi": doi,
-                    "authors": authors,
-                    "citation_count": cited,
-                    "type": item.get("type", ""),
-                    "container_title": (item.get("container-title") or [""])[0],
-                },
-            ))
+            results.append(
+                make_result(
+                    id=doi,
+                    source="crossref",
+                    url=url_val,
+                    title=title,
+                    snippet=abstract,
+                    content="",
+                    content_type="academic",
+                    timestamp=timestamp,
+                    authority_score=authority,
+                    lang="en",
+                    metadata={
+                        "doi": doi,
+                        "authors": authors,
+                        "citation_count": cited,
+                        "type": item.get("type", ""),
+                        "container_title": (item.get("container-title") or [""])[0],
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = CrossrefPlugin()
 register(PLUGIN)

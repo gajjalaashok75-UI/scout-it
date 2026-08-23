@@ -18,7 +18,6 @@ from typing import Dict, List, Optional
 
 from .base import SocialProvider
 
-
 _REGISTRY: Dict[str, SocialProvider] = {}
 
 
@@ -68,9 +67,10 @@ def _register_builtins():
     """
     if _REGISTRY:
         return  # already populated
-    from .telegram import TelegramProvider
-    from .reddit import RedditProvider
     from .discord import DiscordProvider
     from .instagram import InstagramProvider
+    from .reddit import RedditProvider
+    from .telegram import TelegramProvider
+
     for cls in (TelegramProvider, RedditProvider, DiscordProvider, InstagramProvider):
         register(cls())

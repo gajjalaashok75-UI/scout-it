@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -61,36 +61,40 @@ class StackExchangePlugin(SourcePlugin):
             # Body (HTML) → plain text snippet.
             body = item.get("body", "")
             import re
+
             snippet = re.sub(r"<[^>]+>", "", body).strip()[:500] if body else ""
             if not snippet:
                 snippet = f"Score: {score} | Answers: {answer_count} | Views: {view_count}"
 
             authority = min(score / 100.0, 1.0)
 
-            results.append(make_result(
-                id=question_id,
-                source="stackexchange",
-                url=link,
-                title=title,
-                snippet=snippet,
-                content="",
-                content_type="knowledge",
-                timestamp=str(creation_date),
-                authority_score=authority,
-                lang="en",
-                metadata={
-                    "score": score,
-                    "answer_count": answer_count,
-                    "view_count": view_count,
-                    "is_answered": is_answered,
-                    "tags": tags[:10],
-                    "site": "stackoverflow",
-                    "owner": item.get("owner", {}).get("display_name", ""),
-                },
-            ))
+            results.append(
+                make_result(
+                    id=question_id,
+                    source="stackexchange",
+                    url=link,
+                    title=title,
+                    snippet=snippet,
+                    content="",
+                    content_type="knowledge",
+                    timestamp=str(creation_date),
+                    authority_score=authority,
+                    lang="en",
+                    metadata={
+                        "score": score,
+                        "answer_count": answer_count,
+                        "view_count": view_count,
+                        "is_answered": is_answered,
+                        "tags": tags[:10],
+                        "site": "stackoverflow",
+                        "owner": item.get("owner", {}).get("display_name", ""),
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = StackExchangePlugin()
 register(PLUGIN)

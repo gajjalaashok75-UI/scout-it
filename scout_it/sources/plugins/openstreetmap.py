@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,11 @@ class OpenStreetMapPlugin(SourcePlugin):
 
             lat = item.get("lat", "")
             lon = item.get("lon", "")
-            url_val = f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}#map=18/{lat}/{lon}" if lat and lon else ""
+            url_val = (
+                f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}#map=18/{lat}/{lon}"
+                if lat and lon
+                else ""
+            )
 
             category = item.get("category", "")
             osm_category = item.get("class", "")
@@ -69,34 +73,37 @@ class OpenStreetMapPlugin(SourcePlugin):
             address = item.get("address", {})
             extratags = item.get("extratags", {}) or {}
 
-            results.append(make_result(
-                id=f"{type_prefix}{osm_id}" if type_prefix else place_id,
-                source="openstreetmap",
-                url=url_val,
-                title=name,
-                snippet=display_name,
-                content="",
-                content_type="geo",
-                timestamp="",
-                authority_score=authority,
-                lang="en",
-                metadata={
-                    "lat": lat,
-                    "lon": lon,
-                    "osm_type": osm_type,
-                    "osm_id": osm_id,
-                    "category": category,
-                    "osm_class": osm_category,
-                    "osm_type_detail": osm_type_val,
-                    "address": address,
-                    "extratags": extratags,
-                    "boundingbox": item.get("boundingbox", []),
-                    "importance": importance,
-                },
-            ))
+            results.append(
+                make_result(
+                    id=f"{type_prefix}{osm_id}" if type_prefix else place_id,
+                    source="openstreetmap",
+                    url=url_val,
+                    title=name,
+                    snippet=display_name,
+                    content="",
+                    content_type="geo",
+                    timestamp="",
+                    authority_score=authority,
+                    lang="en",
+                    metadata={
+                        "lat": lat,
+                        "lon": lon,
+                        "osm_type": osm_type,
+                        "osm_id": osm_id,
+                        "category": category,
+                        "osm_class": osm_category,
+                        "osm_type_detail": osm_type_val,
+                        "address": address,
+                        "extratags": extratags,
+                        "boundingbox": item.get("boundingbox", []),
+                        "importance": importance,
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = OpenStreetMapPlugin()
 register(PLUGIN)

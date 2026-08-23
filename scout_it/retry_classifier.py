@@ -34,8 +34,13 @@ TRANSIENT_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 PERMANENT_STATUS_CODES = {400, 401, 403, 404, 405, 406, 410, 451}
 
 TRANSIENT_EXCEPTION_NAMES = {
-    "ConnectionError", "Timeout", "ConnectTimeout", "ReadTimeout",
-    "ChunkedEncodingError", "ProxyError", "SSLError",
+    "ConnectionError",
+    "Timeout",
+    "ConnectTimeout",
+    "ReadTimeout",
+    "ChunkedEncodingError",
+    "ProxyError",
+    "SSLError",
 }
 
 
@@ -82,7 +87,7 @@ def parse_retry_after(headers: Dict[str, str]) -> Optional[float]:
         parsed = email.utils.parsedate_to_datetime(value)
         if parsed is None:
             return None
-        delta = (parsed.timestamp() - time.time())
+        delta = parsed.timestamp() - time.time()
         return max(0.0, delta)
     except Exception:
         return None

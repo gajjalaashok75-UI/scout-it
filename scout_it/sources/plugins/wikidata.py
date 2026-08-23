@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class WikidataPlugin(SourcePlugin):
 
     def search(self, query: str, max_results: int = 10, **kwargs) -> List[Dict[str, Any]]:
         cfg = get_source_config("wikidata")
-        url = cfg.get("base_url") or SPARQL_URL
+        cfg.get("base_url") or SPARQL_URL
 
         # SPARQL query: search for entities matching the query in labels.
         # Uses the wbsearchentities API as a simpler alternative to full SPARQL.
@@ -59,27 +59,30 @@ class WikidataPlugin(SourcePlugin):
             # Concepturi for the full entity.
             concept_uri = item.get("concepturi", url_val)
 
-            results.append(make_result(
-                id=qid,
-                source="wikidata",
-                url=url_val,
-                title=label,
-                snippet=description,
-                content="",
-                content_type="knowledge",
-                timestamp="",
-                authority_score=0.6,  # Wikidata: curated, moderate-high authority
-                lang="en",
-                metadata={
-                    "qid": qid,
-                    "concept_uri": concept_uri,
-                    "match": item.get("match", {}),
-                    "aliases": item.get("aliases", []),
-                },
-            ))
+            results.append(
+                make_result(
+                    id=qid,
+                    source="wikidata",
+                    url=url_val,
+                    title=label,
+                    snippet=description,
+                    content="",
+                    content_type="knowledge",
+                    timestamp="",
+                    authority_score=0.6,  # Wikidata: curated, moderate-high authority
+                    lang="en",
+                    metadata={
+                        "qid": qid,
+                        "concept_uri": concept_uri,
+                        "match": item.get("match", {}),
+                        "aliases": item.get("aliases", []),
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = WikidataPlugin()
 register(PLUGIN)

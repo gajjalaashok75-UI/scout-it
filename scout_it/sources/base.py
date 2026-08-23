@@ -36,23 +36,26 @@ logger = logging.getLogger(__name__)
 
 # ─── Content type vocabulary ────────────────────────────────────────────────
 
-CONTENT_TYPES = frozenset({
-    "academic",    # papers, preprints, articles
-    "dataset",     # research datasets
-    "book",        # books, long-form text
-    "code",        # repositories, code snippets
-    "event",       # real-time events, news events
-    "media",       # images, video, audio, archive
-    "geo",         # geographic / POI data
-    "podcast",     # podcast episodes
-    "knowledge",   # knowledge graph entities / structured facts
-})
+CONTENT_TYPES = frozenset(
+    {
+        "academic",  # papers, preprints, articles
+        "dataset",  # research datasets
+        "book",  # books, long-form text
+        "code",  # repositories, code snippets
+        "event",  # real-time events, news events
+        "media",  # images, video, audio, archive
+        "geo",  # geographic / POI data
+        "podcast",  # podcast episodes
+        "knowledge",  # knowledge graph entities / structured facts
+    }
+)
 
 # SearchResult is a dict with a known shape (see make_result).
 SearchResult: TypeAlias = Dict[str, Any]
 
 
 # ─── SearchResult ───────────────────────────────────────────────────────────
+
 
 def make_result(
     *,
@@ -92,21 +95,24 @@ def make_result(
 
 # ─── SourceConfig ───────────────────────────────────────────────────────────
 
+
 @dataclass
 class SourceConfig:
     """Per-source configuration."""
+
     name: str
     requires_api_key: bool = False
-    api_key_env: str = ""           # env var name for the API key
-    base_url: str = ""             # override base URL
-    enabled: bool = True           # whether this source is active
-    rate_limit_per_sec: float = 1.0 # polite rate limit
+    api_key_env: str = ""  # env var name for the API key
+    base_url: str = ""  # override base URL
+    enabled: bool = True  # whether this source is active
+    rate_limit_per_sec: float = 1.0  # polite rate limit
     description: str = ""
-    free_tier: bool = True         # has a free tier (no payment required)
-    get_it_url: str = ""           # where to get an API key
+    free_tier: bool = True  # has a free tier (no payment required)
+    get_it_url: str = ""  # where to get an API key
 
 
 # ─── SourcePlugin ABC ──────────────────────────────────────────────────────
+
 
 class SourcePlugin(ABC):
     """Abstract base class for all source plugins.
@@ -169,6 +175,7 @@ class SourcePlugin(ABC):
         Reads from the environment or the scout-it config file.
         """
         import os
+
         from .source_config import get_source_config as _get_cfg
 
         # Try environment variable first.

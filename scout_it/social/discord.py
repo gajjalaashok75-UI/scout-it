@@ -70,16 +70,19 @@ _CHANNEL_MESSAGE_FETCH = 100
 
 def _bot_headers() -> Dict[str, str]:
     token = os.environ.get("DISCORD_BOT_TOKEN")
-    return {"Authorization": f"Bot {token}",
-            "User-Agent": f"scout-it/{_VERSION} (https://github.com)"}
+    return {
+        "Authorization": f"Bot {token}",
+        "User-Agent": f"scout-it/{_VERSION} (https://github.com)",
+    }
 
 
 def _has_token() -> bool:
     return bool(os.environ.get("DISCORD_BOT_TOKEN"))
 
 
-def _api_get(url: str, params: Optional[Dict[str, Any]] = None,
-             max_retries: int = 3) -> Dict[str, Any]:
+def _api_get(
+    url: str, params: Optional[Dict[str, Any]] = None, max_retries: int = 3
+) -> Dict[str, Any]:
     """Discord REST GET with rate-limit (429) + retry handling.
 
     Returns ``{ok, data, status_code, error}``."""
@@ -89,8 +92,12 @@ def _api_get(url: str, params: Optional[Dict[str, Any]] = None,
             resp = requests.get(url, headers=headers, params=params, timeout=15)
         except Exception as e:
             if attempt + 1 >= max_retries:
-                return {"ok": False, "data": None, "status_code": None,
-                        "error": f"{type(e).__name__}: {e}"}
+                return {
+                    "ok": False,
+                    "data": None,
+                    "status_code": None,
+                    "error": f"{type(e).__name__}: {e}",
+                }
             time.sleep(0.5 * (attempt + 1))
             continue
 
@@ -99,30 +106,52 @@ def _api_get(url: str, params: Optional[Dict[str, Any]] = None,
             time.sleep(min(retry_after, 5.0))
             continue
         if resp.status_code == 401:
-            return {"ok": False, "data": None, "status_code": 401,
-                    "error": "DISCORD_BOT_TOKEN is invalid or expired."}
+            return {
+                "ok": False,
+                "data": None,
+                "status_code": 401,
+                "error": "DISCORD_BOT_TOKEN is invalid or expired.",
+            }
         if resp.status_code == 403:
-            return {"ok": False, "data": None, "status_code": 403,
-                    "error": "Bot lacks access (not in the server, or missing permissions)."}
+            return {
+                "ok": False,
+                "data": None,
+                "status_code": 403,
+                "error": "Bot lacks access (not in the server, or missing permissions).",
+            }
         if resp.status_code == 404:
-            return {"ok": False, "data": None, "status_code": 404,
-                    "error": "Not found."}
+            return {"ok": False, "data": None, "status_code": 404, "error": "Not found."}
         if resp.status_code >= 400:
-            return {"ok": False, "data": None, "status_code": resp.status_code,
-                    "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+            return {
+                "ok": False,
+                "data": None,
+                "status_code": resp.status_code,
+                "error": f"HTTP {resp.status_code}: {resp.text[:200]}",
+            }
         try:
             return {"ok": True, "data": resp.json(), "status_code": 200, "error": None}
         except ValueError:
-            return {"ok": False, "data": None, "status_code": resp.status_code,
-                    "error": "Discord did not return valid JSON."}
-    return {"ok": False, "data": None, "status_code": None,
-            "error": "request failed after retries (rate-limited)"}
+            return {
+                "ok": False,
+                "data": None,
+                "status_code": resp.status_code,
+                "error": "Discord did not return valid JSON.",
+            }
+    return {
+        "ok": False,
+        "data": None,
+        "status_code": None,
+        "error": "request failed after retries (rate-limited)",
+    }
 
 
-def _normalize_message(m: Dict[str, Any], channel_id: Optional[str] = None,
-                      guild_id: Optional[str] = None,
-                      guild_name: Optional[str] = None,
-                      channel_name: Optional[str] = None) -> Dict[str, Any]:
+def _normalize_message(
+    m: Dict[str, Any],
+    channel_id: Optional[str] = None,
+    guild_id: Optional[str] = None,
+    guild_name: Optional[str] = None,
+    channel_name: Optional[str] = None,
+) -> Dict[str, Any]:
     """Normalize a raw Discord message dict into the provider's post schema."""
     author = (m.get("author") or {}).get("username")
     content = m.get("content") or ""
@@ -145,9 +174,13 @@ def _normalize_message(m: Dict[str, Any], channel_id: Optional[str] = None,
         "edited_timestamp": m.get("edited_timestamp"),
         "attachments": [a.get("url") for a in (m.get("attachments") or [])],
         "embeds": embeds,
-        "reactions": [{"emoji": (r.get("emoji") or {}).get("name"),
-                       "count": r.get("count")} for r in reactions],
-        "reply_to": (m.get("referenced_message") or {}).get("id") if m.get("referenced_message") else None,
+        "reactions": [
+            {"emoji": (r.get("emoji") or {}).get("name"), "count": r.get("count")}
+            for r in reactions
+        ],
+        "reply_to": (
+            (m.get("referenced_message") or {}).get("id") if m.get("referenced_message") else None
+        ),
         "channel_id": channel_id or m.get("channel_id"),
         "guild_id": guild_id,
         "guild_name": guild_name,
@@ -181,8 +214,10 @@ def discord_channel_messages(
         }
     channel_id = str(channel_id or "").strip()
     if not channel_id.isdigit():
-        return {"error": "invalid_channel_id",
-                "error_message": "channel_id must be the numeric Discord channel ID."}
+        return {
+            "error": "invalid_channel_id",
+            "error_message": "channel_id must be the numeric Discord channel ID.",
+        }
 
     # Resolve guild/channel metadata for richer results (best-effort, non-fatal).
     guild_id = guild_name = channel_name = None
@@ -217,25 +252,30 @@ def discord_channel_messages(
         if not data:
             break
         for m in data:
-            all_messages.append(_normalize_message(m, channel_id, guild_id, guild_name, channel_name))
+            all_messages.append(
+                _normalize_message(m, channel_id, guild_id, guild_name, channel_name)
+            )
         if len(data) < 100:
             break  # exhausted channel history
         before = data[-1].get("id")
         remaining = max_results - len(all_messages)
         time.sleep(0.3)  # be gentle with rate limits across pages
 
-    return {"channel_id": channel_id, "message_count": len(all_messages),
-            "messages": all_messages[:max_results]}
+    return {
+        "channel_id": channel_id,
+        "message_count": len(all_messages),
+        "messages": all_messages[:max_results],
+    }
 
 
 # =====================================================================
 # Bot guild message search (query capability, token required)
 # =====================================================================
 
+
 def _bot_list_guilds() -> List[Dict[str, Any]]:
     """List the guilds the bot is a member of."""
-    out = _api_get(f"{DISCORD_API_BASE}/users/@me/guilds",
-                   params={"limit": 200})
+    out = _api_get(f"{DISCORD_API_BASE}/users/@me/guilds", params={"limit": 200})
     if not out["ok"] or not isinstance(out["data"], list):
         return []
     return out["data"]
@@ -262,12 +302,13 @@ def discord_bot_search(
     KanekiWeb/Messages-Searcher patterns. Rate-limit aware.
     """
     if not _has_token():
-        return {"error": "auth_required",
-                "error_message": "DISCORD_BOT_TOKEN not set."}
+        return {"error": "auth_required", "error_message": "DISCORD_BOT_TOKEN not set."}
     q = (query or "").lower().strip()
     if not q:
-        return {"error": "no_input",
-                "error_message": "A --query is required for Discord bot search."}
+        return {
+            "error": "no_input",
+            "error_message": "A --query is required for Discord bot search.",
+        }
 
     guilds = _bot_list_guilds()
     matches: List[Dict[str, Any]] = []
@@ -284,8 +325,10 @@ def discord_bot_search(
                 break
             channel_id = c.get("id")
             channel_name = c.get("name")
-            out = _api_get(f"{DISCORD_API_BASE}/channels/{channel_id}/messages",
-                           params={"limit": _CHANNEL_MESSAGE_FETCH})
+            out = _api_get(
+                f"{DISCORD_API_BASE}/channels/{channel_id}/messages",
+                params={"limit": _CHANNEL_MESSAGE_FETCH},
+            )
             if not out["ok"] or not isinstance(out["data"], list):
                 continue
             for m in out["data"]:
@@ -299,13 +342,18 @@ def discord_bot_search(
                         break
             time.sleep(0.2)
 
-    return {"query": query, "result_count": len(matches),
-            "messages": matches, "guilds_scanned": len(guilds)}
+    return {
+        "query": query,
+        "result_count": len(matches),
+        "messages": matches,
+        "guilds_scanned": len(guilds),
+    }
 
 
 # =====================================================================
 # DDGS web discovery (query capability, NO token required)
 # =====================================================================
+
 
 def _ddgs_text(query: str, max_results: int) -> List[Dict[str, Any]]:
     """Run a DDGS text search, tolerant of the installed ddgs API shape."""
@@ -354,8 +402,10 @@ def discord_ddgs_search(
     """
     q = (query or "").strip()
     if not q:
-        return {"error": "no_input",
-                "error_message": "A --query is required for Discord web search."}
+        return {
+            "error": "no_input",
+            "error_message": "A --query is required for Discord web search.",
+        }
 
     precise = _ddgs_text(f"site:discord.com {q}", max_results * 2)
     broad = _ddgs_text(f"discord {q}", max_results)
@@ -366,19 +416,21 @@ def discord_ddgs_search(
         if not url or url in seen:
             continue
         seen.add(url)
-        merged.append({
-            "title": r.get("title") or "",
-            "content": r.get("body") or r.get("snippet") or r.get("content") or "",
-            "url": url,
-            "source": "ddgs",
-        })
+        merged.append(
+            {
+                "title": r.get("title") or "",
+                "content": r.get("body") or r.get("snippet") or r.get("content") or "",
+                "url": url,
+                "source": "ddgs",
+            }
+        )
     ranked = _rank_discord_results(merged, q, max_results)
-    return {"query": query, "result_count": len(ranked), "results": ranked,
-            "source": "ddgs_web"}
+    return {"query": query, "result_count": len(ranked), "results": ranked, "source": "ddgs_web"}
 
 
-def _rank_discord_results(items: List[Dict[str, Any]], query: str,
-                          max_results: int) -> List[Dict[str, Any]]:
+def _rank_discord_results(
+    items: List[Dict[str, Any]], query: str, max_results: int
+) -> List[Dict[str, Any]]:
     """Rank Discord results (messages or web snippets) by query relevance:
     title match > content match, whole-phrase bonus. Caps at ``max_results``."""
     if not items:
@@ -405,14 +457,15 @@ def _rank_discord_results(items: List[Dict[str, Any]], query: str,
     return ranked[:max_results]
 
 
-def _enrich_discord_with_full_content(items: List[Dict[str, Any]],
-                                       max_results: int) -> List[Dict[str, Any]]:
+def _enrich_discord_with_full_content(
+    items: List[Dict[str, Any]], max_results: int
+) -> List[Dict[str, Any]]:
     """Best-effort full-page extraction for DDGS-discovered Discord URLs (the
     "extract full page content and clean" step). Only for web-discovery
     results; bot-API messages already have full content."""
     try:
-        from ..extraction import fetch_resilient
         from ..cleaner import advanced_clean_text
+        from ..extraction import fetch_resilient
     except Exception:
         return items
     for it in items[:max_results]:
@@ -426,6 +479,7 @@ def _enrich_discord_with_full_content(items: List[Dict[str, Any]],
                 if cleaned:
                     it["full_content"] = cleaned[:5000]
         except Exception:
+            logger.debug("suppressed exception during resilient operation", exc_info=True)
             continue
     return items
 
@@ -433,6 +487,7 @@ def _enrich_discord_with_full_content(items: List[Dict[str, Any]],
 # =====================================================================
 # Provider (capability-aware wrapper)
 # =====================================================================
+
 
 class DiscordProvider(SocialProvider):
     platform = "discord"
@@ -455,48 +510,67 @@ class DiscordProvider(SocialProvider):
     def _exec_channel_id(self, params: Dict[str, Any], max_results: int) -> Dict[str, Any]:
         channel_id = params.get("channel_id")
         if not channel_id:
-            return provider_result(self.platform, error="no_input",
-                                   error_message="Discord --channel-id is required for this mode.",
-                                   capabilities_used=[CAP_CHANNEL_ID])
+            return provider_result(
+                self.platform,
+                error="no_input",
+                error_message="Discord --channel-id is required for this mode.",
+                capabilities_used=[CAP_CHANNEL_ID],
+            )
         raw = discord_channel_messages(
-            channel_id, max_results=max_results,
+            channel_id,
+            max_results=max_results,
             before_message_id=params.get("before"),
         )
         if "error" in raw:
-            return provider_result(self.platform, error=raw["error"],
-                                   error_message=raw["error_message"],
-                                   capabilities_used=[CAP_CHANNEL_ID], raw=raw)
-        items: List[Dict[str, Any]] = [normalize_item(
+            return provider_result(
+                self.platform,
+                error=raw["error"],
+                error_message=raw["error_message"],
+                capabilities_used=[CAP_CHANNEL_ID],
+                raw=raw,
+            )
+        items: List[Dict[str, Any]] = [
+            normalize_item(
+                self.platform,
+                author=m.get("author"),
+                content=m.get("content"),
+                url=None,
+                timestamp=m.get("timestamp"),
+                metadata={
+                    "channel_id": m.get("channel_id"),
+                    "channel_name": m.get("channel_name"),
+                    "guild_id": m.get("guild_id"),
+                    "guild_name": m.get("guild_name"),
+                    "message_id": m.get("id"),
+                    "edited_timestamp": m.get("edited_timestamp"),
+                    "attachments": m.get("attachments"),
+                    "embeds": m.get("embeds"),
+                    "reactions": m.get("reactions"),
+                    "reply_to": m.get("reply_to"),
+                },
+            )
+            for m in raw.get("messages", [])
+        ]
+        return provider_result(
             self.platform,
-            author=m.get("author"),
-            content=m.get("content"),
-            url=None,
-            timestamp=m.get("timestamp"),
-            metadata={
-                "channel_id": m.get("channel_id"),
-                "channel_name": m.get("channel_name"),
-                "guild_id": m.get("guild_id"),
-                "guild_name": m.get("guild_name"),
-                "message_id": m.get("id"),
-                "edited_timestamp": m.get("edited_timestamp"),
-                "attachments": m.get("attachments"),
-                "embeds": m.get("embeds"),
-                "reactions": m.get("reactions"),
-                "reply_to": m.get("reply_to"),
-            },
-        ) for m in raw.get("messages", [])]
-        return provider_result(self.platform, results=items,
-                               capabilities_used=[CAP_CHANNEL_ID], raw=raw,
-                               note=f"channel {raw.get('channel_id')}")
+            results=items,
+            capabilities_used=[CAP_CHANNEL_ID],
+            raw=raw,
+            note=f"channel {raw.get('channel_id')}",
+        )
 
     # -- query (DDGS web + optional bot guild search) ------------------------
-    def _exec_query(self, params: Dict[str, Any], max_results: int,
-                    extract_full: bool) -> Dict[str, Any]:
+    def _exec_query(
+        self, params: Dict[str, Any], max_results: int, extract_full: bool
+    ) -> Dict[str, Any]:
         query = (params.get("query") or "").strip()
         if not query:
-            return provider_result(self.platform, error="no_input",
-                                   error_message="Discord query search requires a --query.",
-                                   capabilities_used=[CAP_QUERY])
+            return provider_result(
+                self.platform,
+                error="no_input",
+                error_message="Discord query search requires a --query.",
+                capabilities_used=[CAP_QUERY],
+            )
 
         token = _has_token()
         items: List[Dict[str, Any]] = []
@@ -511,24 +585,28 @@ class DiscordProvider(SocialProvider):
             if "error" not in bot_res:
                 sources_used.append("bot_guild_search")
                 for m in bot_res.get("messages", []):
-                    items.append({
-                        "title": "",
-                        "content": m.get("content") or "",
-                        "author": m.get("author"),
-                        "url": None,
-                        "timestamp": m.get("timestamp"),
-                        "metadata": {
-                            "channel_id": m.get("channel_id"),
-                            "channel_name": m.get("channel_name"),
-                            "guild_id": m.get("guild_id"),
-                            "guild_name": m.get("guild_name"),
-                            "message_id": m.get("id"),
-                            "reactions": m.get("reactions"),
-                            "attachments": m.get("attachments"),
-                            "source": "bot_guild_search",
-                        },
-                    })
-                note_parts.append(f"scanned {bot_res.get('guilds_scanned', 0)} guild(s) the bot is in.")
+                    items.append(
+                        {
+                            "title": "",
+                            "content": m.get("content") or "",
+                            "author": m.get("author"),
+                            "url": None,
+                            "timestamp": m.get("timestamp"),
+                            "metadata": {
+                                "channel_id": m.get("channel_id"),
+                                "channel_name": m.get("channel_name"),
+                                "guild_id": m.get("guild_id"),
+                                "guild_name": m.get("guild_name"),
+                                "message_id": m.get("id"),
+                                "reactions": m.get("reactions"),
+                                "attachments": m.get("attachments"),
+                                "source": "bot_guild_search",
+                            },
+                        }
+                    )
+                note_parts.append(
+                    f"scanned {bot_res.get('guilds_scanned', 0)} guild(s) the bot is in."
+                )
             elif bot_res.get("error") == "auth_required":
                 note_parts.append("DISCORD_BOT_TOKEN is set but invalid.")
         else:
@@ -545,14 +623,16 @@ class DiscordProvider(SocialProvider):
         if "error" not in ddgs_res:
             sources_used.append("ddgs_web")
             for r in ddgs_res.get("results", []):
-                items.append({
-                    "title": r.get("title") or "",
-                    "content": r.get("content") or "",
-                    "author": None,
-                    "url": r.get("url"),
-                    "timestamp": None,
-                    "metadata": {"source": "ddgs_web"},
-                })
+                items.append(
+                    {
+                        "title": r.get("title") or "",
+                        "content": r.get("content") or "",
+                        "author": None,
+                        "url": r.get("url"),
+                        "timestamp": None,
+                        "metadata": {"source": "ddgs_web"},
+                    }
+                )
 
         # 3. Rank + cap (title > content, whole-phrase bonus).
         items = _rank_discord_results(items, query, max_results)
@@ -561,17 +641,29 @@ class DiscordProvider(SocialProvider):
         if extract_full and items:
             _enrich_discord_with_full_content(items, max_results)
 
-        normalized: List[Dict[str, Any]] = [normalize_item(
-            self.platform,
-            author=it.get("author"),
-            content=(it.get("title") + "\n\n" + it.get("content")).strip()
-                if it.get("title") else it.get("content"),
-            url=it.get("url"),
-            timestamp=it.get("timestamp"),
-            metadata=it.get("metadata") or {},
-        ) for it in items]
+        normalized: List[Dict[str, Any]] = [
+            normalize_item(
+                self.platform,
+                author=it.get("author"),
+                content=(
+                    (it.get("title") + "\n\n" + it.get("content")).strip()
+                    if it.get("title")
+                    else it.get("content")
+                ),
+                url=it.get("url"),
+                timestamp=it.get("timestamp"),
+                metadata=it.get("metadata") or {},
+            )
+            for it in items
+        ]
 
         raw["sources_used"] = sources_used
         note = " ".join(note_parts) if note_parts else None
-        return provider_result(self.platform, query=query, results=normalized,
-                               capabilities_used=[CAP_QUERY], raw=raw, note=note)
+        return provider_result(
+            self.platform,
+            query=query,
+            results=normalized,
+            capabilities_used=[CAP_QUERY],
+            raw=raw,
+            note=note,
+        )

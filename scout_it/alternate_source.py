@@ -19,11 +19,13 @@ retry), so it's kept as an explicit ladder tried in order rather than
 folded into the tier-retry loop.
 """
 
-import re
+import logging
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse, urlunparse
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 def _amp_candidates(url: str) -> List[str]:
@@ -83,7 +85,7 @@ def wayback_snapshot_url(url: str, timeout: int = 10) -> Optional[str]:
         if snapshot and snapshot.get("available"):
             return snapshot.get("url")
     except Exception:
-        pass
+        logger.debug("suppressed exception during resilient operation", exc_info=True)
     return None
 
 

@@ -27,7 +27,7 @@ import json
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
-from urllib.parse import urlencode, urlparse, parse_qsl
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 from .config import CONFIG_DIR
 
@@ -36,10 +36,10 @@ CACHE_DIR = CONFIG_DIR / "cache"
 # Default TTLs (seconds) per content type -- news is time-sensitive, static
 # reference pages (docs, repo file contents, etc.) age much more slowly.
 DEFAULT_TTLS: Dict[str, int] = {
-    "news": 60 * 30,          # 30 minutes
-    "web": 60 * 60 * 6,       # 6 hours
-    "static": 60 * 60 * 24,   # 24 hours
-    "default": 60 * 60 * 2,   # 2 hours
+    "news": 60 * 30,  # 30 minutes
+    "web": 60 * 60 * 6,  # 6 hours
+    "static": 60 * 60 * 24,  # 24 hours
+    "default": 60 * 60 * 2,  # 2 hours
 }
 
 
@@ -52,7 +52,11 @@ def _cache_key(url: str, relevant_params: Optional[list] = None) -> str:
         query = urlencode(kept)
     else:
         query = parsed.query
-    normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{query}" if query else f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    normalized = (
+        f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{query}"
+        if query
+        else f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    )
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:32]
 
 
@@ -64,7 +68,9 @@ def _content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8", errors="ignore")).hexdigest()[:16]
 
 
-def get(url: str, relevant_params: Optional[list] = None, cache_dir: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+def get(
+    url: str, relevant_params: Optional[list] = None, cache_dir: Optional[Path] = None
+) -> Optional[Dict[str, Any]]:
     """Fresh cache hit only -- returns None if missing or past its TTL."""
     entry = _read_entry(url, relevant_params, cache_dir)
     if entry is None:
@@ -77,7 +83,9 @@ def get(url: str, relevant_params: Optional[list] = None, cache_dir: Optional[Pa
     return entry
 
 
-def get_stale(url: str, relevant_params: Optional[list] = None, cache_dir: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+def get_stale(
+    url: str, relevant_params: Optional[list] = None, cache_dir: Optional[Path] = None
+) -> Optional[Dict[str, Any]]:
     """Return the cached entry regardless of TTL (stale-if-error path).
     Always marks ``stale: True`` if the entry is in fact past its TTL."""
     entry = _read_entry(url, relevant_params, cache_dir)
@@ -89,7 +97,9 @@ def get_stale(url: str, relevant_params: Optional[list] = None, cache_dir: Optio
     return entry
 
 
-def _read_entry(url: str, relevant_params: Optional[list], cache_dir: Optional[Path]) -> Optional[Dict[str, Any]]:
+def _read_entry(
+    url: str, relevant_params: Optional[list], cache_dir: Optional[Path]
+) -> Optional[Dict[str, Any]]:
     key = _cache_key(url, relevant_params)
     path = _cache_path(key, cache_dir)
     if not path.exists():
@@ -126,7 +136,11 @@ def set(
         "content": content,
         "content_type": content_type,
         "content_hash": new_hash,
-        "ttl_seconds": ttl_seconds if ttl_seconds is not None else DEFAULT_TTLS.get(content_type, DEFAULT_TTLS["default"]),
+        "ttl_seconds": (
+            ttl_seconds
+            if ttl_seconds is not None
+            else DEFAULT_TTLS.get(content_type, DEFAULT_TTLS["default"])
+        ),
         "cached_at": time.time(),
     }
     if extra:
@@ -136,7 +150,9 @@ def set(
     return {"written": True, "content_changed": content_changed, "key": key}
 
 
-def clear(url: str, relevant_params: Optional[list] = None, cache_dir: Optional[Path] = None) -> bool:
+def clear(
+    url: str, relevant_params: Optional[list] = None, cache_dir: Optional[Path] = None
+) -> bool:
     key = _cache_key(url, relevant_params)
     path = _cache_path(key, cache_dir)
     if path.exists():

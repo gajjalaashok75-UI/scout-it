@@ -18,7 +18,13 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from ..api_search_base import ApiSearchSource, _ApiKeyError, _RateLimitError, _NetworkError, source_messages
+from ..api_search_base import (
+    ApiSearchSource,
+    _ApiKeyError,
+    _NetworkError,
+    _RateLimitError,
+    source_messages,
+)
 from ..base import SourceConfig, make_result
 
 logger = logging.getLogger(__name__)
@@ -87,10 +93,21 @@ class ExaPlugin(ApiSearchSource):
                 raw_results.append(item)
             else:
                 # exa-py returns dataclass-like objects; convert to dict.
-                raw_results.append({
-                    k: getattr(item, k, "")
-                    for k in ("url", "title", "text", "highlights", "score", "author", "published_date", "id")
-                })
+                raw_results.append(
+                    {
+                        k: getattr(item, k, "")
+                        for k in (
+                            "url",
+                            "title",
+                            "text",
+                            "highlights",
+                            "score",
+                            "author",
+                            "published_date",
+                            "id",
+                        )
+                    }
+                )
         return raw_results
 
     def _normalize_result(
@@ -144,7 +161,9 @@ def _classify_exa_error(exc: Exception) -> None:
     msg = str(exc).lower()
     if any(k in msg for k in ("401", "403", "unauthorized", "forbidden", "invalid")):
         raise _ApiKeyError(str(exc)) from exc
-    if any(k in msg for k in ("429", "rate limit", "quota", "credit", "insufficient", "usage limit")):
+    if any(
+        k in msg for k in ("429", "rate limit", "quota", "credit", "insufficient", "usage limit")
+    ):
         raise _RateLimitError(str(exc)) from exc
     if any(k in msg for k in ("timeout", "connection", "network", "dns", "unreachable", "refused")):
         raise _NetworkError(str(exc)) from exc
@@ -152,5 +171,6 @@ def _classify_exa_error(exc: Exception) -> None:
 
 
 from ..registry import register
+
 PLUGIN = ExaPlugin()
 register(PLUGIN)

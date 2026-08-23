@@ -34,7 +34,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-
 # Canonical capability names (map 1:1 to the CLI's platform-specific args).
 CAP_QUERY = "query"
 CAP_CHANNEL = "channel"
@@ -123,9 +122,18 @@ class SocialProvider:
         CAP_USER: "user",
     }
 
-    def search(self, *, query=None, channel=None, channel_id=None,
-               subreddit=None, profile=None, user=None,
-               max_results=20, **kwargs) -> Dict[str, Any]:
+    def search(
+        self,
+        *,
+        query=None,
+        channel=None,
+        channel_id=None,
+        subreddit=None,
+        profile=None,
+        user=None,
+        max_results=20,
+        **kwargs,
+    ) -> Dict[str, Any]:
         """Capability-aware entry point.
 
         Selection order:
@@ -157,8 +165,7 @@ class SocialProvider:
 
         # 2. Fall back to query search if nothing else matched.
         if chosen is None:
-            if (self.FALLBACK_CAPABILITY
-                    and self.FALLBACK_CAPABILITY in self.SUPPORTED_CAPABILITIES):
+            if self.FALLBACK_CAPABILITY and self.FALLBACK_CAPABILITY in self.SUPPORTED_CAPABILITIES:
                 if params.get(self._CAPABILITY_PARAMS[self.FALLBACK_CAPABILITY]):
                     chosen = self.FALLBACK_CAPABILITY
                 else:
@@ -174,11 +181,17 @@ class SocialProvider:
                     )
             else:
                 # Provider has no query/public-discovery fallback at all.
-                unsupported = [k for k, v in {
-                    "channel": channel, "channel_id": channel_id,
-                    "subreddit": subreddit, "profile": profile,
-                    "user": user,
-                }.items() if v]
+                unsupported = [
+                    k
+                    for k, v in {
+                        "channel": channel,
+                        "channel_id": channel_id,
+                        "subreddit": subreddit,
+                        "profile": profile,
+                        "user": user,
+                    }.items()
+                    if v
+                ]
                 return provider_result(
                     self.platform,
                     query=query,

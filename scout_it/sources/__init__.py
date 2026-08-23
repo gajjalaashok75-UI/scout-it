@@ -27,34 +27,38 @@ Available sources (all free or free-tier):
     Geo:           openstreetmap
 """
 
-from .base import SourcePlugin, SourceConfig, make_result
-from .base import SearchResult  # type: SearchResult is a type alias for Dict
 from .api_search_base import ApiSearchSource, SourceMessageCollector, source_messages
+from .base import (
+    SearchResult,  # NOTE: SearchResult is a type alias for Dict
+    SourceConfig,
+    SourcePlugin,
+    make_result,
+)
+from .orchestrator import augment_search_with_sources, merge_and_rank
 from .registry import (
     get_plugin,
-    list_plugins,
     list_available,
-    search_source,
+    list_plugins,
     search_all,
+    search_source,
     source_search,
+)
+from .source_bandit import (
+    choose_sources,
+    classify_query,
+    get_source_stats,
+    record_source_outcome,
+    record_source_outcomes,
+    reset_bandit,
 )
 from .source_config import (
     SOURCE_CREDENTIALS,
-    get_source_config,
-    set_source_config,
-    enable_source,
     disable_source,
+    enable_source,
+    get_source_config,
     is_source_enabled,
     load_sources_config,
-)
-from .orchestrator import augment_search_with_sources, merge_and_rank
-from .source_bandit import (
-    classify_query,
-    choose_sources,
-    record_source_outcome,
-    record_source_outcomes,
-    get_source_stats,
-    reset_bandit,
+    set_source_config,
 )
 
 __all__ = [

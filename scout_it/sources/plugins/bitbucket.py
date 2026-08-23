@@ -14,9 +14,9 @@ import logging
 import re
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
+from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
 from ..source_config import get_source_config
-from ..async_fetch import sync_fetch_json, USER_AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -120,5 +120,6 @@ class BitbucketPlugin(SourcePlugin):
 
 
 from ..registry import register
+
 PLUGIN = BitbucketPlugin()
 register(PLUGIN)

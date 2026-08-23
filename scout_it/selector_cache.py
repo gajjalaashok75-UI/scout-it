@@ -17,7 +17,7 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from .config import CONFIG_DIR
 from .strategy_cache import domain_of
@@ -68,6 +68,7 @@ def get_selector(url: str, db_path: Optional[Path] = None) -> Optional[str]:
 
 def record_success(url: str, selector: str, db_path: Optional[Path] = None) -> None:
     import time
+
     domain = domain_of(url)
     with _connect(db_path) as conn:
         conn.execute(
@@ -87,6 +88,7 @@ def record_failure(url: str, db_path: Optional[Path] = None) -> None:
     failure counter; if it fails too many times in a row, forget it so the
     full cascade takes over again instead of repeatedly trying a dead selector."""
     import time
+
     domain = domain_of(url)
     with _connect(db_path) as conn:
         conn.execute(
@@ -110,6 +112,7 @@ def try_cached_selector(url: str, html: str, db_path: Optional[Path] = None) -> 
         return None
     try:
         from bs4 import BeautifulSoup
+
         soup = BeautifulSoup(html, "html.parser")
         node = soup.select_one(selector)
         if node is None:

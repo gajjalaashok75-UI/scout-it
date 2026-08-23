@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,9 @@ class ListenNotesPlugin(SourcePlugin):
     def search(self, query: str, max_results: int = 10, **kwargs) -> List[Dict[str, Any]]:
         api_key = self.get_api_key()
         if not api_key:
-            logger.warning("ListenNotes requires an API key. Get one at https://listennotes.com/api/")
+            logger.warning(
+                "ListenNotes requires an API key. Get one at https://listennotes.com/api/"
+            )
             return []
 
         cfg = get_source_config("listennotes")
@@ -62,31 +64,35 @@ class ListenNotesPlugin(SourcePlugin):
 
             description = item.get("description_original", "") or item.get("description", "")
             import re
+
             description = re.sub(r"<[^>]+>", "", description).strip()[:500]
 
-            results.append(make_result(
-                id=episode_id,
-                source="listennotes",
-                url=url_val,
-                title=f"{title} — {podcast_title}" if podcast_title else title,
-                snippet=description,
-                content="",
-                content_type="podcast",
-                timestamp=item.get("pub_date_ms", ""),
-                authority_score=0.4,
-                lang="en",
-                metadata={
-                    "podcast_title": podcast_title,
-                    "podcast_id": item.get("podcast_id", ""),
-                    "audio_url": audio_url,
-                    "audio_length_sec": item.get("audio_length_sec", 0),
-                    "image": item.get("image", ""),
-                    "publisher": item.get("podcast_publisher_original", ""),
-                },
-            ))
+            results.append(
+                make_result(
+                    id=episode_id,
+                    source="listennotes",
+                    url=url_val,
+                    title=f"{title} — {podcast_title}" if podcast_title else title,
+                    snippet=description,
+                    content="",
+                    content_type="podcast",
+                    timestamp=item.get("pub_date_ms", ""),
+                    authority_score=0.4,
+                    lang="en",
+                    metadata={
+                        "podcast_title": podcast_title,
+                        "podcast_id": item.get("podcast_id", ""),
+                        "audio_url": audio_url,
+                        "audio_length_sec": item.get("audio_length_sec", 0),
+                        "image": item.get("image", ""),
+                        "publisher": item.get("podcast_publisher_original", ""),
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = ListenNotesPlugin()
 register(PLUGIN)

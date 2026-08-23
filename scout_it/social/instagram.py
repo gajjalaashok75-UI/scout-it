@@ -46,11 +46,9 @@ import os
 import re
 import time
 from typing import Any, Dict, List, Optional
-from urllib.parse import quote_plus
 
 import requests
 
-from .. import __version__ as _VERSION
 from .base import (
     CAP_PROFILE,
     CAP_QUERY,
@@ -74,9 +72,11 @@ _BROWSER_UAS = [
 
 def _get_proxy() -> Optional[str]:
     """Read a proxy from env (HTTP_PROXY / HTTPS_PROXY / INSTAGRAM_PROXY)."""
-    return (os.environ.get("INSTAGRAM_PROXY")
-            or os.environ.get("HTTPS_PROXY")
-            or os.environ.get("HTTP_PROXY"))
+    return (
+        os.environ.get("INSTAGRAM_PROXY")
+        or os.environ.get("HTTPS_PROXY")
+        or os.environ.get("HTTP_PROXY")
+    )
 
 
 def _has_session() -> bool:
@@ -93,6 +93,7 @@ def _session_cookies() -> Dict[str, str]:
 # =====================================================================
 # DDGS web discovery (query capability, NO login required)
 # =====================================================================
+
 
 def _ddgs_text(query: str, max_results: int) -> List[Dict[str, Any]]:
     """Run a DDGS text search, tolerant of the installed ddgs API shape."""
@@ -134,8 +135,10 @@ def instagram_ddgs_search(query: str, max_results: int = 20) -> Dict[str, Any]:
     """
     q = (query or "").strip()
     if not q:
-        return {"error": "no_input",
-                "error_message": "A --query is required for Instagram web search."}
+        return {
+            "error": "no_input",
+            "error_message": "A --query is required for Instagram web search.",
+        }
 
     precise = _ddgs_text(f"site:instagram.com {q}", max_results * 2)
     broad = _ddgs_text(f"instagram {q}", max_results)
@@ -146,19 +149,21 @@ def instagram_ddgs_search(query: str, max_results: int = 20) -> Dict[str, Any]:
         if not url or url in seen:
             continue
         seen.add(url)
-        merged.append({
-            "title": r.get("title") or "",
-            "content": r.get("body") or r.get("snippet") or r.get("content") or "",
-            "url": url,
-        })
+        merged.append(
+            {
+                "title": r.get("title") or "",
+                "content": r.get("body") or r.get("snippet") or r.get("content") or "",
+                "url": url,
+            }
+        )
     ranked = _rank_instagram_results(merged, q, max_results)
-    return {"query": query, "result_count": len(ranked), "results": ranked,
-            "source": "ddgs_web"}
+    return {"query": query, "result_count": len(ranked), "results": ranked, "source": "ddgs_web"}
 
 
 # =====================================================================
 # Public profile scraping (profile capability)
 # =====================================================================
+
 
 def _extract_json_ld(html: str) -> List[Dict[str, Any]]:
     """Extract all JSON-LD `<script type="application/ld+json">` blocks from
@@ -166,7 +171,8 @@ def _extract_json_ld(html: str) -> List[Dict[str, Any]]:
     blocks: List[Dict[str, Any]] = []
     for match in re.finditer(
         r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
-        html, re.DOTALL | re.IGNORECASE,
+        html,
+        re.DOTALL | re.IGNORECASE,
     ):
         try:
             data = json.loads(match.group(1).strip())
@@ -183,8 +189,8 @@ def _extract_shared_data(html: str) -> Optional[Dict[str, Any]]:
     """Extract the ``window._sharedData`` / additional data JSON blob that
     Instagram embeds in profile pages. Returns None if not found."""
     for pattern in (
-        r'window\._sharedData\s*=\s*(\{.*?\})\s*;\s*</script>',
-        r'window\.__additionalData\s*=\s*(\{.*?\})\s*;\s*</script>',
+        r"window\._sharedData\s*=\s*(\{.*?\})\s*;\s*</script>",
+        r"window\.__additionalData\s*=\s*(\{.*?\})\s*;\s*</script>",
         r'"timeline_media":\s*(\{.*?\})\s*[,}]',
     ):
         match = re.search(pattern, html, re.DOTALL)
@@ -196,9 +202,9 @@ def _extract_shared_data(html: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _parse_profile_posts(json_ld: List[Dict[str, Any]],
-                         shared: Optional[Dict[str, Any]],
-                         username: str) -> List[Dict[str, Any]]:
+def _parse_profile_posts(
+    json_ld: List[Dict[str, Any]], shared: Optional[Dict[str, Any]], username: str
+) -> List[Dict[str, Any]]:
     """Parse posts from JSON-LD blocks and/or shared data into the provider's
     post schema. Handles both the BlogPosting/Person JSON-LD shape and the
     older ``timeline_media`` shared-data shape."""
@@ -215,43 +221,64 @@ def _parse_profile_posts(json_ld: List[Dict[str, Any]],
                 continue
             typ = item.get("@type", "")
             if typ in ("BlogPosting", "SocialMediaPosting", "Article") or item.get("articleBody"):
-                posts.append({
-                    "author": (item.get("author") or {}).get("name", username)
-                        if isinstance(item.get("author"), dict)
-                        else item.get("author") or username,
-                    "content": item.get("articleBody") or item.get("description") or item.get("headline") or "",
-                    "url": item.get("mainEntityOfPage", {}).get("@id")
-                        if isinstance(item.get("mainEntityOfPage"), dict)
-                        else item.get("url"),
-                    "timestamp": item.get("datePublished"),
-                    "image": item.get("image", {}).get("url")
-                        if isinstance(item.get("image"), dict)
-                        else item.get("image"),
-                    "title": item.get("headline") or "",
-                })
+                posts.append(
+                    {
+                        "author": (
+                            (item.get("author") or {}).get("name", username)
+                            if isinstance(item.get("author"), dict)
+                            else item.get("author") or username
+                        ),
+                        "content": item.get("articleBody")
+                        or item.get("description")
+                        or item.get("headline")
+                        or "",
+                        "url": (
+                            item.get("mainEntityOfPage", {}).get("@id")
+                            if isinstance(item.get("mainEntityOfPage"), dict)
+                            else item.get("url")
+                        ),
+                        "timestamp": item.get("datePublished"),
+                        "image": (
+                            item.get("image", {}).get("url")
+                            if isinstance(item.get("image"), dict)
+                            else item.get("image")
+                        ),
+                        "title": item.get("headline") or "",
+                    }
+                )
 
     # Shared data: older timeline_media shape.
     if shared and isinstance(shared, dict):
-        timeline = (shared.get("entry_data", {})
-                           .get("ProfilePage", [{}])[0]
-                           .get("graphql", {})
-                           .get("user", {})
-                           .get("edge_owner_to_timeline_media", {}))
+        timeline = (
+            shared.get("entry_data", {})
+            .get("ProfilePage", [{}])[0]
+            .get("graphql", {})
+            .get("user", {})
+            .get("edge_owner_to_timeline_media", {})
+        )
         for edge in timeline.get("edges", []):
             node = edge.get("node", {})
             if not node:
                 continue
-            posts.append({
-                "author": username,
-                "content": node.get("edge_media_to_caption", {})
-                                .get("edges", [{}])[0].get("node", {}).get("text", ""),
-                "url": f"{INSTAGRAM_BASE}/p/{node.get('shortcode', '')}/" if node.get("shortcode") else None,
-                "timestamp": _instagram_timestamp(node.get("taken_at_timestamp")),
-                "image": node.get("display_url"),
-                "title": "",
-                "likes": node.get("edge_liked_by", {}).get("count"),
-                "comments": node.get("edge_media_to_comment", {}).get("count"),
-            })
+            posts.append(
+                {
+                    "author": username,
+                    "content": node.get("edge_media_to_caption", {})
+                    .get("edges", [{}])[0]
+                    .get("node", {})
+                    .get("text", ""),
+                    "url": (
+                        f"{INSTAGRAM_BASE}/p/{node.get('shortcode', '')}/"
+                        if node.get("shortcode")
+                        else None
+                    ),
+                    "timestamp": _instagram_timestamp(node.get("taken_at_timestamp")),
+                    "image": node.get("display_url"),
+                    "title": "",
+                    "likes": node.get("edge_liked_by", {}).get("count"),
+                    "comments": node.get("edge_media_to_comment", {}).get("count"),
+                }
+            )
 
     return posts
 
@@ -271,6 +298,7 @@ def _fetch_profile_requests(username: str, max_retries: int = 2) -> Dict[str, An
     browser-like headers + optional session cookie. Returns ``{ok, html,
     status_code, error}``."""
     import random
+
     url = f"{INSTAGRAM_BASE}/{username}/"
     headers = {
         "User-Agent": random.choice(_BROWSER_UAS),
@@ -291,12 +319,22 @@ def _fetch_profile_requests(username: str, max_retries: int = 2) -> Dict[str, An
 
     for attempt in range(max(1, max_retries)):
         try:
-            resp = requests.get(url, headers=headers, cookies=cookies,
-                                proxies=proxies, timeout=15, allow_redirects=False)
+            resp = requests.get(
+                url,
+                headers=headers,
+                cookies=cookies,
+                proxies=proxies,
+                timeout=15,
+                allow_redirects=False,
+            )
         except Exception as e:
             if attempt + 1 >= max_retries:
-                return {"ok": False, "html": None, "status_code": None,
-                        "error": f"{type(e).__name__}: {e}"}
+                return {
+                    "ok": False,
+                    "html": None,
+                    "status_code": None,
+                    "error": f"{type(e).__name__}: {e}",
+                }
             time.sleep(0.5 * (attempt + 1))
             continue
 
@@ -304,27 +342,42 @@ def _fetch_profile_requests(username: str, max_retries: int = 2) -> Dict[str, An
         if resp.status_code in (301, 302):
             loc = resp.headers.get("Location", "")
             if "login" in loc.lower():
-                return {"ok": False, "html": None, "status_code": resp.status_code,
-                        "error": "login_wall (Instagram redirected to login page)"}
+                return {
+                    "ok": False,
+                    "html": None,
+                    "status_code": resp.status_code,
+                    "error": "login_wall (Instagram redirected to login page)",
+                }
             # Follow non-login redirects manually.
             continue
         if resp.status_code == 404:
-            return {"ok": False, "html": None, "status_code": 404,
-                    "error": f"Instagram profile '{username}' not found."}
+            return {
+                "ok": False,
+                "html": None,
+                "status_code": 404,
+                "error": f"Instagram profile '{username}' not found.",
+            }
         if resp.status_code == 429:
             time.sleep(min(float(resp.headers.get("Retry-After", 2.0)), 5.0))
             continue
         if resp.status_code >= 400:
-            return {"ok": False, "html": None, "status_code": resp.status_code,
-                    "error": f"HTTP {resp.status_code}"}
+            return {
+                "ok": False,
+                "html": None,
+                "status_code": resp.status_code,
+                "error": f"HTTP {resp.status_code}",
+            }
         html = resp.text or ""
         if len(html) < 500:
-            return {"ok": False, "html": html, "status_code": resp.status_code,
-                    "error": "page too small (likely a block/challenge page)"}
+            return {
+                "ok": False,
+                "html": html,
+                "status_code": resp.status_code,
+                "error": "page too small (likely a block/challenge page)",
+            }
         return {"ok": True, "html": html, "status_code": resp.status_code, "error": None}
 
-    return {"ok": False, "html": None, "status_code": None,
-            "error": "request failed after retries"}
+    return {"ok": False, "html": None, "status_code": None, "error": "request failed after retries"}
 
 
 def _fetch_profile_playwright(username: str, timeout_ms: int = 15000) -> Dict[str, Any]:
@@ -335,17 +388,21 @@ def _fetch_profile_playwright(username: str, timeout_ms: int = 15000) -> Dict[st
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        return {"ok": False, "html": None,
-                "error": "playwright not installed (pip install playwright && playwright install chromium)"}
+        return {
+            "ok": False,
+            "html": None,
+            "error": "playwright not installed (pip install playwright && playwright install chromium)",
+        }
 
     import random
+
     url = f"{INSTAGRAM_BASE}/{username}/"
     ua = random.choice(_BROWSER_UAS)
     try:
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True, proxy=(
-                {"server": _get_proxy()} if _get_proxy() else None
-            ))
+            browser = pw.chromium.launch(
+                headless=True, proxy=({"server": _get_proxy()} if _get_proxy() else None)
+            )
             try:
                 context = browser.new_context(
                     user_agent=ua,
@@ -354,10 +411,16 @@ def _fetch_profile_playwright(username: str, timeout_ms: int = 15000) -> Dict[st
                 )
                 # Inject session cookie if available.
                 if _has_session():
-                    context.add_cookies([{
-                        "name": "sessionid", "value": os.environ["INSTAGRAM_SESSION_ID"],
-                        "domain": ".instagram.com", "path": "/",
-                    }])
+                    context.add_cookies(
+                        [
+                            {
+                                "name": "sessionid",
+                                "value": os.environ["INSTAGRAM_SESSION_ID"],
+                                "domain": ".instagram.com",
+                                "path": "/",
+                            }
+                        ]
+                    )
                 page = context.new_page()
                 # Anti-bot: hide webdriver flag.
                 page.add_init_script(
@@ -366,7 +429,9 @@ def _fetch_profile_playwright(username: str, timeout_ms: int = 15000) -> Dict[st
                 page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
                 # Wait for content or login redirect to settle.
                 try:
-                    page.wait_for_selector("main, article, [role='main']", timeout=5000, state="attached")
+                    page.wait_for_selector(
+                        "main, article, [role='main']", timeout=5000, state="attached"
+                    )
                 except Exception:
                     page.wait_for_timeout(2000)
                 html = page.content()
@@ -374,7 +439,11 @@ def _fetch_profile_playwright(username: str, timeout_ms: int = 15000) -> Dict[st
             finally:
                 browser.close()
         if not html or "accounts/login" in final_url:
-            return {"ok": False, "html": html, "error": "login_wall (Playwright redirected to login)"}
+            return {
+                "ok": False,
+                "html": html,
+                "error": "login_wall (Playwright redirected to login)",
+            }
         return {"ok": True, "html": html, "error": None}
     except Exception as e:
         return {"ok": False, "html": None, "error": f"{type(e).__name__}: {e}"}
@@ -390,12 +459,13 @@ def instagram_profile_search(
     the session cookie is used for more reliable access."""
     username = (username or "").strip().lstrip("@")
     if not username:
-        return {"error": "no_input",
-                "error_message": "An Instagram username is required."}
+        return {"error": "no_input", "error_message": "An Instagram username is required."}
     # Sanitize: Instagram usernames are alphanumeric + . + _
     if not re.match(r"^[A-Za-z0-9._]+$", username):
-        return {"error": "invalid_username",
-                "error_message": f"'{username}' is not a valid Instagram username."}
+        return {
+            "error": "invalid_username",
+            "error_message": f"'{username}' is not a valid Instagram username.",
+        }
 
     notes: List[str] = []
     sources_tried: List[str] = []
@@ -411,7 +481,9 @@ def instagram_profile_search(
         if posts:
             notes.append("fetched via requests (JSON-LD/shared data).")
         else:
-            notes.append("requests fetched page but no posts extracted (Instagram may require login).")
+            notes.append(
+                "requests fetched page but no posts extracted (Instagram may require login)."
+            )
 
     # Tier 2: Playwright fallback (login wall or no posts from requests).
     if not posts:
@@ -434,9 +506,14 @@ def instagram_profile_search(
         ddgs = instagram_ddgs_search(username, max_results=max_results)
         if "error" not in ddgs and ddgs.get("results"):
             notes.append("fell back to DDGS web search (profile page was blocked).")
-            return {"username": username, "result_count": ddgs["result_count"],
-                    "results": ddgs["results"], "source": "ddgs_web",
-                    "sources_tried": sources_tried, "notes": notes}
+            return {
+                "username": username,
+                "result_count": ddgs["result_count"],
+                "results": ddgs["results"],
+                "source": "ddgs_web",
+                "sources_tried": sources_tried,
+                "notes": notes,
+            }
 
     if not _has_session():
         notes.append(
@@ -445,17 +522,24 @@ def instagram_profile_search(
         )
 
     posts = posts[:max_results]
-    return {"username": username, "result_count": len(posts),
-            "posts": posts, "source": sources_tried[0] if posts else "none",
-            "sources_tried": sources_tried, "notes": notes}
+    return {
+        "username": username,
+        "result_count": len(posts),
+        "posts": posts,
+        "source": sources_tried[0] if posts else "none",
+        "sources_tried": sources_tried,
+        "notes": notes,
+    }
 
 
 # =====================================================================
 # Ranking + enrichment
 # =====================================================================
 
-def _rank_instagram_results(items: List[Dict[str, Any]], query: str,
-                            max_results: int) -> List[Dict[str, Any]]:
+
+def _rank_instagram_results(
+    items: List[Dict[str, Any]], query: str, max_results: int
+) -> List[Dict[str, Any]]:
     """Rank Instagram results by query relevance: title match > content match,
     whole-phrase bonus. Caps at ``max_results``."""
     if not items:
@@ -484,12 +568,13 @@ def _rank_instagram_results(items: List[Dict[str, Any]], query: str,
     return ranked[:max_results]
 
 
-def _enrich_instagram_with_full_content(items: List[Dict[str, Any]],
-                                         max_results: int) -> List[Dict[str, Any]]:
+def _enrich_instagram_with_full_content(
+    items: List[Dict[str, Any]], max_results: int
+) -> List[Dict[str, Any]]:
     """Best-effort full-page extraction for DDGS-discovered Instagram URLs."""
     try:
-        from ..extraction import fetch_resilient
         from ..cleaner import advanced_clean_text
+        from ..extraction import fetch_resilient
     except Exception:
         return items
     for it in items[:max_results]:
@@ -503,6 +588,7 @@ def _enrich_instagram_with_full_content(items: List[Dict[str, Any]],
                 if cleaned:
                     it["full_content"] = cleaned[:5000]
         except Exception:
+            logger.debug("suppressed exception during resilient operation", exc_info=True)
             continue
     return items
 
@@ -510,6 +596,7 @@ def _enrich_instagram_with_full_content(items: List[Dict[str, Any]],
 # =====================================================================
 # Provider (capability-aware wrapper)
 # =====================================================================
+
 
 class InstagramProvider(SocialProvider):
     platform = "instagram"
@@ -527,13 +614,17 @@ class InstagramProvider(SocialProvider):
         return self._exec_query(params, max_results, extract_full)
 
     # -- query (DDGS web discovery) ------------------------------------------
-    def _exec_query(self, params: Dict[str, Any], max_results: int,
-                    extract_full: bool) -> Dict[str, Any]:
+    def _exec_query(
+        self, params: Dict[str, Any], max_results: int, extract_full: bool
+    ) -> Dict[str, Any]:
         query = (params.get("query") or "").strip()
         if not query:
-            return provider_result(self.platform, error="no_input",
-                                   error_message="Instagram query search requires a --query.",
-                                   capabilities_used=[CAP_QUERY])
+            return provider_result(
+                self.platform,
+                error="no_input",
+                error_message="Instagram query search requires a --query.",
+                capabilities_used=[CAP_QUERY],
+            )
 
         ddgs_res = instagram_ddgs_search(query, max_results=max_results)
         raw: Dict[str, Any] = {"query": query, "ddgs_search": ddgs_res}
@@ -542,29 +633,37 @@ class InstagramProvider(SocialProvider):
 
         if "error" not in ddgs_res:
             for r in ddgs_res.get("results", []):
-                items.append({
-                    "title": r.get("title") or "",
-                    "content": r.get("content") or "",
-                    "author": None,
-                    "url": r.get("url"),
-                    "timestamp": None,
-                    "metadata": {"source": "ddgs_web"},
-                })
+                items.append(
+                    {
+                        "title": r.get("title") or "",
+                        "content": r.get("content") or "",
+                        "author": None,
+                        "url": r.get("url"),
+                        "timestamp": None,
+                        "metadata": {"source": "ddgs_web"},
+                    }
+                )
 
         items = _rank_instagram_results(items, query, max_results)
 
         if extract_full and items:
             _enrich_instagram_with_full_content(items, max_results)
 
-        normalized: List[Dict[str, Any]] = [normalize_item(
-            self.platform,
-            author=it.get("author"),
-            content=(it.get("title") + "\n\n" + it.get("content")).strip()
-                if it.get("title") else it.get("content"),
-            url=it.get("url"),
-            timestamp=it.get("timestamp"),
-            metadata=it.get("metadata") or {},
-        ) for it in items]
+        normalized: List[Dict[str, Any]] = [
+            normalize_item(
+                self.platform,
+                author=it.get("author"),
+                content=(
+                    (it.get("title") + "\n\n" + it.get("content")).strip()
+                    if it.get("title")
+                    else it.get("content")
+                ),
+                url=it.get("url"),
+                timestamp=it.get("timestamp"),
+                metadata=it.get("metadata") or {},
+            )
+            for it in items
+        ]
 
         if not _has_session():
             note_parts.append(
@@ -572,16 +671,25 @@ class InstagramProvider(SocialProvider):
                 "Set it (via `scout-it config`) for direct profile scraping."
             )
         note = " ".join(note_parts) if note_parts else None
-        return provider_result(self.platform, query=query, results=normalized,
-                               capabilities_used=[CAP_QUERY], raw=raw, note=note)
+        return provider_result(
+            self.platform,
+            query=query,
+            results=normalized,
+            capabilities_used=[CAP_QUERY],
+            raw=raw,
+            note=note,
+        )
 
     # -- profile (public page scraping + Playwright + DDGS fallback) ---------
     def _exec_profile(self, params: Dict[str, Any], max_results: int) -> Dict[str, Any]:
         username = (params.get("profile") or "").strip()
         if not username:
-            return provider_result(self.platform, error="no_input",
-                                   error_message="Instagram --profile requires a username.",
-                                   capabilities_used=[CAP_PROFILE])
+            return provider_result(
+                self.platform,
+                error="no_input",
+                error_message="Instagram --profile requires a username.",
+                capabilities_used=[CAP_PROFILE],
+            )
 
         raw_res = instagram_profile_search(username, max_results=max_results)
         raw: Dict[str, Any] = {"profile": username, "raw": raw_res}
@@ -590,40 +698,51 @@ class InstagramProvider(SocialProvider):
         items: List[Dict[str, Any]] = []
         # Posts from profile scraping.
         for p in raw_res.get("posts", []):
-            items.append({
-                "title": p.get("title") or "",
-                "content": p.get("content") or "",
-                "author": p.get("author") or username,
-                "url": p.get("url"),
-                "timestamp": p.get("timestamp"),
-                "metadata": {
-                    "source": "profile_scrape",
-                    "image": p.get("image"),
-                    "likes": p.get("likes"),
-                    "comments": p.get("comments"),
-                },
-            })
+            items.append(
+                {
+                    "title": p.get("title") or "",
+                    "content": p.get("content") or "",
+                    "author": p.get("author") or username,
+                    "url": p.get("url"),
+                    "timestamp": p.get("timestamp"),
+                    "metadata": {
+                        "source": "profile_scrape",
+                        "image": p.get("image"),
+                        "likes": p.get("likes"),
+                        "comments": p.get("comments"),
+                    },
+                }
+            )
         # DDGS fallback results.
         for r in raw_res.get("results", []):
-            items.append({
-                "title": r.get("title") or "",
-                "content": r.get("content") or "",
-                "author": None,
-                "url": r.get("url"),
-                "timestamp": None,
-                "metadata": {"source": "ddgs_web"},
-            })
+            items.append(
+                {
+                    "title": r.get("title") or "",
+                    "content": r.get("content") or "",
+                    "author": None,
+                    "url": r.get("url"),
+                    "timestamp": None,
+                    "metadata": {"source": "ddgs_web"},
+                }
+            )
 
-        normalized: List[Dict[str, Any]] = [normalize_item(
-            self.platform,
-            author=it.get("author"),
-            content=(it.get("title") + "\n\n" + it.get("content")).strip()
-                if it.get("title") else it.get("content"),
-            url=it.get("url"),
-            timestamp=it.get("timestamp"),
-            metadata=it.get("metadata") or {},
-        ) for it in items]
+        normalized: List[Dict[str, Any]] = [
+            normalize_item(
+                self.platform,
+                author=it.get("author"),
+                content=(
+                    (it.get("title") + "\n\n" + it.get("content")).strip()
+                    if it.get("title")
+                    else it.get("content")
+                ),
+                url=it.get("url"),
+                timestamp=it.get("timestamp"),
+                metadata=it.get("metadata") or {},
+            )
+            for it in items
+        ]
 
         note = " ".join(note_parts) if note_parts else None
-        return provider_result(self.platform, results=normalized,
-                               capabilities_used=[CAP_PROFILE], raw=raw, note=note)
+        return provider_result(
+            self.platform, results=normalized, capabilities_used=[CAP_PROFILE], raw=raw, note=note
+        )

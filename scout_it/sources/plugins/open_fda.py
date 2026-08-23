@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +61,22 @@ class OpenFdaPlugin(SourcePlugin):
 
             # Reactions.
             reactions = patient.get("reaction", [])
-            reaction_terms = [r.get("reactionmeddrapt", "") for r in reactions[:5] if r.get("reactionmeddrapt")]
+            reaction_terms = [
+                r.get("reactionmeddrapt", "") for r in reactions[:5] if r.get("reactionmeddrapt")
+            ]
 
             received_date = event.get("receivedate", "")
             patient_age = patient.get("patientonsetage", "")
             patient_sex = patient.get("patientsex", "")
 
-            sex_map = {"0": "unknown", "1": "male", "2": "female", 0: "unknown", 1: "male", 2: "female"}
+            sex_map = {
+                "0": "unknown",
+                "1": "male",
+                "2": "female",
+                0: "unknown",
+                1: "male",
+                2: "female",
+            }
             sex_str = sex_map.get(patient_sex, "unknown")
 
             snippet_parts = []
@@ -80,31 +89,34 @@ class OpenFdaPlugin(SourcePlugin):
             snippet_parts.append(f"Sex: {sex_str}")
             snippet = " | ".join(snippet_parts)
 
-            results.append(make_result(
-                id=safety_id,
-                source="open_fda",
-                url=f"https://open.fda.gov/data/faers/",
-                title=f"FDA Adverse Event: {', '.join(drug_names[:2]) or query}",
-                snippet=snippet,
-                content="",
-                content_type="knowledge",
-                timestamp=received_date,
-                authority_score=0.6,
-                lang="en",
-                metadata={
-                    "safety_report_id": safety_id,
-                    "drugs": drug_names,
-                    "reactions": reaction_terms,
-                    "received_date": received_date,
-                    "patient_age": patient_age,
-                    "patient_sex": sex_str,
-                    "serious": event.get("serious", ""),
-                    "country": event.get("occurcountry", ""),
-                },
-            ))
+            results.append(
+                make_result(
+                    id=safety_id,
+                    source="open_fda",
+                    url="https://open.fda.gov/data/faers/",
+                    title=f"FDA Adverse Event: {', '.join(drug_names[:2]) or query}",
+                    snippet=snippet,
+                    content="",
+                    content_type="knowledge",
+                    timestamp=received_date,
+                    authority_score=0.6,
+                    lang="en",
+                    metadata={
+                        "safety_report_id": safety_id,
+                        "drugs": drug_names,
+                        "reactions": reaction_terms,
+                        "received_date": received_date,
+                        "patient_age": patient_age,
+                        "patient_sex": sex_str,
+                        "serious": event.get("serious", ""),
+                        "country": event.get("occurcountry", ""),
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = OpenFdaPlugin()
 register(PLUGIN)

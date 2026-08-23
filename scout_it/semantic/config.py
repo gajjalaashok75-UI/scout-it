@@ -18,8 +18,8 @@ not the output format or location.
 """
 
 import json
+import logging
 import os
-from pathlib import Path
 
 from ..config import CONFIG_DIR
 
@@ -27,6 +27,8 @@ from ..config import CONFIG_DIR
 SEMANTIC_DIR = CONFIG_DIR / "semantic"
 LANCEDB_DIR = SEMANTIC_DIR / "lancedb"
 QUERY_CACHE_DB = SEMANTIC_DIR / "query_cache.db"
+logger = logging.getLogger(__name__)
+
 CONFIG_FILE = SEMANTIC_DIR / "config.json"
 
 # ── Default models ─────────────────────────────────────────────────────────
@@ -92,8 +94,8 @@ def _load_config() -> dict:
     try:
         if CONFIG_FILE.exists():
             return json.loads(CONFIG_FILE.read_text())
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("could not read semantic config %s: %s", CONFIG_FILE, exc)
     return {}
 
 

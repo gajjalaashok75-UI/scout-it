@@ -17,7 +17,6 @@ absent, every method here degrades to "direct" (`proxy_id="direct"`,
 """
 
 import os
-import random
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -41,7 +40,9 @@ class ProxyPool:
         # other key in this project (scout-it config / env var) -- see
         # config.py's load_stored_credentials_into_env(), called at CLI
         # startup, which populates os.environ before this ever runs.
-        self._proxies = proxies if proxies is not None else _parse_proxy_list(os.environ.get("PROXY_LIST"))
+        self._proxies = (
+            proxies if proxies is not None else _parse_proxy_list(os.environ.get("PROXY_LIST"))
+        )
         self._lock = threading.Lock()
         self._cooldowns: Dict[str, float] = {}  # proxy_id -> unix ts until which it's benched
         self._index = 0
@@ -85,8 +86,14 @@ class ProxyPool:
         with self._lock:
             if preferred_id and preferred_id != DIRECT:
                 for p in self._proxies:
-                    if self._proxy_id(p) == preferred_id and self._cooldowns.get(preferred_id, 0) <= now:
-                        return {"proxy_id": preferred_id, "requests_proxies": {"http": p, "https": p}}
+                    if (
+                        self._proxy_id(p) == preferred_id
+                        and self._cooldowns.get(preferred_id, 0) <= now
+                    ):
+                        return {
+                            "proxy_id": preferred_id,
+                            "requests_proxies": {"http": p, "https": p},
+                        }
 
             healthy = [p for p in self._proxies if self._cooldowns.get(self._proxy_id(p), 0) <= now]
             if not healthy:
@@ -96,7 +103,10 @@ class ProxyPool:
 
             self._index = (self._index + 1) % len(healthy)
             chosen = healthy[self._index]
-            return {"proxy_id": self._proxy_id(chosen), "requests_proxies": {"http": chosen, "https": chosen}}
+            return {
+                "proxy_id": self._proxy_id(chosen),
+                "requests_proxies": {"http": chosen, "https": chosen},
+            }
 
     def mark_failed(self, proxy_id: str, cooldown_seconds: float = 60.0) -> None:
         """Bench a proxy for a while after a failure attributable to it."""

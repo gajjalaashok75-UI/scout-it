@@ -17,7 +17,7 @@ Design:
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List
 
 try:
     import numpy as np  # only required by the optional dense-vector path
@@ -61,9 +61,7 @@ class _Embedder:
         """Encode texts to a (N, dim) matrix of L2-normalized float32 vectors."""
         if not texts:
             return np.zeros((0, self._dim), dtype=np.float32) if np is not None else []
-        vecs = self._model.encode(
-            texts, normalize_embeddings=True, show_progress_bar=False
-        )
+        vecs = self._model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
         return np.asarray(vecs, dtype=np.float32) if np is not None else vecs
 
 
@@ -136,6 +134,7 @@ def is_available() -> bool:
         import lancedb  # noqa: F401
         import sentence_transformers  # noqa: F401
         import torch  # noqa: F401
+
         return True
     except ImportError:
         return False

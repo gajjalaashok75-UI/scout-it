@@ -32,7 +32,13 @@ def normalize_regular_result(
     """
     url = result.get("href") or result.get("url") or result.get("link") or ""
     title = result.get("title") or ""
-    snippet = result.get("snippet") or result.get("body") or result.get("summary") or result.get("description") or ""
+    snippet = (
+        result.get("snippet")
+        or result.get("body")
+        or result.get("summary")
+        or result.get("description")
+        or ""
+    )
     content = result.get("main_content") or result.get("content") or ""
 
     # Source: use the existing source field, or the default.
@@ -60,11 +66,31 @@ def normalize_regular_result(
         "authority_score": authority,
         "relevance_score": 0.0,
         "lang": result.get("lang", "en"),
-        "metadata": {k: v for k, v in result.items() if k not in {
-            "title", "href", "url", "link", "snippet", "body", "summary",
-            "description", "main_content", "content", "source", "engine",
-            "score", "publish_date", "date", "timestamp", "lang", "content_type",
-        }},
+        "metadata": {
+            k: v
+            for k, v in result.items()
+            if k
+            not in {
+                "title",
+                "href",
+                "url",
+                "link",
+                "snippet",
+                "body",
+                "summary",
+                "description",
+                "main_content",
+                "content",
+                "source",
+                "engine",
+                "score",
+                "publish_date",
+                "date",
+                "timestamp",
+                "lang",
+                "content_type",
+            }
+        },
     }
 
 
@@ -131,6 +157,7 @@ def merge_and_rank(
     if semantic_rerank:
         try:
             from ..semantic import semantic_rerank as _rerank
+
             ranked = _rerank(all_results, query)
         except Exception as exc:
             logger.warning("Semantic rerank failed, falling back to authority sort: %s", exc)
@@ -140,8 +167,10 @@ def merge_and_rank(
     if composite_rerank:
         try:
             from ..semantic import composite_rerank as _composite
-            ranked = _composite(ranked, query, content_type_hint=content_type_hint,
-                                 max_final=max_final)
+
+            ranked = _composite(
+                ranked, query, content_type_hint=content_type_hint, max_final=max_final
+            )
         except Exception as exc:
             logger.warning("Composite rerank failed, using semantic order: %s", exc)
             ranked = ranked[:max_final]
@@ -163,7 +192,10 @@ def search_sources_parallel(
     Failed sources return an empty list (errors are isolated).
     """
     from .registry import search_all
-    return search_all(query, sources=sources, max_results_per_source=max_per_source, search_type=search_type)
+
+    return search_all(
+        query, sources=sources, max_results_per_source=max_per_source, search_type=search_type
+    )
 
 
 def augment_search_with_sources(
@@ -227,20 +259,27 @@ def augment_search_with_sources(
         source_names = [s.strip() for s in sources.split(",") if s.strip()]
     elif use_source_bandit:
         # No explicit sources — let the bandit pick.
-        from .source_bandit import choose_sources as _choose
         from .registry import list_available
+        from .source_bandit import choose_sources as _choose
+
         available = list_available()
         if available:
             bandit_info = _choose(query, available, top_k=bandit_top_k)
             source_names = bandit_info["sources"]
-            logger.info("Source bandit selected %d sources for query type '%s': %s",
-                        len(source_names), bandit_info["query_type"], source_names)
+            logger.info(
+                "Source bandit selected %d sources for query type '%s': %s",
+                len(source_names),
+                bandit_info["query_type"],
+                source_names,
+            )
 
     if not source_names:
         return regular_results
 
     # Search sources in parallel, forwarding search_type to API sources.
-    source_results = search_sources_parallel(query, source_names, max_per_source, search_type=search_type)
+    source_results = search_sources_parallel(
+        query, source_names, max_per_source, search_type=search_type
+    )
 
     # Check if we got any source results.
     total_source = sum(len(v) for v in source_results.values())
@@ -268,6 +307,7 @@ def augment_search_with_sources(
     # Record outcomes to the source-selection bandit (learns for next time).
     try:
         from .source_bandit import record_source_outcomes as _record
+
         _record(query, source_results)
     except Exception as exc:
         logger.debug("Could not record source bandit outcomes: %s", exc)

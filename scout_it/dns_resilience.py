@@ -21,6 +21,7 @@ No new dependency — DoH here just means an HTTPS GET to a JSON API,
 handled by the `requests` library already in use everywhere else.
 """
 
+import logging
 import socket
 import threading
 import time
@@ -39,6 +40,9 @@ _resolution_cache: Dict[str, Any] = {}  # hostname -> {"ip": str, "resolved_at":
 _CACHE_TTL_SECONDS = 300
 
 
+logger = logging.getLogger(__name__)
+
+
 def looks_like_dns_error(exc: Exception) -> bool:
     """Heuristic: does this exception look like a DNS resolution failure
     specifically, as opposed to some other connection problem? Checked
@@ -47,9 +51,12 @@ def looks_like_dns_error(exc: Exception) -> bool:
     version."""
     text = str(exc).lower()
     markers = (
-        "name or service not known", "nodename nor servname",
-        "temporary failure in name resolution", "getaddrinfo failed",
-        "name resolution", "dns lookup failed",
+        "name or service not known",
+        "nodename nor servname",
+        "temporary failure in name resolution",
+        "getaddrinfo failed",
+        "name resolution",
+        "dns lookup failed",
     )
     return any(m in text for m in markers)
 
@@ -84,6 +91,7 @@ def resolve_via_doh(hostname: str, timeout: int = 5) -> Optional[str]:
                             _resolution_cache[hostname] = {"ip": ip, "resolved_at": time.time()}
                         return ip
         except Exception:
+            logger.debug("suppressed exception during resilient operation", exc_info=True)
             continue
     return None
 

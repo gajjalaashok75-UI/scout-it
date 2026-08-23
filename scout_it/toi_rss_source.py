@@ -26,11 +26,11 @@ import logging
 import re
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List
-from urllib.parse import urlparse
 
 import requests
 
-from scout_it.response_cache import get as _cache_get, set as _cache_set
+from scout_it.response_cache import get as _cache_get
+from scout_it.response_cache import set as _cache_set
 
 _logger = logging.getLogger(__name__)
 
@@ -76,23 +76,25 @@ def _parse_toi_rss(xml_text: str, source_label: str) -> List[Dict[str, Any]]:
         link = link_el.text.strip() if link_el is not None and link_el.text else ""
         # Strip HTML tags from RSS description (ToI wraps it in <a><img/>
         # and may append text). Clean text is more useful in the pipeline.
-        description = re.sub(r'<[^>]+>', ' ', desc_el.text or '').strip()
-        description = re.sub(r'\s+', ' ', description).strip()
+        description = re.sub(r"<[^>]+>", " ", desc_el.text or "").strip()
+        description = re.sub(r"\s+", " ", description).strip()
         pub_date = date_el.text.strip() if date_el is not None and date_el.text else ""
         author = creator_el.text.strip() if creator_el is not None and creator_el.text else ""
 
         if not title or not link:
             continue
 
-        results.append({
-            "title": title,
-            "url": link,
-            "href": link,
-            "body": description,
-            "source": f"toi-{source_label}",
-            "date": pub_date,
-            "author": author,
-        })
+        results.append(
+            {
+                "title": title,
+                "url": link,
+                "href": link,
+                "body": description,
+                "source": f"toi-{source_label}",
+                "date": pub_date,
+                "author": author,
+            }
+        )
 
     return results
 
@@ -173,8 +175,10 @@ def fetch_toi_news(
         return []
 
     with ThreadPoolExecutor(max_workers=min(len(feed_tasks), 8)) as pool:
-        fut_map = {pool.submit(_fetch, label, url): (label, url)
-                   for label, url in zip(feed_labels, feed_tasks)}
+        fut_map = {
+            pool.submit(_fetch, label, url): (label, url)
+            for label, url in zip(feed_labels, feed_tasks)
+        }
         for fut in as_completed(fut_map):
             try:
                 items = fut.result()

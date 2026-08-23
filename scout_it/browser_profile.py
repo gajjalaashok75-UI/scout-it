@@ -33,11 +33,18 @@ DEFAULT_PROFILE_NAME = "default"
 
 
 def profile_path(profile_name: str = DEFAULT_PROFILE_NAME) -> Path:
-    safe_name = "".join(c for c in profile_name if c.isalnum() or c in ("-", "_")) or DEFAULT_PROFILE_NAME
+    safe_name = (
+        "".join(c for c in profile_name if c.isalnum() or c in ("-", "_")) or DEFAULT_PROFILE_NAME
+    )
     return PROFILES_DIR / safe_name
 
 
-def launch_persistent(pw: Any, profile_name: str = DEFAULT_PROFILE_NAME, headless: bool = True, user_agent: Optional[str] = None) -> Any:
+def launch_persistent(
+    pw: Any,
+    profile_name: str = DEFAULT_PROFILE_NAME,
+    headless: bool = True,
+    user_agent: Optional[str] = None,
+) -> Any:
     """Launch a persistent Playwright browser context (returns a
     BrowserContext, not a Browser -- Playwright's persistent-context API
     combines the two). Caller is responsible for closing it
@@ -70,6 +77,7 @@ def profile_size_bytes(profile_name: str = DEFAULT_PROFILE_NAME) -> int:
 
 def clear_profile(profile_name: str = DEFAULT_PROFILE_NAME) -> bool:
     import shutil
+
     path = profile_path(profile_name)
     if path.exists():
         shutil.rmtree(path, ignore_errors=True)

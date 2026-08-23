@@ -25,39 +25,123 @@ to setting them as real environment variables every session:
 """
 
 import json
+import logging
 import os
 import stat
+import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
+
+logger = logging.getLogger(__name__)
 
 CONFIG_DIR = Path.home() / ".scout-it"
 CREDENTIALS_FILE = CONFIG_DIR / "credentials.json"
 
 # (env_var_name, human description, which command(s) need it)
 KNOWN_CREDENTIALS: List[Dict[str, str]] = [
-    {"key": "GITHUB_TOKEN", "desc": "GitHub personal access token — raises the GitHub API rate limit from 60/hr to 5,000/hr, and is REQUIRED for github-discussions and github-search-code", "get_it": "https://github.com/settings/tokens (no special scopes needed for public repos)"},
-    {"key": "BRAVE_API_KEY", "desc": "Brave Search API key — used by multi-search --engines brave", "get_it": "https://api.search.brave.com/app/keys (free tier: ~2,000 queries/month)"},
-    {"key": "BING_API_KEY", "desc": "Bing Web Search API key (Azure) — used by multi-search --engines bing", "get_it": "Azure Portal → create a 'Bing Search v7' resource"},
-    {"key": "GOOGLE_API_KEY", "desc": "Google API key for Custom Search JSON API — used by multi-search --engines google (paired with GOOGLE_CSE_ID)", "get_it": "https://programmablesearchengine.google.com (free tier: 100 queries/day)"},
-    {"key": "GOOGLE_CSE_ID", "desc": "Google Programmable Search Engine ID — paired with GOOGLE_API_KEY", "get_it": "https://programmablesearchengine.google.com"},
-    {"key": "SERPAPI_KEY", "desc": "SerpAPI key — used by multi-search --engines serpapi (proxies real Google/Bing/Yahoo/Baidu/Yandex results)", "get_it": "https://serpapi.com (free tier: 100 searches/month)"},
-    {"key": "DISCORD_BOT_TOKEN", "desc": "Discord bot token — enables full message search across your servers via social-search --platform discord (the bot must already be a member of the target server). Without it, Discord search falls back to public web results only; set it for much better results.", "get_it": "https://discord.com/developers/applications (create an app + bot, invite it to your server with 'Read Messages/View Channels' + 'Read Message History')"},
-    {"key": "INSTAGRAM_SESSION_ID", "desc": "Instagram session ID (sessionid cookie) — enables direct profile scraping via social-search --platform instagram --profile. Without it, Instagram falls back to public web search results; set it for reliable profile/post scraping.", "get_it": "log into instagram.com in your browser, open DevTools → Application → Cookies → https://www.instagram.com → copy the 'sessionid' value"},
-    {"key": "REDDIT_COOKIE", "desc": "A logged-in Reddit session's Cookie header — improves (does not guarantee) social-search --platform reddit success", "get_it": "copy the 'Cookie' request header from a logged-in browser session (DevTools → Network tab)"},
+    {
+        "key": "GITHUB_TOKEN",
+        "desc": "GitHub personal access token — raises the GitHub API rate limit from 60/hr to 5,000/hr, and is REQUIRED for github-discussions and github-search-code",
+        "get_it": "https://github.com/settings/tokens (no special scopes needed for public repos)",
+    },
+    {
+        "key": "BRAVE_API_KEY",
+        "desc": "Brave Search API key — used by multi-search --engines brave",
+        "get_it": "https://api.search.brave.com/app/keys (free tier: ~2,000 queries/month)",
+    },
+    {
+        "key": "BING_API_KEY",
+        "desc": "Bing Web Search API key (Azure) — used by multi-search --engines bing",
+        "get_it": "Azure Portal → create a 'Bing Search v7' resource",
+    },
+    {
+        "key": "GOOGLE_API_KEY",
+        "desc": "Google API key for Custom Search JSON API — used by multi-search --engines google (paired with GOOGLE_CSE_ID)",
+        "get_it": "https://programmablesearchengine.google.com (free tier: 100 queries/day)",
+    },
+    {
+        "key": "GOOGLE_CSE_ID",
+        "desc": "Google Programmable Search Engine ID — paired with GOOGLE_API_KEY",
+        "get_it": "https://programmablesearchengine.google.com",
+    },
+    {
+        "key": "SERPAPI_KEY",
+        "desc": "SerpAPI key — used by multi-search --engines serpapi (proxies real Google/Bing/Yahoo/Baidu/Yandex results)",
+        "get_it": "https://serpapi.com (free tier: 100 searches/month)",
+    },
+    {
+        "key": "DISCORD_BOT_TOKEN",
+        "desc": "Discord bot token — enables full message search across your servers via social-search --platform discord (the bot must already be a member of the target server). Without it, Discord search falls back to public web results only; set it for much better results.",
+        "get_it": "https://discord.com/developers/applications (create an app + bot, invite it to your server with 'Read Messages/View Channels' + 'Read Message History')",
+    },
+    {
+        "key": "INSTAGRAM_SESSION_ID",
+        "desc": "Instagram session ID (sessionid cookie) — enables direct profile scraping via social-search --platform instagram --profile. Without it, Instagram falls back to public web search results; set it for reliable profile/post scraping.",
+        "get_it": "log into instagram.com in your browser, open DevTools → Application → Cookies → https://www.instagram.com → copy the 'sessionid' value",
+    },
+    {
+        "key": "REDDIT_COOKIE",
+        "desc": "A logged-in Reddit session's Cookie header — improves (does not guarantee) social-search --platform reddit success",
+        "get_it": "copy the 'Cookie' request header from a logged-in browser session (DevTools → Network tab)",
+    },
     # ── Phase 2 source plugin keys ───────────────────────────────────────
-    {"key": "SEMANTIC_SCHOLAR_API_KEY", "desc": "Semantic Scholar API key — used by source-search --sources semantic_scholar (raises rate limit from 1/sec to 100/sec)", "get_it": "https://www.semanticscholar.org/product/api (free, request form)"},
-    {"key": "UNPAYWALL_EMAIL", "desc": "Your email address — used as the Unpaywall API key for open-access full-text PDF lookups", "get_it": "Just provide your email — no registration needed (https://unpaywall.org/products/api)"},
-    {"key": "CORE_API_KEY", "desc": "CORE API key — used by source-search --sources core (200M+ open-access papers with full text)", "get_it": "https://core.ac.uk/services/api (free registration)"},
-    {"key": "HF_TOKEN", "desc": "Hugging Face token — optional, used by source-search --sources huggingface (increases rate limits; not required)", "get_it": "https://huggingface.co/settings/tokens (free, optional)"},
-    {"key": "LISTENNOTES_API_KEY", "desc": "ListenNotes API key — used by source-search --sources listennotes (2.5M+ podcasts with transcripts)", "get_it": "https://listennotes.com/api/ (free tier: 1000 requests/month)"},
+    {
+        "key": "SEMANTIC_SCHOLAR_API_KEY",
+        "desc": "Semantic Scholar API key — used by source-search --sources semantic_scholar (raises rate limit from 1/sec to 100/sec)",
+        "get_it": "https://www.semanticscholar.org/product/api (free, request form)",
+    },
+    {
+        "key": "UNPAYWALL_EMAIL",
+        "desc": "Your email address — used as the Unpaywall API key for open-access full-text PDF lookups",
+        "get_it": "Just provide your email — no registration needed (https://unpaywall.org/products/api)",
+    },
+    {
+        "key": "CORE_API_KEY",
+        "desc": "CORE API key — used by source-search --sources core (200M+ open-access papers with full text)",
+        "get_it": "https://core.ac.uk/services/api (free registration)",
+    },
+    {
+        "key": "HF_TOKEN",
+        "desc": "Hugging Face token — optional, used by source-search --sources huggingface (increases rate limits; not required)",
+        "get_it": "https://huggingface.co/settings/tokens (free, optional)",
+    },
+    {
+        "key": "LISTENNOTES_API_KEY",
+        "desc": "ListenNotes API key — used by source-search --sources listennotes (2.5M+ podcasts with transcripts)",
+        "get_it": "https://listennotes.com/api/ (free tier: 1000 requests/month)",
+    },
     # ── API search sources (Tavily / Exa / Firecrawl) ───────────────────
-    {"key": "TAVILY_API_KEY", "desc": "Tavily API key — enables --source tavily on web-search, news-search, image-search, and multi-search. Runs as a parallel discovery stream alongside DuckDuckGo; no key = source skipped silently.", "get_it": "https://tavily.com (free tier: 1,000 searches/month)"},
-    {"key": "EXA_API_KEY", "desc": "Exa API key — enables --source exa on web-search, news-search, and multi-search. Neural web/news search with highlights; no key = source skipped silently. Not available for image-search.", "get_it": "https://exa.ai (free tier available)"},
-    {"key": "FIRECRAWL_API_KEY", "desc": "Firecrawl API key — enables --source firecrawl on web-search, news-search, image-search, and multi-search. Search + built-in page scraping; no key = source skipped silently.", "get_it": "https://firecrawl.dev (free tier: 500 credits/month)"},
+    {
+        "key": "TAVILY_API_KEY",
+        "desc": "Tavily API key — enables --source tavily on web-search, news-search, image-search, and multi-search. Runs as a parallel discovery stream alongside DuckDuckGo; no key = source skipped silently.",
+        "get_it": "https://tavily.com (free tier: 1,000 searches/month)",
+    },
+    {
+        "key": "EXA_API_KEY",
+        "desc": "Exa API key — enables --source exa on web-search, news-search, and multi-search. Neural web/news search with highlights; no key = source skipped silently. Not available for image-search.",
+        "get_it": "https://exa.ai (free tier available)",
+    },
+    {
+        "key": "FIRECRAWL_API_KEY",
+        "desc": "Firecrawl API key — enables --source firecrawl on web-search, news-search, image-search, and multi-search. Search + built-in page scraping; no key = source skipped silently.",
+        "get_it": "https://firecrawl.dev (free tier: 500 credits/month)",
+    },
     # ── API search sources (Linkup / LangSearch / Serper) ──────────────
-    {"key": "LINKUP_API_KEY", "desc": "Linkup API key — enables --source linkup on web-search, image-search, and multi-search. Agentic web search with sourced answers; no key = source skipped silently. (Requires: pip install linkup-sdk)", "get_it": "https://linkup.so (free tier available)"},
-    {"key": "LANGSEARCH_API_KEY", "desc": "LangSearch API key — enables --source langsearch on web-search and multi-search. Web search with summaries; no key = source skipped silently.", "get_it": "https://langsearch.com (free tier available)"},
-    {"key": "SERPER_API_KEY", "desc": "Serper API key — enables --source serper on web-search, news-search, image-search, video-search, and multi-search. Google SERP results; no key = source skipped silently.", "get_it": "https://serper.dev (free tier: 2,500 searches)"},
+    {
+        "key": "LINKUP_API_KEY",
+        "desc": "Linkup API key — enables --source linkup on web-search, image-search, and multi-search. Agentic web search with sourced answers; no key = source skipped silently. (Requires: pip install linkup-sdk)",
+        "get_it": "https://linkup.so (free tier available)",
+    },
+    {
+        "key": "LANGSEARCH_API_KEY",
+        "desc": "LangSearch API key — enables --source langsearch on web-search and multi-search. Web search with summaries; no key = source skipped silently.",
+        "get_it": "https://langsearch.com (free tier available)",
+    },
+    {
+        "key": "SERPER_API_KEY",
+        "desc": "Serper API key — enables --source serper on web-search, news-search, image-search, video-search, and multi-search. Google SERP results; no key = source skipped silently.",
+        "get_it": "https://serper.dev (free tier: 2,500 searches)",
+    },
 ]
 KNOWN_KEYS = {c["key"] for c in KNOWN_CREDENTIALS}
 
@@ -81,8 +165,26 @@ def load_credentials_file() -> Dict[str, str]:
     try:
         data = json.loads(target.read_text(encoding="utf-8"))
         return {k: v for k, v in data.items() if isinstance(v, str) and v}
-    except Exception:
+    except Exception as exc:
+        # Never silently drop credentials: a corrupt credentials file means the
+        # user's API keys are not loaded, which must be visible, not swallowed.
+        msg = f"WARNING: could not read credentials file {target}: {exc}"
+        logger.warning(msg)
+        print(msg, file=sys.stderr)
         return {}
+
+
+def _warn_if_permissions_unsupported() -> None:
+    """On non-POSIX platforms the 0600 hardening below is a no-op; say so
+    instead of leaving users with silently-unprotected credentials (B4)."""
+    if os.name == "nt":
+        msg = (
+            "WARNING: filesystem permission hardening is not supported on this "
+            "platform — credentials are stored without owner-only permissions. "
+            "Consider DPAPI-backed storage or environment variables instead."
+        )
+        logger.warning(msg)
+        print(msg, file=sys.stderr)
 
 
 def save_credentials_file(creds: Dict[str, str]) -> None:
@@ -93,11 +195,13 @@ def save_credentials_file(creds: Dict[str, str]) -> None:
     try:
         os.chmod(CREDENTIALS_FILE, stat.S_IRUSR | stat.S_IWUSR)  # 0600
     except (OSError, NotImplementedError):
-        pass  # e.g. Windows — best effort only, not fatal
+        pass  # warning handled below for all non-POSIX platforms
     try:
         os.chmod(CONFIG_DIR, stat.S_IRWXU)  # 0700
     except (OSError, NotImplementedError):
         pass
+    if os.name == "nt":
+        _warn_if_permissions_unsupported()
 
 
 def load_stored_credentials_into_env() -> None:
@@ -129,10 +233,15 @@ def credential_status() -> List[Dict[str, Any]]:
         else:
             source = None
             configured = False
-        out.append({
-            "key": key, "description": c["desc"], "get_it": c["get_it"],
-            "configured": configured, "source": source,
-        })
+        out.append(
+            {
+                "key": key,
+                "description": c["desc"],
+                "get_it": c["get_it"],
+                "configured": configured,
+                "source": source,
+            }
+        )
     return out
 
 
@@ -169,33 +278,41 @@ def run_config_wizard() -> None:
         print(f"   {c['desc']}")
         print(f"   Get one: {c['get_it']}")
         if env_override and env_override != existing:
-            print(f"   ⚠️  Currently set via a real environment variable, which always takes precedence over this wizard.")
+            print(
+                "   ⚠️  Currently set via a real environment variable, which always takes precedence over this wizard."
+            )
         if existing:
             masked = existing[:4] + "…" + existing[-2:] if len(existing) > 8 else "****"
             print(f"   Currently stored: {masked}")
 
         try:
-            value = input(f"   Enter value (or press Enter to skip): ").strip()
+            value = input("   Enter value (or press Enter to skip): ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n\nSetup cancelled — nothing further was changed.")
             return
 
         if value:
             stored[key] = value
-            print(f"   ✅ Saved.\n")
+            print("   ✅ Saved.\n")
         else:
-            print(f"   ⏭️  Skipped.\n")
+            print("   ⏭️  Skipped.\n")
 
     save_credentials_file(stored)
     configured_count = len([v for v in stored.values() if v])
-    print(f"✅ Configuration saved to {CREDENTIALS_FILE} ({configured_count}/{len(KNOWN_CREDENTIALS)} keys configured).")
-    print("   Run `scout-it config --show` any time to review status, or `scout-it list-engines` for search engines specifically.\n")
+    print(
+        f"✅ Configuration saved to {CREDENTIALS_FILE} ({configured_count}/{len(KNOWN_CREDENTIALS)} keys configured)."
+    )
+    print(
+        "   Run `scout-it config --show` any time to review status, or `scout-it list-engines` for search engines specifically.\n"
+    )
 
 
 def print_credential_status() -> None:
     print(f"\n🔐 Credential status ({CREDENTIALS_FILE})\n")
     for info in credential_status():
-        status = f"✅ configured (via {info['source']})" if info["configured"] else "⚪ not configured"
+        status = (
+            f"✅ configured (via {info['source']})" if info["configured"] else "⚪ not configured"
+        )
         print(f"  {info['key']:<20} {status}")
         if not info["configured"]:
             print(f"      → {info['get_it']}")

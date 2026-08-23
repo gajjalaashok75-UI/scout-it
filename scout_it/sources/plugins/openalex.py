@@ -9,9 +9,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
+from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
 from ..source_config import SOURCE_BY_NAME
-from ..async_fetch import sync_fetch_json, RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +35,10 @@ class OpenAlexPlugin(SourcePlugin):
             "per-page": min(max_results, 200),
             "mailto": "scout-it@example.com",  # polite pool
         }
-        base = SOURCE_BY_NAME.get("openalex", {})
+        SOURCE_BY_NAME.get("openalex", {})
         # Allow base_url override from config.
         from ..source_config import get_source_config
+
         cfg = get_source_config("openalex")
         url = cfg.get("base_url") or BASE_URL
 
@@ -64,28 +65,32 @@ class OpenAlexPlugin(SourcePlugin):
             authorships = work.get("authorships", [])
             authors = [a.get("author", {}).get("display_name", "") for a in authorships[:5]]
 
-            results.append(make_result(
-                id=work.get("id", "").split("/")[-1] or str(work.get("doi", "")),
-                source="openalex",
-                url=url_val,
-                title=work.get("title", "") or work.get("display_name", ""),
-                snippet=abstract or work.get("title", ""),
-                content="",  # OpenAlex doesn't provide full text
-                content_type="academic",
-                timestamp=work.get("publication_date", ""),
-                authority_score=authority,
-                lang=work.get("language", "en"),
-                metadata={
-                    "doi": doi.replace("https://doi.org/", "") if doi else "",
-                    "authors": authors,
-                    "cited_by_count": cited_by,
-                    "openalex_id": work.get("id", ""),
-                    "type": work.get("type", ""),
-                    "concepts": [c.get("display_name", "") for c in (work.get("concepts") or [])[:5]],
-                    "is_oa": work.get("open_access", {}).get("is_oa", False),
-                    "oa_url": work.get("open_access", {}).get("oa_url", ""),
-                },
-            ))
+            results.append(
+                make_result(
+                    id=work.get("id", "").split("/")[-1] or str(work.get("doi", "")),
+                    source="openalex",
+                    url=url_val,
+                    title=work.get("title", "") or work.get("display_name", ""),
+                    snippet=abstract or work.get("title", ""),
+                    content="",  # OpenAlex doesn't provide full text
+                    content_type="academic",
+                    timestamp=work.get("publication_date", ""),
+                    authority_score=authority,
+                    lang=work.get("language", "en"),
+                    metadata={
+                        "doi": doi.replace("https://doi.org/", "") if doi else "",
+                        "authors": authors,
+                        "cited_by_count": cited_by,
+                        "openalex_id": work.get("id", ""),
+                        "type": work.get("type", ""),
+                        "concepts": [
+                            c.get("display_name", "") for c in (work.get("concepts") or [])[:5]
+                        ],
+                        "is_oa": work.get("open_access", {}).get("is_oa", False),
+                        "oa_url": work.get("open_access", {}).get("oa_url", ""),
+                    },
+                )
+            )
         return results
 
     @staticmethod
@@ -103,5 +108,6 @@ class OpenAlexPlugin(SourcePlugin):
 
 # Register the plugin.
 from ..registry import register
+
 PLUGIN = OpenAlexPlugin()
 register(PLUGIN)

@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +33,14 @@ class DoajPlugin(SourcePlugin):
         url = cfg.get("base_url") or BASE_URL
 
         # DOAJ uses Lucene query syntax.
-        params = {
+        {
             "search": f'title:"{query}" OR abstract:"{query}"',
             "pageSize": min(max_results, 50),
         }
 
-        data = sync_fetch_json(f"{url}/{query}", params={"pageSize": min(max_results, 50)}, timeout=20)
+        data = sync_fetch_json(
+            f"{url}/{query}", params={"pageSize": min(max_results, 50)}, timeout=20
+        )
         if not data or "results" not in data:
             return []
 
@@ -67,7 +69,9 @@ class DoajPlugin(SourcePlugin):
 
             # Keywords/subjects.
             keywords = bibjson.get("keywords", [])
-            subjects = [s.get("term", "") for s in bibjson.get("subject", []) if isinstance(s, dict)]
+            subjects = [
+                s.get("term", "") for s in bibjson.get("subject", []) if isinstance(s, dict)
+            ]
 
             # Links.
             links = bibjson.get("link", [])
@@ -88,31 +92,34 @@ class DoajPlugin(SourcePlugin):
                 snippet_parts.append(f"Year: {year}")
             snippet = " | ".join(snippet_parts)
 
-            results.append(make_result(
-                id=article_id or doi,
-                source="doaj",
-                url=url_val,
-                title=title,
-                snippet=snippet,
-                content=abstract[:500],
-                content_type="academic",
-                timestamp=f"{year}-{month}" if month else str(year),
-                authority_score=0.5,
-                lang="en",
-                metadata={
-                    "authors": authors,
-                    "journal": journal_title,
-                    "publisher": publisher,
-                    "doi": doi,
-                    "year": year,
-                    "keywords": keywords,
-                    "subjects": subjects,
-                    "pdf_url": pdf_url,
-                },
-            ))
+            results.append(
+                make_result(
+                    id=article_id or doi,
+                    source="doaj",
+                    url=url_val,
+                    title=title,
+                    snippet=snippet,
+                    content=abstract[:500],
+                    content_type="academic",
+                    timestamp=f"{year}-{month}" if month else str(year),
+                    authority_score=0.5,
+                    lang="en",
+                    metadata={
+                        "authors": authors,
+                        "journal": journal_title,
+                        "publisher": publisher,
+                        "doi": doi,
+                        "year": year,
+                        "keywords": keywords,
+                        "subjects": subjects,
+                        "pdf_url": pdf_url,
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = DoajPlugin()
 register(PLUGIN)

@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -64,29 +64,32 @@ class CorePlugin(SourcePlugin):
             cited = item.get("citationCount", 0) or 0
             authority = min(cited / 200.0, 1.0)
 
-            results.append(make_result(
-                id=str(item.get("id", "")),
-                source="core",
-                url=url_val,
-                title=title,
-                snippet=abstract[:500] if abstract else "",
-                content="",
-                content_type="academic",
-                timestamp=item.get("yearPublished", "") or item.get("publishedDate", ""),
-                authority_score=authority,
-                lang=item.get("language", "en"),
-                metadata={
-                    "doi": doi,
-                    "download_url": download_url,
-                    "citation_count": cited,
-                    "publisher": item.get("publisher", ""),
-                    "source": item.get("source", ""),
-                    "year": item.get("yearPublished"),
-                },
-            ))
+            results.append(
+                make_result(
+                    id=str(item.get("id", "")),
+                    source="core",
+                    url=url_val,
+                    title=title,
+                    snippet=abstract[:500] if abstract else "",
+                    content="",
+                    content_type="academic",
+                    timestamp=item.get("yearPublished", "") or item.get("publishedDate", ""),
+                    authority_score=authority,
+                    lang=item.get("language", "en"),
+                    metadata={
+                        "doi": doi,
+                        "download_url": download_url,
+                        "citation_count": cited,
+                        "publisher": item.get("publisher", ""),
+                        "source": item.get("source", ""),
+                        "year": item.get("yearPublished"),
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = CorePlugin()
 register(PLUGIN)

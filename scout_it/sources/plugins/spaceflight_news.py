@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -53,29 +53,32 @@ class SpaceflightNewsPlugin(SourcePlugin):
 
             image_url = article.get("image_url", "")
 
-            results.append(make_result(
-                id=article_id,
-                source="spaceflight_news",
-                url=url_val,
-                title=title,
-                snippet=summary[:500],
-                content="",
-                content_type="event",
-                timestamp=published_at,
-                authority_score=0.4,
-                lang="en",
-                metadata={
-                    "news_site": news_site,
-                    "published_at": published_at,
-                    "updated_at": article.get("updated_at", ""),
-                    "image_url": image_url,
-                    "launches": article.get("launches", [])[:3],
-                    "events": article.get("events", [])[:3],
-                },
-            ))
+            results.append(
+                make_result(
+                    id=article_id,
+                    source="spaceflight_news",
+                    url=url_val,
+                    title=title,
+                    snippet=summary[:500],
+                    content="",
+                    content_type="event",
+                    timestamp=published_at,
+                    authority_score=0.4,
+                    lang="en",
+                    metadata={
+                        "news_site": news_site,
+                        "published_at": published_at,
+                        "updated_at": article.get("updated_at", ""),
+                        "image_url": image_url,
+                        "launches": article.get("launches", [])[:3],
+                        "events": article.get("events", [])[:3],
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = SpaceflightNewsPlugin()
 register(PLUGIN)

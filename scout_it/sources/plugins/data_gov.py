@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_json
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,7 @@ class DataGovPlugin(SourcePlugin):
 
             notes = item.get("notes", "") or ""
             import re
+
             notes = re.sub(r"<[^>]+>", "", notes).strip()[:500]
 
             # Organization.
@@ -64,30 +65,33 @@ class DataGovPlugin(SourcePlugin):
                     download_url = res.get("url", "")
                     break
 
-            results.append(make_result(
-                id=ds_id,
-                source="data_gov",
-                url=url_val,
-                title=title,
-                snippet=notes,
-                content="",
-                content_type="dataset",
-                timestamp=item.get("metadata_created", ""),
-                authority_score=0.4,  # gov datasets: moderate authority
-                lang="en",
-                metadata={
-                    "organization": org_name,
-                    "resources": len(resources),
-                    "download_url": download_url,
-                    "formats": list(set(r.get("format", "") for r in resources))[:5],
-                    "tags": [t.get("display_name", "") for t in item.get("tags", [])[:10]],
-                    "license": item.get("license_title", ""),
-                    "modified": item.get("metadata_modified", ""),
-                },
-            ))
+            results.append(
+                make_result(
+                    id=ds_id,
+                    source="data_gov",
+                    url=url_val,
+                    title=title,
+                    snippet=notes,
+                    content="",
+                    content_type="dataset",
+                    timestamp=item.get("metadata_created", ""),
+                    authority_score=0.4,  # gov datasets: moderate authority
+                    lang="en",
+                    metadata={
+                        "organization": org_name,
+                        "resources": len(resources),
+                        "download_url": download_url,
+                        "formats": list(set(r.get("format", "") for r in resources))[:5],
+                        "tags": [t.get("display_name", "") for t in item.get("tags", [])[:10]],
+                        "license": item.get("license_title", ""),
+                        "modified": item.get("metadata_modified", ""),
+                    },
+                )
+            )
         return results
 
 
 from ..registry import register
+
 PLUGIN = DataGovPlugin()
 register(PLUGIN)

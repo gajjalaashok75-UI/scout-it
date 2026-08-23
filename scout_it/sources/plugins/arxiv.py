@@ -11,9 +11,9 @@ import re
 from typing import Any, Dict, List
 from xml.etree import ElementTree as ET
 
-from ..base import SourcePlugin, SourceConfig, make_result
-from ..source_config import get_source_config
 from ..async_fetch import sync_fetch_text
+from ..base import SourceConfig, SourcePlugin, make_result
+from ..source_config import get_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -96,31 +96,36 @@ class ArxivPlugin(SourcePlugin):
                     pdf_url = link.get("href", "")
                     break
 
-            results.append(make_result(
-                id=id_text.split("/")[-1],
-                source="arxiv",
-                url=arxiv_url,
-                title=title,
-                snippet=summary,
-                content="",
-                content_type="academic",
-                timestamp=published,
-                authority_score=0.5,  # arXiv preprints: moderate authority
-                lang="en",
-                metadata={
-                    "authors": authors[:5],
-                    "doi": doi,
-                    "pdf_url": pdf_url,
-                    "arxiv_id": id_text.split("/")[-1],
-                    "categories": [c.get("term", "") for c in entry.findall("atom:category", NS)],
-                    "updated": updated,
-                },
-            ))
+            results.append(
+                make_result(
+                    id=id_text.split("/")[-1],
+                    source="arxiv",
+                    url=arxiv_url,
+                    title=title,
+                    snippet=summary,
+                    content="",
+                    content_type="academic",
+                    timestamp=published,
+                    authority_score=0.5,  # arXiv preprints: moderate authority
+                    lang="en",
+                    metadata={
+                        "authors": authors[:5],
+                        "doi": doi,
+                        "pdf_url": pdf_url,
+                        "arxiv_id": id_text.split("/")[-1],
+                        "categories": [
+                            c.get("term", "") for c in entry.findall("atom:category", NS)
+                        ],
+                        "updated": updated,
+                    },
+                )
+            )
             if len(results) >= max_results:
                 break
         return results
 
 
 from ..registry import register
+
 PLUGIN = ArxivPlugin()
 register(PLUGIN)

@@ -212,5 +212,6 @@ class SerperPlugin(ApiSearchSource):
 
 
 from ..registry import register
+
 PLUGIN = SerperPlugin()
 register(PLUGIN)
