@@ -34,7 +34,7 @@ from .output import parse_size_string, validate_max_chars_max_size
 REST_BASE = "https://api.github.com"
 GRAPHQL_URL = "https://api.github.com/graphql"
 
-_REPO_URL_RE = re.compile(r'github\.com[:/]+(?P<owner>[\w.\-]+)/(?P<repo>[\w.\-]+?)(?:\.git)?/?$')
+_REPO_URL_RE = re.compile(r"github\.com[:/]+(?P<owner>[\w.\-]+)/(?P<repo>[\w.\-]+?)(?:\.git)?/?$")
 
 
 def _headers() -> Dict[str, str]:
@@ -59,12 +59,15 @@ def parse_repo_ref(owner_repo_or_url: str) -> Optional[Dict[str, str]]:
         parsed = urlparse(s if "://" in s else f"https://{s}")
         parts = [p for p in parsed.path.split("/") if p]
         if len(parts) >= 2:
-            return {"owner": parts[0], "repo": parts[1][:-4] if parts[1].endswith('.git') else parts[1]}
+            return {
+                "owner": parts[0],
+                "repo": parts[1][:-4] if parts[1].endswith(".git") else parts[1],
+            }
         return None
     if "/" in s:
         owner, _, repo = s.partition("/")
         if owner and repo:
-            return {"owner": owner, "repo": repo[:-4] if repo.endswith('.git') else repo}
+            return {"owner": owner, "repo": repo[:-4] if repo.endswith(".git") else repo}
     return None
 
 
@@ -77,8 +80,14 @@ def _public_error(result: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in result.items() if k != "ok"}
 
 
-def _request(method: str, path_or_url: str, params: Optional[Dict[str, Any]] = None,
-             accept: Optional[str] = None, max_retries: int = 3, timeout: int = 20) -> Dict[str, Any]:
+def _request(
+    method: str,
+    path_or_url: str,
+    params: Optional[Dict[str, Any]] = None,
+    accept: Optional[str] = None,
+    max_retries: int = 3,
+    timeout: int = 20,
+) -> Dict[str, Any]:
     """Low-level REST request with retry-on-transient-error and clear rate-limit
     reporting. Returns {'ok': True, 'data': ..., 'headers': ...} or
     {'ok': False, 'error': ..., 'error_message': ...}."""
@@ -113,7 +122,11 @@ def _request(method: str, path_or_url: str, params: Optional[Dict[str, Any]] = N
         if resp.status_code == 404:
             return {"ok": False, "error": "not_found", "error_message": f"GitHub API 404: {url}"}
         if resp.status_code == 401:
-            return {"ok": False, "error": "unauthorized", "error_message": "GITHUB_TOKEN is invalid or expired."}
+            return {
+                "ok": False,
+                "error": "unauthorized",
+                "error_message": "GITHUB_TOKEN is invalid or expired.",
+            }
         if resp.status_code >= 500:
             last_error = f"HTTP {resp.status_code} (server error)"
             time.sleep(1.0 * (attempt + 1))
@@ -123,7 +136,11 @@ def _request(method: str, path_or_url: str, params: Optional[Dict[str, Any]] = N
                 detail = resp.json().get("message", resp.text[:200])
             except Exception:
                 detail = resp.text[:200]
-            return {"ok": False, "error": "api_error", "error_message": f"HTTP {resp.status_code}: {detail}"}
+            return {
+                "ok": False,
+                "error": "api_error",
+                "error_message": f"HTTP {resp.status_code}: {detail}",
+            }
 
         try:
             data = resp.json() if resp.text else None
@@ -131,7 +148,11 @@ def _request(method: str, path_or_url: str, params: Optional[Dict[str, Any]] = N
             data = resp.text  # e.g. diff/patch media types return plain text
         return {"ok": True, "data": data, "headers": dict(resp.headers)}
 
-    return {"ok": False, "error": "network_error", "error_message": last_error or "request failed after retries"}
+    return {
+        "ok": False,
+        "error": "network_error",
+        "error_message": last_error or "request failed after retries",
+    }
 
 
 def github_rate_limit() -> Dict[str, Any]:
@@ -198,15 +219,17 @@ def _github_repo_html_fallback(owner: str, repo: str) -> Dict[str, Any]:
     fallback should rarely be needed. Uses the same requests -> Playwright
     -> basic-fallback fetch chain as everything else in this project.
     """
-    from .extraction import fetch_resilient
     from bs4 import BeautifulSoup
+
+    from .extraction import fetch_resilient
 
     url = f"https://github.com/{owner}/{repo}"
     outcome = fetch_resilient(url, timeout=20, max_retries=2)
     if outcome["status"] != "success":
         return {
             "error": "fallback_failed",
-            "error_message": "REST API was rate-limited, and the HTML fallback also failed: " + "; ".join(outcome["errors"][-2:]),
+            "error_message": "REST API was rate-limited, and the HTML fallback also failed: "
+            + "; ".join(outcome["errors"][-2:]),
         }
 
     soup = BeautifulSoup(outcome["html"], "html.parser")
@@ -219,7 +242,7 @@ def _github_repo_html_fallback(owner: str, repo: str) -> Dict[str, Any]:
         for el in soup.select("a[aria-label], span[title], a[title]"):
             label = (el.get("aria-label") or el.get("title") or "").lower()
             if any(k in label for k in keywords):
-                match = re.search(r'([\d,]+)', label)
+                match = re.search(r"([\d,]+)", label)
                 if match:
                     return int(match.group(1).replace(",", ""))
         return None
@@ -278,7 +301,10 @@ def github_repo(
 
     ref = parse_repo_ref(owner_repo_or_url)
     if not ref:
-        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
+        return {
+            "error": "invalid_ref",
+            "error_message": "Provide 'owner/repo' or a github.com URL.",
+        }
     owner, repo = ref["owner"], ref["repo"]
 
     result = _request("GET", f"/repos/{owner}/{repo}")
@@ -301,10 +327,16 @@ def github_repo(
     if full:
         # --- languages: bytes of code per language ---
         lang_result = _request("GET", f"/repos/{owner}/{repo}/languages")
-        out["languages"] = lang_result["data"] if lang_result["ok"] else {"error": lang_result.get("error_message")}
+        out["languages"] = (
+            lang_result["data"]
+            if lang_result["ok"]
+            else {"error": lang_result.get("error_message")}
+        )
 
         # --- branches (names only, capped) ---
-        branches_result = _request("GET", f"/repos/{owner}/{repo}/branches", params={"per_page": 100})
+        branches_result = _request(
+            "GET", f"/repos/{owner}/{repo}/branches", params={"per_page": 100}
+        )
         if branches_result["ok"]:
             out["branches"] = [b.get("name") for b in branches_result["data"] or []]
             out["branch_count"] = len(out["branches"])
@@ -312,25 +344,52 @@ def github_repo(
             out["branches"] = {"error": branches_result.get("error_message")}
 
         # --- approximate total commit count on the default branch ---
-        commits_probe = _request("GET", f"/repos/{owner}/{repo}/commits", params={"sha": default_branch, "per_page": 1})
+        commits_probe = _request(
+            "GET", f"/repos/{owner}/{repo}/commits", params={"sha": default_branch, "per_page": 1}
+        )
         if commits_probe["ok"]:
             approx = _approx_count_via_link_header(commits_probe.get("headers", {}))
-            out["commit_count_approx"] = approx if approx is not None else (1 if commits_probe["data"] else 0)
+            out["commit_count_approx"] = (
+                approx if approx is not None else (1 if commits_probe["data"] else 0)
+            )
         else:
             out["commit_count_approx"] = {"error": commits_probe.get("error_message")}
 
         # --- accurate open issue / open PR split, via the Search API ---
-        issues_count = _request("GET", "/search/issues", params={"q": f"repo:{owner}/{repo} is:issue is:open", "per_page": 1})
-        out["open_issues_only"] = issues_count["data"].get("total_count") if issues_count["ok"] else {"error": issues_count.get("error_message")}
-        prs_count = _request("GET", "/search/issues", params={"q": f"repo:{owner}/{repo} is:pr is:open", "per_page": 1})
-        out["open_pull_requests"] = prs_count["data"].get("total_count") if prs_count["ok"] else {"error": prs_count.get("error_message")}
+        issues_count = _request(
+            "GET",
+            "/search/issues",
+            params={"q": f"repo:{owner}/{repo} is:issue is:open", "per_page": 1},
+        )
+        out["open_issues_only"] = (
+            issues_count["data"].get("total_count")
+            if issues_count["ok"]
+            else {"error": issues_count.get("error_message")}
+        )
+        prs_count = _request(
+            "GET",
+            "/search/issues",
+            params={"q": f"repo:{owner}/{repo} is:pr is:open", "per_page": 1},
+        )
+        out["open_pull_requests"] = (
+            prs_count["data"].get("total_count")
+            if prs_count["ok"]
+            else {"error": prs_count.get("error_message")}
+        )
 
         # --- top contributors ---
-        contrib_result = _request("GET", f"/repos/{owner}/{repo}/contributors", params={"per_page": 15})
+        contrib_result = _request(
+            "GET", f"/repos/{owner}/{repo}/contributors", params={"per_page": 15}
+        )
         if contrib_result["ok"]:
-            out["top_contributors"] = [{
-                "login": c.get("login"), "contributions": c.get("contributions"), "url": c.get("html_url"),
-            } for c in contrib_result["data"] or []]
+            out["top_contributors"] = [
+                {
+                    "login": c.get("login"),
+                    "contributions": c.get("contributions"),
+                    "url": c.get("html_url"),
+                }
+                for c in contrib_result["data"] or []
+            ]
         else:
             # Common non-error case: contributor stats disabled for very large/empty repos (202) or private repos.
             out["top_contributors"] = {"error": contrib_result.get("error_message")}
@@ -339,21 +398,34 @@ def github_repo(
         releases_result = _request("GET", f"/repos/{owner}/{repo}/releases", params={"per_page": 1})
         if releases_result["ok"]:
             latest = (releases_result["data"] or [None])[0]
-            out["latest_release"] = {
-                "tag_name": latest.get("tag_name"), "name": latest.get("name"),
-                "published_at": latest.get("published_at"), "url": latest.get("html_url"),
-            } if latest else None
+            out["latest_release"] = (
+                {
+                    "tag_name": latest.get("tag_name"),
+                    "name": latest.get("name"),
+                    "published_at": latest.get("published_at"),
+                    "url": latest.get("html_url"),
+                }
+                if latest
+                else None
+            )
             release_count = _approx_count_via_link_header(releases_result.get("headers", {}))
-            out["release_count_approx"] = release_count if release_count is not None else len(releases_result["data"] or [])
+            out["release_count_approx"] = (
+                release_count if release_count is not None else len(releases_result["data"] or [])
+            )
         else:
             out["latest_release"] = {"error": releases_result.get("error_message")}
 
     # --- file tree: opt-in, full and untruncated unless --max-chars/--max-size caps it ---
     if include_file_tree:
-        tree_result = _request("GET", f"/repos/{owner}/{repo}/git/trees/{default_branch}", params={"recursive": "1"})
+        tree_result = _request(
+            "GET", f"/repos/{owner}/{repo}/git/trees/{default_branch}", params={"recursive": "1"}
+        )
         if tree_result["ok"]:
             tree_data = tree_result["data"] or {}
-            all_entries = [{"path": e.get("path"), "type": e.get("type"), "size": e.get("size")} for e in tree_data.get("tree", [])]
+            all_entries = [
+                {"path": e.get("path"), "type": e.get("type"), "size": e.get("size")}
+                for e in tree_data.get("tree", [])
+            ]
 
             max_size_bytes = parse_size_string(max_size)
             if max_chars is not None or max_size_bytes is not None:
@@ -399,7 +471,10 @@ def github_commits(
     """List commits (metadata only — use github_commit() for full diffs)."""
     ref = parse_repo_ref(owner_repo_or_url)
     if not ref:
-        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
+        return {
+            "error": "invalid_ref",
+            "error_message": "Provide 'owner/repo' or a github.com URL.",
+        }
     params = {"per_page": min(max_results, 100)}
     if branch:
         params["sha"] = branch
@@ -419,20 +494,26 @@ def github_commits(
     commits = []
     for c in (result["data"] or [])[:max_results]:
         commit = c.get("commit", {})
-        commits.append({
-            "sha": c.get("sha"),
-            "short_sha": (c.get("sha") or "")[:7],
-            "message": commit.get("message"),
-            "author_name": (commit.get("author") or {}).get("name"),
-            "author_login": (c.get("author") or {}).get("login"),
-            "date": (commit.get("author") or {}).get("date"),
-            "url": c.get("html_url"),
-            "comment_count": commit.get("comment_count", 0),
-        })
-    return {"repo": f"{ref['owner']}/{ref['repo']}", "commit_count": len(commits), "commits": commits}
+        commits.append(
+            {
+                "sha": c.get("sha"),
+                "short_sha": (c.get("sha") or "")[:7],
+                "message": commit.get("message"),
+                "author_name": (commit.get("author") or {}).get("name"),
+                "author_login": (c.get("author") or {}).get("login"),
+                "date": (commit.get("author") or {}).get("date"),
+                "url": c.get("html_url"),
+                "comment_count": commit.get("comment_count", 0),
+            }
+        )
+    return {
+        "repo": f"{ref['owner']}/{ref['repo']}",
+        "commit_count": len(commits),
+        "commits": commits,
+    }
 
 
-_HUNK_HEADER_RE = re.compile(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@')
+_HUNK_HEADER_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
 def _parse_patch_lines(patch: Optional[str]) -> List[Dict[str, Any]]:
@@ -463,18 +544,26 @@ def _parse_patch_lines(patch: Optional[str]) -> List[Dict[str, Any]]:
             if match:
                 old_line = int(match.group(1))
                 new_line = int(match.group(3))
-            lines.append({"type": "hunk_header", "text": raw_line, "old_line": None, "new_line": None})
+            lines.append(
+                {"type": "hunk_header", "text": raw_line, "old_line": None, "new_line": None}
+            )
         elif raw_line.startswith("+") and not raw_line.startswith("+++"):
-            lines.append({"type": "added", "text": raw_line[1:], "old_line": None, "new_line": new_line})
+            lines.append(
+                {"type": "added", "text": raw_line[1:], "old_line": None, "new_line": new_line}
+            )
             if new_line is not None:
                 new_line += 1
         elif raw_line.startswith("-") and not raw_line.startswith("---"):
-            lines.append({"type": "removed", "text": raw_line[1:], "old_line": old_line, "new_line": None})
+            lines.append(
+                {"type": "removed", "text": raw_line[1:], "old_line": old_line, "new_line": None}
+            )
             if old_line is not None:
                 old_line += 1
         else:
             text = raw_line[1:] if raw_line.startswith(" ") else raw_line
-            lines.append({"type": "context", "text": text, "old_line": old_line, "new_line": new_line})
+            lines.append(
+                {"type": "context", "text": text, "old_line": old_line, "new_line": new_line}
+            )
             if old_line is not None:
                 old_line += 1
             if new_line is not None:
@@ -488,9 +577,15 @@ def github_commit(owner_repo_or_url: str, sha: str, include_patch: bool = True) 
     diff patch text (the actual code changes)."""
     ref = parse_repo_ref(owner_repo_or_url)
     if not ref:
-        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
+        return {
+            "error": "invalid_ref",
+            "error_message": "Provide 'owner/repo' or a github.com URL.",
+        }
     if not sha:
-        return {"error": "invalid_sha", "error_message": "A commit SHA (or branch/tag) is required."}
+        return {
+            "error": "invalid_sha",
+            "error_message": "A commit SHA (or branch/tag) is required.",
+        }
 
     result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}/commits/{sha}")
     if not result["ok"]:
@@ -512,7 +607,9 @@ def github_commit(owner_repo_or_url: str, sha: str, include_patch: bool = True) 
         }
         if include_patch:
             entry["patch"] = f.get("patch")  # unified diff text; absent for binary/huge files
-            entry["patch_lines"] = _parse_patch_lines(f.get("patch"))  # same diff, tagged line-by-line
+            entry["patch_lines"] = _parse_patch_lines(
+                f.get("patch")
+            )  # same diff, tagged line-by-line
         files.append(entry)
 
     parents = [{"sha": p.get("sha"), "url": p.get("html_url")} for p in d.get("parents", []) or []]
@@ -549,7 +646,10 @@ def github_prs(
     and mergeable state."""
     ref = parse_repo_ref(owner_repo_or_url)
     if not ref:
-        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
+        return {
+            "error": "invalid_ref",
+            "error_message": "Provide 'owner/repo' or a github.com URL.",
+        }
     params = {"state": state, "sort": sort, "direction": "desc", "per_page": min(max_results, 100)}
 
     result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}/pulls", params=params)
@@ -558,30 +658,37 @@ def github_prs(
 
     prs = []
     for p in (result["data"] or [])[:max_results]:
-        prs.append({
-            "number": p.get("number"),
-            "title": p.get("title"),
-            "state": p.get("state"),
-            "is_draft": p.get("draft"),
-            "author": (p.get("user") or {}).get("login"),
-            "base_branch": (p.get("base") or {}).get("ref"),
-            "head_branch": (p.get("head") or {}).get("ref"),
-            "labels": [l.get("name") for l in p.get("labels", []) or []],
-            "created_at": p.get("created_at"),
-            "updated_at": p.get("updated_at"),
-            "closed_at": p.get("closed_at"),
-            "merged_at": p.get("merged_at"),
-            "url": p.get("html_url"),
-        })
+        prs.append(
+            {
+                "number": p.get("number"),
+                "title": p.get("title"),
+                "state": p.get("state"),
+                "is_draft": p.get("draft"),
+                "author": (p.get("user") or {}).get("login"),
+                "base_branch": (p.get("base") or {}).get("ref"),
+                "head_branch": (p.get("head") or {}).get("ref"),
+                "labels": [lbl.get("name") for lbl in p.get("labels", []) or []],
+                "created_at": p.get("created_at"),
+                "updated_at": p.get("updated_at"),
+                "closed_at": p.get("closed_at"),
+                "merged_at": p.get("merged_at"),
+                "url": p.get("html_url"),
+            }
+        )
 
     return {"repo": f"{ref['owner']}/{ref['repo']}", "pr_count": len(prs), "pull_requests": prs}
 
 
-def github_pull_request(owner_repo_or_url: str, number: int, include_diff: bool = True) -> Dict[str, Any]:
+def github_pull_request(
+    owner_repo_or_url: str, number: int, include_diff: bool = True
+) -> Dict[str, Any]:
     """PR metadata plus (optionally) the full unified diff and changed-files list."""
     ref = parse_repo_ref(owner_repo_or_url)
     if not ref:
-        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
+        return {
+            "error": "invalid_ref",
+            "error_message": "Provide 'owner/repo' or a github.com URL.",
+        }
 
     result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}/pulls/{number}")
     if not result["ok"]:
@@ -606,21 +713,27 @@ def github_pull_request(owner_repo_or_url: str, number: int, include_diff: bool 
         "deletions": d.get("deletions"),
         "changed_files": d.get("changed_files"),
         "url": d.get("html_url"),
-        "labels": [l.get("name") for l in d.get("labels", []) or []],
+        "labels": [lbl.get("name") for lbl in d.get("labels", []) or []],
     }
 
     if include_diff:
-        files_result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}/pulls/{number}/files",
-                                 params={"per_page": 100})
+        files_result = _request(
+            "GET",
+            f"/repos/{ref['owner']}/{ref['repo']}/pulls/{number}/files",
+            params={"per_page": 100},
+        )
         if files_result["ok"]:
-            out["files"] = [{
-                "filename": f.get("filename"),
-                "status": f.get("status"),
-                "additions": f.get("additions"),
-                "deletions": f.get("deletions"),
-                "patch": f.get("patch"),
-                "patch_lines": _parse_patch_lines(f.get("patch")),
-            } for f in files_result["data"] or []]
+            out["files"] = [
+                {
+                    "filename": f.get("filename"),
+                    "status": f.get("status"),
+                    "additions": f.get("additions"),
+                    "deletions": f.get("deletions"),
+                    "patch": f.get("patch"),
+                    "patch_lines": _parse_patch_lines(f.get("patch")),
+                }
+                for f in files_result["data"] or []
+            ]
 
     return out
 
@@ -635,7 +748,10 @@ def github_issues(
     """List issues (GitHub's REST API returns PRs here too unless filtered out)."""
     ref = parse_repo_ref(owner_repo_or_url)
     if not ref:
-        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
+        return {
+            "error": "invalid_ref",
+            "error_message": "Provide 'owner/repo' or a github.com URL.",
+        }
     params = {"state": state, "per_page": min(max_results, 100)}
     if labels:
         params["labels"] = labels
@@ -649,30 +765,37 @@ def github_issues(
         is_pr = "pull_request" in i
         if is_pr and not include_pull_requests:
             continue
-        issues.append({
-            "number": i.get("number"),
-            "title": i.get("title"),
-            "state": i.get("state"),
-            "author": (i.get("user") or {}).get("login"),
-            "labels": [l.get("name") for l in i.get("labels", []) or []],
-            "comments": i.get("comments"),
-            "created_at": i.get("created_at"),
-            "updated_at": i.get("updated_at"),
-            "closed_at": i.get("closed_at"),
-            "url": i.get("html_url"),
-            "is_pull_request": is_pr,
-        })
+        issues.append(
+            {
+                "number": i.get("number"),
+                "title": i.get("title"),
+                "state": i.get("state"),
+                "author": (i.get("user") or {}).get("login"),
+                "labels": [lbl.get("name") for lbl in i.get("labels", []) or []],
+                "comments": i.get("comments"),
+                "created_at": i.get("created_at"),
+                "updated_at": i.get("updated_at"),
+                "closed_at": i.get("closed_at"),
+                "url": i.get("html_url"),
+                "is_pull_request": is_pr,
+            }
+        )
         if len(issues) >= max_results:
             break
 
     return {"repo": f"{ref['owner']}/{ref['repo']}", "issue_count": len(issues), "issues": issues}
 
 
-def github_issue(owner_repo_or_url: str, number: int, include_comments: bool = True) -> Dict[str, Any]:
+def github_issue(
+    owner_repo_or_url: str, number: int, include_comments: bool = True
+) -> Dict[str, Any]:
     """Single issue with full body and (optionally) every comment."""
     ref = parse_repo_ref(owner_repo_or_url)
     if not ref:
-        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
+        return {
+            "error": "invalid_ref",
+            "error_message": "Provide 'owner/repo' or a github.com URL.",
+        }
 
     result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}/issues/{number}")
     if not result["ok"]:
@@ -686,7 +809,7 @@ def github_issue(owner_repo_or_url: str, number: int, include_comments: bool = T
         "state": d.get("state"),
         "author": (d.get("user") or {}).get("login"),
         "body": d.get("body"),
-        "labels": [l.get("name") for l in d.get("labels", []) or []],
+        "labels": [lbl.get("name") for lbl in d.get("labels", []) or []],
         "assignees": [a.get("login") for a in d.get("assignees", []) or []],
         "created_at": d.get("created_at"),
         "updated_at": d.get("updated_at"),
@@ -696,45 +819,84 @@ def github_issue(owner_repo_or_url: str, number: int, include_comments: bool = T
     }
 
     if include_comments and d.get("comments", 0) > 0:
-        comments_result = _request("GET", f"/repos/{ref['owner']}/{ref['repo']}/issues/{number}/comments",
-                                    params={"per_page": 100})
+        comments_result = _request(
+            "GET",
+            f"/repos/{ref['owner']}/{ref['repo']}/issues/{number}/comments",
+            params={"per_page": 100},
+        )
         if comments_result["ok"]:
-            out["comments"] = [{
-                "author": (c.get("user") or {}).get("login"),
-                "body": c.get("body"),
-                "created_at": c.get("created_at"),
-                "url": c.get("html_url"),
-            } for c in comments_result["data"] or []]
+            out["comments"] = [
+                {
+                    "author": (c.get("user") or {}).get("login"),
+                    "body": c.get("body"),
+                    "created_at": c.get("created_at"),
+                    "url": c.get("html_url"),
+                }
+                for c in comments_result["data"] or []
+            ]
 
     return out
 
 
 _FILE_TYPE_MAP: Dict[str, str] = {
-    '.py': 'python', '.js': 'javascript', '.mjs': 'javascript', '.jsx': 'javascript',
-    '.ts': 'typescript', '.tsx': 'typescript', '.java': 'java', '.go': 'go', '.rs': 'rust',
-    '.rb': 'ruby', '.php': 'php', '.c': 'c', '.h': 'c-header', '.cpp': 'cpp', '.cc': 'cpp',
-    '.hpp': 'cpp-header', '.cs': 'csharp', '.swift': 'swift', '.kt': 'kotlin', '.scala': 'scala',
-    '.sh': 'shell', '.bash': 'shell', '.sql': 'sql', '.md': 'markdown', '.markdown': 'markdown',
-    '.json': 'json', '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'toml', '.xml': 'xml',
-    '.html': 'html', '.htm': 'html', '.css': 'css', '.scss': 'scss', '.txt': 'text',
-    '.rst': 'restructuredtext', '.ini': 'ini', '.cfg': 'ini', '.env': 'dotenv',
-    '.lock': 'lockfile', '.csv': 'csv', '.tsv': 'tsv',
+    ".py": "python",
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".java": "java",
+    ".go": "go",
+    ".rs": "rust",
+    ".rb": "ruby",
+    ".php": "php",
+    ".c": "c",
+    ".h": "c-header",
+    ".cpp": "cpp",
+    ".cc": "cpp",
+    ".hpp": "cpp-header",
+    ".cs": "csharp",
+    ".swift": "swift",
+    ".kt": "kotlin",
+    ".scala": "scala",
+    ".sh": "shell",
+    ".bash": "shell",
+    ".sql": "sql",
+    ".md": "markdown",
+    ".markdown": "markdown",
+    ".json": "json",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".toml": "toml",
+    ".xml": "xml",
+    ".html": "html",
+    ".htm": "html",
+    ".css": "css",
+    ".scss": "scss",
+    ".txt": "text",
+    ".rst": "restructuredtext",
+    ".ini": "ini",
+    ".cfg": "ini",
+    ".env": "dotenv",
+    ".lock": "lockfile",
+    ".csv": "csv",
+    ".tsv": "tsv",
 }
 
 
 def _detect_file_type(path: str) -> str:
     """Classify a file by extension/name for downstream formatting hints
     (e.g. code vs markdown vs config vs data)."""
-    name = path.rsplit('/', 1)[-1]
+    name = path.rsplit("/", 1)[-1]
     lowered = name.lower()
-    if lowered == 'dockerfile':
-        return 'dockerfile'
-    if lowered == 'makefile':
-        return 'makefile'
-    if '.' not in name:
-        return 'unknown'
-    ext = '.' + name.rsplit('.', 1)[-1].lower()
-    return _FILE_TYPE_MAP.get(ext, 'unknown')
+    if lowered == "dockerfile":
+        return "dockerfile"
+    if lowered == "makefile":
+        return "makefile"
+    if "." not in name:
+        return "unknown"
+    ext = "." + name.rsplit(".", 1)[-1].lower()
+    return _FILE_TYPE_MAP.get(ext, "unknown")
 
 
 def github_folder(
@@ -772,9 +934,15 @@ def github_folder(
     lands at ``{save_path_dir}/src/utils/a.py``).
     """
     if max_files is not None and not include_content:
-        return {"error": "invalid_arguments", "error_message": "--max-files only makes sense together with --include-content (it caps how many files get their content fetched)."}
+        return {
+            "error": "invalid_arguments",
+            "error_message": "--max-files only makes sense together with --include-content (it caps how many files get their content fetched).",
+        }
     if save_path_dir is not None and not include_content:
-        return {"error": "invalid_arguments", "error_message": "--save-path-dir only makes sense together with --include-content (there's no content to save without it)."}
+        return {
+            "error": "invalid_arguments",
+            "error_message": "--save-path-dir only makes sense together with --include-content (there's no content to save without it).",
+        }
     if include_content:
         validation_error = validate_max_chars_max_size(max_chars, max_size)
         if validation_error:
@@ -782,18 +950,35 @@ def github_folder(
 
     repo_ref = parse_repo_ref(owner_repo_or_url)
     if not repo_ref:
-        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
+        return {
+            "error": "invalid_ref",
+            "error_message": "Provide 'owner/repo' or a github.com URL.",
+        }
     owner, repo = repo_ref["owner"], repo_ref["repo"]
     clean_path = path.strip("/")
 
     if not recursive:
-        result = _request("GET", f"/repos/{owner}/{repo}/contents/{clean_path}", params={"ref": ref} if ref else None)
+        result = _request(
+            "GET",
+            f"/repos/{owner}/{repo}/contents/{clean_path}",
+            params={"ref": ref} if ref else None,
+        )
         if not result["ok"]:
             return _public_error(result)
         d = result["data"]
         if not isinstance(d, list):
-            return {"error": "not_a_directory", "error_message": f"'{path}' is a file, not a directory. Use github-file instead."}
-        entries = [{"path": e.get("path"), "type": "blob" if e.get("type") == "file" else "tree", "size": e.get("size")} for e in d]
+            return {
+                "error": "not_a_directory",
+                "error_message": f"'{path}' is a file, not a directory. Use github-file instead.",
+            }
+        entries = [
+            {
+                "path": e.get("path"),
+                "type": "blob" if e.get("type") == "file" else "tree",
+                "size": e.get("size"),
+            }
+            for e in d
+        ]
     else:
         branch = ref
         if not branch:
@@ -802,7 +987,9 @@ def github_folder(
                 return _public_error(repo_info)
             branch = repo_info["data"].get("default_branch", "main")
 
-        tree_result = _request("GET", f"/repos/{owner}/{repo}/git/trees/{branch}", params={"recursive": "1"})
+        tree_result = _request(
+            "GET", f"/repos/{owner}/{repo}/git/trees/{branch}", params={"recursive": "1"}
+        )
         if not tree_result["ok"]:
             return _public_error(tree_result)
         all_entries = (tree_result["data"] or {}).get("tree", [])
@@ -813,7 +1000,10 @@ def github_folder(
             if not clean_path or e.get("path", "").startswith(prefix) or e.get("path") == clean_path
         ]
         if clean_path and not entries:
-            return {"error": "not_found", "error_message": f"No entries found under '{path}' — check the path exists on branch '{branch}'."}
+            return {
+                "error": "not_found",
+                "error_message": f"No entries found under '{path}' — check the path exists on branch '{branch}'.",
+            }
 
     out = {
         "repo": f"{owner}/{repo}",
@@ -839,7 +1029,10 @@ def github_folder(
                 if max_chars is not None and len(content) > max_chars:
                     file_result["content"] = content[:max_chars]
                     file_result["content_truncated"] = True
-                elif max_size_bytes is not None and len(content.encode("utf-8", errors="ignore")) > max_size_bytes:
+                elif (
+                    max_size_bytes is not None
+                    and len(content.encode("utf-8", errors="ignore")) > max_size_bytes
+                ):
                     encoded = content.encode("utf-8", errors="ignore")[:max_size_bytes]
                     file_result["content"] = encoded.decode("utf-8", errors="ignore")
                     file_result["content_truncated"] = True
@@ -848,7 +1041,11 @@ def github_folder(
 
             fetched.append(file_result)
 
-            if save_path_dir and file_result.get("content") is not None and "error" not in file_result:
+            if (
+                save_path_dir
+                and file_result.get("content") is not None
+                and "error" not in file_result
+            ):
                 try:
                     dest = Path(save_path_dir) / e["path"]
                     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -870,23 +1067,33 @@ def github_folder(
     return out
 
 
-def github_file_content(owner_repo_or_url: str, path: str, ref: Optional[str] = None) -> Dict[str, Any]:
+def github_file_content(
+    owner_repo_or_url: str, path: str, ref: Optional[str] = None
+) -> Dict[str, Any]:
     """Fetch and decode a single file's contents from a repo (any text or binary
     file up to GitHub's 1MB Contents-API limit; larger files fall back to the
     raw.githubusercontent.com URL, returned but not inlined)."""
     repo_ref = parse_repo_ref(owner_repo_or_url)
     if not repo_ref:
-        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
+        return {
+            "error": "invalid_ref",
+            "error_message": "Provide 'owner/repo' or a github.com URL.",
+        }
     params = {"ref": ref} if ref else None
 
-    result = _request("GET", f"/repos/{repo_ref['owner']}/{repo_ref['repo']}/contents/{path}", params=params)
+    result = _request(
+        "GET", f"/repos/{repo_ref['owner']}/{repo_ref['repo']}/contents/{path}", params=params
+    )
     if not result["ok"]:
         return _public_error(result)
     d = result["data"]
 
     if isinstance(d, list):
-        return {"error": "is_directory", "error_message": f"'{path}' is a directory, not a file.",
-                "entries": [{"name": e.get("name"), "type": e.get("type")} for e in d]}
+        return {
+            "error": "is_directory",
+            "error_message": f"'{path}' is a directory, not a file.",
+            "entries": [{"name": e.get("name"), "type": e.get("type")} for e in d],
+        }
 
     content = None
     if d.get("encoding") == "base64" and d.get("content"):
@@ -917,12 +1124,14 @@ def github_search_code(query: str, max_results: int = 20) -> Dict[str, Any]:
     d = result["data"] or {}
     items = []
     for item in d.get("items", [])[:max_results]:
-        items.append({
-            "repo": (item.get("repository") or {}).get("full_name"),
-            "path": item.get("path"),
-            "url": item.get("html_url"),
-            "score": item.get("score"),
-        })
+        items.append(
+            {
+                "repo": (item.get("repository") or {}).get("full_name"),
+                "path": item.get("path"),
+                "url": item.get("html_url"),
+                "score": item.get("score"),
+            }
+        )
     return {"query": query, "total_count": d.get("total_count", 0), "results": items}
 
 
@@ -933,8 +1142,11 @@ def github_search_repos(query: str, sort: str = "stars", max_results: int = 20) 
     (stars, forks, topics, license, timestamps, etc.) — GitHub's search API
     already returns full repo objects per hit, so there's no need to settle
     for a stripped-down subset."""
-    result = _request("GET", "/search/repositories",
-                       params={"q": query, "sort": sort, "order": "desc", "per_page": min(max_results, 100)})
+    result = _request(
+        "GET",
+        "/search/repositories",
+        params={"q": query, "sort": sort, "order": "desc", "per_page": min(max_results, 100)},
+    )
     if not result["ok"]:
         return _public_error(result)
     d = result["data"] or {}
@@ -949,7 +1161,10 @@ def github_discussions(owner_repo_or_url: str, max_results: int = 20) -> Dict[st
     by this module)."""
     ref = parse_repo_ref(owner_repo_or_url)
     if not ref:
-        return {"error": "invalid_ref", "error_message": "Provide 'owner/repo' or a github.com URL."}
+        return {
+            "error": "invalid_ref",
+            "error_message": "Provide 'owner/repo' or a github.com URL.",
+        }
     if not os.environ.get("GITHUB_TOKEN"):
         return {
             "error": "auth_required",
@@ -983,38 +1198,55 @@ def github_discussions(owner_repo_or_url: str, max_results: int = 20) -> Dict[st
     variables = {"owner": ref["owner"], "repo": ref["repo"], "first": min(max_results, 100)}
     try:
         resp = requests.post(
-            GRAPHQL_URL, headers=_headers(),
-            json={"query": query, "variables": variables}, timeout=20,
+            GRAPHQL_URL,
+            headers=_headers(),
+            json={"query": query, "variables": variables},
+            timeout=20,
         )
     except Exception as e:
         return {"error": "network_error", "error_message": f"{type(e).__name__}: {e}"}
 
     if resp.status_code == 401:
-        return {"error": "unauthorized", "error_message": "GITHUB_TOKEN is invalid, expired, or lacks discussion read access."}
+        return {
+            "error": "unauthorized",
+            "error_message": "GITHUB_TOKEN is invalid, expired, or lacks discussion read access.",
+        }
     if resp.status_code >= 400:
-        return {"error": "api_error", "error_message": f"HTTP {resp.status_code}: {resp.text[:300]}"}
+        return {
+            "error": "api_error",
+            "error_message": f"HTTP {resp.status_code}: {resp.text[:300]}",
+        }
 
     payload = resp.json()
     if payload.get("errors"):
-        return {"error": "graphql_error", "error_message": "; ".join(e.get("message", "") for e in payload["errors"])}
+        return {
+            "error": "graphql_error",
+            "error_message": "; ".join(e.get("message", "") for e in payload["errors"]),
+        }
 
     repo_data = (payload.get("data") or {}).get("repository")
     if not repo_data:
-        return {"error": "not_found", "error_message": f"Repository {ref['owner']}/{ref['repo']} not found or discussions disabled."}
+        return {
+            "error": "not_found",
+            "error_message": f"Repository {ref['owner']}/{ref['repo']} not found or discussions disabled.",
+        }
 
     discussions_data = repo_data.get("discussions", {})
     nodes = discussions_data.get("nodes", [])
-    discussions = [{
-        "number": n.get("number"),
-        "title": n.get("title"),
-        "url": n.get("url"),
-        "author": (n.get("author") or {}).get("login"),
-        "category": (n.get("category") or {}).get("name"),
-        "comment_count": (n.get("comments") or {}).get("totalCount", 0),
-        "created_at": n.get("createdAt"),
-        "updated_at": n.get("updatedAt"),
-        "body": n.get("bodyText"),
-    } for n in nodes]
+    discussions = [
+        {
+            "number": n.get("number"),
+            "title": n.get("title"),
+            "url": n.get("url"),
+            "author": (n.get("author") or {}).get("login"),
+            "category": (n.get("category") or {}).get("name"),
+            "comment_count": (n.get("comments") or {}).get("totalCount", 0),
+            "created_at": n.get("createdAt"),
+            "updated_at": n.get("updatedAt"),
+            "body": n.get("bodyText"),
+        }
+        for n in nodes
+    ]
 
     return {
         "repo": f"{ref['owner']}/{ref['repo']}",
