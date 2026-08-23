@@ -133,6 +133,7 @@ def get_embedding_dim() -> int:
 def is_available() -> bool:
     """Check whether the heavy ML deps are importable (without loading a model)."""
     try:
+        import lancedb  # noqa: F401
         import sentence_transformers  # noqa: F401
         import torch  # noqa: F401
         return True
