@@ -6,12 +6,12 @@ returns normalized image entries (with ``image_url``/``thumbnail_url``) that
 the unified image-search pipeline ranks alongside DuckDuckGo results.
 """
 
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Sequence
-import logging
 
-from .image_search_feed import IMAGE_SEARCH_FEEDS, flickr_tag_feed, deviantart_query_feeds
 from .image_rss import fetch_image_feed_entries
+from .image_search_feed import IMAGE_SEARCH_FEEDS, deviantart_query_feeds, flickr_tag_feed
 
 logger = logging.getLogger(__name__)
 

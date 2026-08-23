@@ -52,24 +52,28 @@ def _media_images(item: ET.Element) -> List[Dict[str, Any]]:
             if url in seen:
                 continue
             seen.add(url)
-            images.append({
-                "url": url,
-                "width": _attr_int(child, "width"),
-                "height": _attr_int(child, "height"),
-                "medium": child.attrib.get("medium", ""),
-            })
+            images.append(
+                {
+                    "url": url,
+                    "width": _attr_int(child, "width"),
+                    "height": _attr_int(child, "height"),
+                    "medium": child.attrib.get("medium", ""),
+                }
+            )
     # RSS <enclosure url="..." type="image/..."/>
     for enc in item.findall("{*}enclosure"):
         etype = enc.attrib.get("type", "")
         url = enc.attrib.get("url", "")
         if url and ("image" in etype or not etype) and url not in seen:
             seen.add(url)
-            images.append({
-                "url": url,
-                "width": _attr_int(enc, "width"),
-                "height": _attr_int(enc, "height"),
-                "medium": etype,
-            })
+            images.append(
+                {
+                    "url": url,
+                    "width": _attr_int(enc, "width"),
+                    "height": _attr_int(enc, "height"),
+                    "medium": etype,
+                }
+            )
     return images
 
 
@@ -122,7 +126,9 @@ def parse_image_feed(xml_text: str, feed_url: str = "") -> List[Dict[str, Any]]:
 
         title = _clean_text(_first_text(item, ["title"]))
         published = _first_text(item, ["pubDate", "published", "updated", "created"])
-        author = _first_text(item, ["author", "{*}author/{*}name"]) or _first_text(item, ["creator"])
+        author = _first_text(item, ["author", "{*}author/{*}name"]) or _first_text(
+            item, ["creator"]
+        )
         body = _clean_text(_first_text(item, ["description", "summary", "content"]))
 
         media = _media_images(item)
@@ -139,25 +145,27 @@ def parse_image_feed(xml_text: str, feed_url: str = "") -> List[Dict[str, Any]]:
         if not thumbnail and len(media) > 1:
             thumbnail = media[-1]["url"]
 
-        results.append({
-            "title": title or f"Image from {feed_name}",
-            "image_url": primary["url"],
-            "source_url": link or primary["url"],
-            "thumbnail_url": thumbnail or primary["url"],
-            "width": primary.get("width") or 0,
-            "height": primary.get("height") or 0,
-            "image_size": "",
-            "body": body,
-            "snippet": body,
-            "source": f"rss:{feed_name}",
-            "publish_date": published,
-            "author": author,
-            "rss_metadata": {
-                "feed_url": feed_url,
-                "feed_name": feed_name,
-                "media_count": len(media),
-            },
-        })
+        results.append(
+            {
+                "title": title or f"Image from {feed_name}",
+                "image_url": primary["url"],
+                "source_url": link or primary["url"],
+                "thumbnail_url": thumbnail or primary["url"],
+                "width": primary.get("width") or 0,
+                "height": primary.get("height") or 0,
+                "image_size": "",
+                "body": body,
+                "snippet": body,
+                "source": f"rss:{feed_name}",
+                "publish_date": published,
+                "author": author,
+                "rss_metadata": {
+                    "feed_url": feed_url,
+                    "feed_name": feed_name,
+                    "media_count": len(media),
+                },
+            }
+        )
     return results
 
 
@@ -176,12 +184,15 @@ def fetch_image_feed_entries(
 
     try:
         import importlib
-        _tcr = importlib.import_module(".tech_crunch_rss", "scout_it.news-search")
+
+        _tcr = importlib.import_module(".tech_crunch_rss", "scout_it.newssearch")
         # RSSProvider is abstract; use the concrete TechCrunchRSSProvider for
         # the parallel HTTP transport.
         provider_cls = getattr(_tcr, "TechCrunchRSSProvider", None) or _tcr.RSSProvider
         provider = provider_cls()
-        fetched = provider.fetch_multiple_feeds(list(urls), timeout=timeout, max_workers=max_workers)
+        fetched = provider.fetch_multiple_feeds(
+            list(urls), timeout=timeout, max_workers=max_workers
+        )
     except Exception as exc:
         logger.error("image RSS transport unavailable: %s", exc)
         return []
