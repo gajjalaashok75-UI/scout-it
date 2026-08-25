@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.1] - 2026-08-26
+
+### Fixed — CLI broken by missing `scout_it/cli.py`
+
+`scout-it` failed on every subcommand with `ModuleNotFoundError: No module named 'scout_it.cli'`. The 2015-line `scout_it/cli.py` (all argument parsers and command handlers) was accidentally deleted during the module reorganization in `c1ff734`, while `scout_it/__init__.py` still imported from it. The file has been restored from git history (`1851cd7`), and all 28 subcommands were re-verified live.
+
+### Added — `scout_it/progress.py` progress reporter
+
+Recreated a lost (never-committed) module that `websearch/web_search.py` and `newssearch/news_search.py` depend on:
+
+- `make_console()` — shared rich `Console` instance with a stderr fallback when rich is unavailable.
+- `get_reporter()` — process-wide thread-safe singleton `ProgressReporter` with `.phase(name)` for pipeline phase announcements and `.item_done(done, total)` for per-item progress.
+
 ## [2.1.0] - 2026-08-17
 
 ### Added — New API search sources (Linkup, Langsearch, Serper) + video-search support
